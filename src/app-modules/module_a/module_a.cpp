@@ -2,6 +2,8 @@
 
 #include "module_a.h"
 #include "app_msg_table.h"
+#include "msg_sensor_data.h"
+#include "msg_tick_1000ms.h"
 
 #include <stdio.h>
 
@@ -33,7 +35,7 @@ void ModuleA::init()
     printf("[%s] init\n", name());
 
     // Subscribe to the 1 s heartbeat — this is what drives publishing.
-    subscribe(MSG_TICK_1000MS);
+    subscribe(MsgTick1000ms::ID);
 }
 
 // ---------------------------------------------------------------------------
@@ -54,12 +56,12 @@ void ModuleA::on_msg_received(const hsys_msg_t &msg)
 {
     switch (msg.msg_id) {
 
-        case MSG_TICK_1000MS:
+        case MsgTick1000ms::ID:
             publish_sensor_data();
             break;
 
         default:
-            printf("[%s] unhandled msg_id=%u\n", name(), msg.msg_id);
+            printf("[%s] unhandled msg_id=0x%04X\n", name(), msg.msg_id);
             break;
     }
 }
@@ -70,23 +72,23 @@ void ModuleA::on_msg_received(const hsys_msg_t &msg)
 
 void ModuleA::publish_sensor_data()
 {
-    hsys_msg_t *msg = create_msg(MSG_SENSOR_DATA);
+    MsgSensorData::Payload p{
+        .counter     = ++m_counter,
+        .temperature = 20.0f + (float)(m_counter % 10),
+    };
+
+    hsys_msg_t *msg = create_typed<MsgSensorData>(p);
     if (msg == nullptr) {
-        printf("[%s] ERROR: create_msg failed\n", name());
+        printf("[%s] ERROR: create_typed<MsgSensorData> failed\n", name());
         return;
     }
 
-    auto *data = static_cast<module_a_sensor_data_t *>(msg->payload);
-    data->counter     = ++m_counter;
-    data->temperature = 20.0f + (float)(m_counter % 10);
-
     hsys_status_t rc = publish(msg);
     if (rc == HSYS_OK) {
-        printf("[%s] published MSG_SENSOR_DATA #%lu  temp=%.1f\n",
-               name(), (unsigned long)data->counter, data->temperature);
+        printf("[%s] published MsgSensorData #%lu  temp=%.1f\n",
+               name(), (unsigned long)p.counter, p.temperature);
     } else {
         printf("[%s] publish failed (%d)\n", name(), rc);
-        // msg was not enqueued to anyone; release it manually
         hsys_msg_release(msg);
     }
 }

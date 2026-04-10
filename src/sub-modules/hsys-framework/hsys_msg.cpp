@@ -29,6 +29,7 @@
 
 static hsys_msg_t           s_header_pool[HSYS_MSG_HEADER_POOL_SIZE];
 static bool                 s_header_used[HSYS_MSG_HEADER_POOL_SIZE];
+static uint8_t              s_header_peak = 0;   // peak used slots (watermark)
 static hsys_mutex_handle_t  s_header_mutex = nullptr;
 
 static hsys_msg_t *header_alloc(void)
@@ -37,6 +38,13 @@ static hsys_msg_t *header_alloc(void)
     for (uint8_t i = 0; i < HSYS_MSG_HEADER_POOL_SIZE; i++) {
         if (!s_header_used[i]) {
             s_header_used[i] = true;
+
+            // Update peak watermark
+            uint8_t used = 0;
+            for (uint8_t j = 0; j < HSYS_MSG_HEADER_POOL_SIZE; j++)
+                if (s_header_used[j]) used++;
+            if (used > s_header_peak) s_header_peak = used;
+
             hsys_mutex_unlock(s_header_mutex);
             return &s_header_pool[i];
         }
@@ -334,3 +342,40 @@ hsys_status_t hsys_msg_publish_from_isr(hsys_msg_t *msg,
     return result;
 }
 
+// ---------------------------------------------------------------------------
+// Subscription query
+// ---------------------------------------------------------------------------
+
+bool hsys_msg_is_subscriber(hsys_msg_id_t msg_id, hsys_module_id_t module_id)
+{
+    hsys_sub_entry_t *e = sub_entry_for(msg_id);
+    if (!e) return false;
+
+    hsys_mutex_lock(s_sub_mutex);
+    bool found = false;
+    for (uint8_t i = 0; i < e->count; i++) {
+        if (e->subscribers[i] == module_id) { found = true; break; }
+    }
+    hsys_mutex_unlock(s_sub_mutex);
+    return found;
+}
+
+// ---------------------------------------------------------------------------
+// Diagnostics
+// ---------------------------------------------------------------------------
+
+void hsys_msg_get_header_pool_info(hsys_msg_header_pool_info_t *info)
+{
+    if (!info) return;
+
+    hsys_mutex_lock(s_header_mutex);
+    uint8_t used = 0;
+    for (uint8_t i = 0; i < HSYS_MSG_HEADER_POOL_SIZE; i++)
+        if (s_header_used[i]) used++;
+    hsys_mutex_unlock(s_header_mutex);
+
+    info->total_slots     = HSYS_MSG_HEADER_POOL_SIZE;
+    info->used_slots      = used;
+    info->free_slots      = (uint8_t)(HSYS_MSG_HEADER_POOL_SIZE - used);
+    info->peak_used_slots = s_header_peak;
+}

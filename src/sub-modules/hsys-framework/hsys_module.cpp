@@ -95,6 +95,18 @@ hsys_status_t hsys_module_dispatch(const hsys_msg_t *msg)
     return HSYS_OK;
 }
 
+void hsys_module_dispatch_for_task(const hsys_msg_t       *msg,
+                                   const hsys_module_id_t *module_ids,
+                                   uint8_t                 count)
+{
+    if (msg == nullptr) return;
+    for (uint8_t i = 0; i < count; i++) {
+        if (!hsys_msg_is_subscriber(msg->msg_id, module_ids[i])) continue;
+        HsysModule *m = hsys_module_find(module_ids[i]);
+        if (m) m->dispatch(*msg);
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Per-task lifecycle phase runners
 // Called by the task manager's dispatch_loop startup sequence.

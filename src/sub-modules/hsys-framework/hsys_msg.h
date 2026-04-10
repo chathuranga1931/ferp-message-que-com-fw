@@ -167,6 +167,40 @@ hsys_status_t hsys_msg_send(hsys_msg_t *msg, uint32_t timeout_ms);
 hsys_status_t hsys_msg_publish_from_isr(hsys_msg_t *msg,
                                          bool *higher_priority_woken);
 
+// ---------------------------------------------------------------------------
+// Subscription query
+// ---------------------------------------------------------------------------
+
+/**
+ * @brief  Returns true if @p module_id is currently subscribed to @p msg_id.
+ *         Used by the dispatch loop to route messages without relying on the
+ *         shared (mutable) receiver_id field.
+ */
+bool hsys_msg_is_subscriber(hsys_msg_id_t msg_id, hsys_module_id_t module_id);
+
+// ---------------------------------------------------------------------------
+// Diagnostics
+// ---------------------------------------------------------------------------
+
+/**
+ * @brief  Snapshot of the internal message-header pool.
+ *         Useful for system monitoring / logging.
+ */
+typedef struct {
+    uint8_t total_slots;     ///< Fixed pool capacity (HSYS_MSG_HEADER_POOL_SIZE)
+    uint8_t free_slots;      ///< Currently available slots
+    uint8_t used_slots;      ///< Slots currently holding in-flight messages
+    uint8_t peak_used_slots; ///< Highest watermark since boot
+} hsys_msg_header_pool_info_t;
+
+/**
+ * @brief  Fill an hsys_msg_header_pool_info_t with a consistent snapshot.
+ *         Safe to call from any task context.
+ *
+ * @param  info  Output — must not be NULL.
+ */
+void hsys_msg_get_header_pool_info(hsys_msg_header_pool_info_t *info);
+
 #ifdef __cplusplus
 }
 #endif

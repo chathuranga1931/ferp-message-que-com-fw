@@ -37,6 +37,7 @@
 #include "ticker.h"
 #include "module_a.h"
 #include "module_b.h"
+#include "module_sysmon.h"
 #include "app_msg_table.h"
 
 // ============================================================================
@@ -64,6 +65,7 @@ static HsysModule *k_module_table[] = {
     ticker_instance(),
     module_a_instance(),
     module_b_instance(),
+    module_sysmon_instance(),
 };
 #define MODULE_TABLE_SIZE  (sizeof(k_module_table) / sizeof(k_module_table[0]))
 
@@ -72,11 +74,12 @@ static HsysModule *k_module_table[] = {
 // Columns: name | stack(words) | priority | queue_depth | modules[]
 // ============================================================================
 
-/*                         name           stack  pri  qdepth  modules[]        */
+/*                         name            stack  pri  qdepth  modules[]              */
 static const hsys_task_desc_t k_task_table[] = {
-    { "ticker_task",  1024,  6,  0,  { TICKER_MODULE_ID, 0 } },
-    { "sensor_task",  2048,  5,  0,  { MODULE_A_ID,      0 } },
-    { "display_task", 2048,  4,  0,  { MODULE_B_ID,      0 } },
+    { "ticker_task",   1024,  6,  0,  { TICKER_MODULE_ID,   0 } },
+    { "sensor_task",   2048,  5,  0,  { MODULE_A_ID,        0 } },
+    { "display_task",  2048,  4,  0,  { MODULE_B_ID,        0 } },
+    { "sysmon_task",   2048,  3,  0,  { SYSMON_MODULE_ID,   0 } },
 };
 #define TASK_TABLE_SIZE  (sizeof(k_task_table) / sizeof(k_task_table[0]))
 

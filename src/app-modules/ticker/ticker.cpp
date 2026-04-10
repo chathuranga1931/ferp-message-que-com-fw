@@ -2,7 +2,7 @@
 
 #include "ticker.h"
 #include "hsys_soft_timer.h"
-#include "app_msg_table.h"
+#include "msg_tick_1000ms.h"
 
 #include <stdio.h>
 
@@ -25,9 +25,9 @@ static void timer_cb(void *user_data)
 
 void Ticker::tick()
 {
-    hsys_msg_t *msg = create_msg(MSG_TICK_1000MS);
+    hsys_msg_t *msg = create_typed<MsgTick1000ms>(MsgTick1000ms::Payload{});
     if (msg == nullptr) {
-        printf("[%s] ERROR: create_msg failed\n", name());
+        printf("[%s] ERROR: create_typed<MsgTick1000ms> failed\n", name());
         return;
     }
     publish(msg);

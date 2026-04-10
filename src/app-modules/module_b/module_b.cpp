@@ -2,7 +2,7 @@
 
 #include "module_b.h"
 #include "app_msg_table.h"
-#include "module_a.h"   // for module_a_sensor_data_t
+#include "msg_sensor_data.h"
 
 #include <stdio.h>
 
@@ -21,7 +21,7 @@ ModuleB *module_b_instance(void) { return &s_instance; }
 void ModuleB::init()
 {
     printf("[%s] init\n", name());
-    subscribe(MSG_SENSOR_DATA);
+    subscribe(MsgSensorData::ID);
 }
 
 // ---------------------------------------------------------------------------
@@ -32,27 +32,19 @@ void ModuleB::on_msg_received(const hsys_msg_t &msg)
 {
     switch (msg.msg_id) {
 
-        case MSG_SENSOR_DATA: {
-            if (msg.payload == nullptr ||
-                msg.payload_size < sizeof(module_a_sensor_data_t)) {
-                printf("[%s] ERROR: bad payload\n", name());
-                break;
-            }
-            const auto *data =
-                static_cast<const module_a_sensor_data_t *>(msg.payload);
+        case MsgSensorData::ID: {
+            const auto p = MsgSensorData::deserialize(msg);
 
-            printf("[%s] MSG_SENSOR_DATA  #%lu  temp=%.1f°C  ts=%lums\n",
+            printf("[%s] MsgSensorData  #%lu  temp=%.1f°C  ts=%lums\n",
                    name(),
-                   (unsigned long)data->counter,
-                   data->temperature,
+                   (unsigned long)p.counter,
+                   p.temperature,
                    (unsigned long)msg.timestamp);
-            // No pool_free — hsys_msg_release() is called automatically
-            // by the dispatch loop after on_msg_received() returns.
             break;
         }
 
         default:
-            printf("[%s] unhandled msg_id=%u\n", name(), msg.msg_id);
+            printf("[%s] unhandled msg_id=0x%04X\n", name(), msg.msg_id);
             break;
     }
 }

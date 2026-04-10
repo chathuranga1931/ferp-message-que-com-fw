@@ -142,7 +142,7 @@ static void dispatch_loop(void *param)
     hsys_msg_t *msg_ptr;
     for (;;) {
         if (hsys_queue_receive(&entry->queue, &msg_ptr, HSYS_WAIT_FOREVER)) {
-            hsys_module_dispatch(msg_ptr);
+            hsys_module_dispatch_for_task(msg_ptr, mids, mcount);
             hsys_msg_release(msg_ptr);
         }
     }

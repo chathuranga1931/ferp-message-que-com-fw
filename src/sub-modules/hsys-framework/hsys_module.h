@@ -104,16 +104,33 @@ protected:
     hsys_status_t subscribe(hsys_msg_id_t msg_id);
 
     /**
-     * Create a message instance via the framework factory.
-     * The returned pointer has its payload pre-allocated; fill it before
-     * calling publish().  Returns nullptr if msg_id is unknown or pool is full.
-     * Typically called from on_msg_received() or a timer callback.
+     * Create a raw message instance via the framework factory.
+     * Prefer create_typed<T>() for typed message classes.
+     * Returns nullptr if msg_id is unknown or the pool is full.
      */
     hsys_msg_t *create_msg(hsys_msg_id_t msg_id);
 
     /**
+     * Typed factory helper — creates, serializes, and returns a framework
+     * message in one call.  The module's own ID is injected as sender_id
+     * automatically so callers never pass it manually.
+     *
+     * Usage:
+     *   auto *msg = create_typed<MsgSensorData>(payload);
+     *   publish(msg);
+     *
+     * MsgClass must expose:
+     *   static hsys_msg_t *create(hsys_module_id_t sender, const Payload &p);
+     */
+    template<typename MsgClass>
+    hsys_msg_t *create_typed(const typename MsgClass::Payload &payload)
+    {
+        return MsgClass::create(m_id, payload);
+    }
+
+    /**
      * Publish a previously created message onto the bus.
-     * The framework sets ref_count and enqueues the pointer to every
+     * The framework stamps ref_count and enqueues the pointer to every
      * subscriber's queue.  Do NOT access the message after this call.
      */
     hsys_status_t publish(hsys_msg_t *msg);
@@ -154,6 +171,18 @@ HsysModule *hsys_module_find(hsys_module_id_t module_id);
  *         Called internally by the task dispatch loop.
  */
 hsys_status_t hsys_module_dispatch(const hsys_msg_t *msg);
+
+/**
+ * @brief  Dispatch a message to every bound module that subscribed to
+ *         msg->msg_id.  This must be used instead of hsys_module_dispatch()
+ *         in the task loop because receiver_id in the shared header may have
+ *         been overwritten by the time the task dequeues the pointer
+ *         (publish sets receiver_id just before each enqueue — it is not safe
+ *         to read after the fact).
+ */
+void hsys_module_dispatch_for_task(const hsys_msg_t        *msg,
+                                   const hsys_module_id_t  *module_ids,
+                                   uint8_t                  count);
 
 /**
  * @brief  Run Phase 1 (pre_init) only on modules bound to the given task.
