@@ -1,0 +1,178 @@
+// hsys_module.h
+//
+// Module base class and registry API.
+//
+// Every application module inherits from HsysModule and overrides the
+// lifecycle hooks and the message handler.  The framework calls the three
+// init phases in order across ALL registered modules before any task starts:
+//
+//   Phase 1 — pre_init()   : hardware / driver setup, no inter-module calls
+//   Phase 2 — init()       : subscribe to messages, set up internal state
+//   Phase 3 — post_init()  : cross-module wiring that depends on phase 2
+//
+// At runtime the dispatch loop calls on_msg_received() for every message
+// routed to this module.
+//
+// Usage (in a subclass):
+//
+//   class ModuleA : public HsysModule {
+//   public:
+//       ModuleA() : HsysModule(MODULE_A_ID, "module_a") {}
+//   protected:
+//       void init()         override { subscribe(MSG_TICK_1000MS); }
+//       void on_msg_received(const hsys_msg_t &msg) override { ... }
+//   };
+
+#ifndef HSYS_MODULE_H
+#define HSYS_MODULE_H
+
+#include "hsys_types.h"
+#include "hsys_config.h"
+#include "hsys_msg.h"
+
+// ---------------------------------------------------------------------------
+// HsysModule — abstract base class
+// ---------------------------------------------------------------------------
+
+class HsysModule
+{
+public:
+    // -----------------------------------------------------------------------
+    // Construction / identity
+    // -----------------------------------------------------------------------
+
+    /**
+     * @param module_id  Unique non-zero ID for this module.
+     * @param name       Human-readable name used in log output.
+     */
+    HsysModule(hsys_module_id_t module_id, const char *name);
+
+    virtual ~HsysModule() = default;
+
+    /** Returns this module's unique ID. */
+    hsys_module_id_t id()   const { return m_id;   }
+
+    /** Returns this module's name string. */
+    const char      *name() const { return m_name; }
+
+    // -----------------------------------------------------------------------
+    // Lifecycle hooks  (override in subclass as needed)
+    // -----------------------------------------------------------------------
+
+    /**
+     * Phase 1 — called for ALL modules before init() runs on any module.
+     * Use for low-level hardware / peripheral initialisation.
+     * Do NOT call subscribe() or publish() here.
+     */
+    virtual void pre_init()  {}
+
+    /**
+     * Phase 2 — the main init hook.
+     * Call subscribe() here to register message interests.
+     * Do NOT publish messages or call other modules.
+     */
+    virtual void init()      {}
+
+    /**
+     * Phase 3 — called for ALL modules after init() has run on every module.
+     * Safe to publish a one-shot startup message or query another module's state.
+     */
+    virtual void post_init() {}
+
+    /**
+     * Runtime message handler — called by the dispatch loop.
+     * Must be non-blocking.  Do NOT store the reference beyond this call.
+     *
+     * @param msg  The received message.
+     */
+    virtual void on_msg_received(const hsys_msg_t &msg) = 0;
+
+    // -----------------------------------------------------------------------
+    // Internal dispatch bridge (called by the framework, not by subclasses)
+    // -----------------------------------------------------------------------
+    void dispatch(const hsys_msg_t &msg) { on_msg_received(msg); }
+
+protected:
+    // -----------------------------------------------------------------------
+    // Helpers available to subclasses
+    // -----------------------------------------------------------------------
+
+    /**
+     * Subscribe this module to a message ID.
+     * Typically called from init().
+     */
+    hsys_status_t subscribe(hsys_msg_id_t msg_id);
+
+    /**
+     * Create a message instance via the framework factory.
+     * The returned pointer has its payload pre-allocated; fill it before
+     * calling publish().  Returns nullptr if msg_id is unknown or pool is full.
+     * Typically called from on_msg_received() or a timer callback.
+     */
+    hsys_msg_t *create_msg(hsys_msg_id_t msg_id);
+
+    /**
+     * Publish a previously created message onto the bus.
+     * The framework sets ref_count and enqueues the pointer to every
+     * subscriber's queue.  Do NOT access the message after this call.
+     */
+    hsys_status_t publish(hsys_msg_t *msg);
+
+private:
+    hsys_module_id_t  m_id;
+    const char       *m_name;
+};
+
+// ---------------------------------------------------------------------------
+// Module registry  (C linkage so main.c / task_mgr.cpp can call it)
+// ---------------------------------------------------------------------------
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/**
+ * @brief  Initialise the module registry and register all modules in one call.
+ *
+ *         Replaces separate hsys_module_init() + hsys_module_register() calls.
+ *         The array must remain valid for the lifetime of the firmware.
+ *
+ * @param  modules      Array of HsysModule pointers to register.
+ * @param  count        Number of entries in the array.
+ * @return HSYS_OK on success.
+ */
+hsys_status_t hsys_module_init(HsysModule **modules, uint8_t count);
+
+/**
+ * @brief  Look up a registered module by ID.
+ * @return Pointer to the module, or nullptr if not found.
+ */
+HsysModule *hsys_module_find(hsys_module_id_t module_id);
+
+/**
+ * @brief  Dispatch a message to the module identified by msg->receiver_id.
+ *         Called internally by the task dispatch loop.
+ */
+hsys_status_t hsys_module_dispatch(const hsys_msg_t *msg);
+
+/**
+ * @brief  Run Phase 1 (pre_init) only on modules bound to the given task.
+ *         Called internally by each task's dispatch loop startup sequence.
+ */
+void hsys_module_pre_init_for_task(const hsys_module_id_t *module_ids, uint8_t count);
+
+/**
+ * @brief  Run Phase 2 (init) only on modules bound to the given task.
+ */
+void hsys_module_init_for_task(const hsys_module_id_t *module_ids, uint8_t count);
+
+/**
+ * @brief  Run Phase 3 (post_init) only on modules bound to the given task.
+ */
+void hsys_module_post_init_for_task(const hsys_module_id_t *module_ids, uint8_t count);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif // HSYS_MODULE_H
