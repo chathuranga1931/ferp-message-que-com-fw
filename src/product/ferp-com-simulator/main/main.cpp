@@ -1,14 +1,17 @@
 #include "app.h"
+#include "pal_logger.h"
 
 #include <cstdio>
 
 int main()
 {
-    printf("[simulator] starting ferp-com-simulator\n");
+    pal_logger_init();
+
+    pal_logger_log(true, "[simulator] starting ferp-com-simulator\n");
 
     app_init();
 
-    printf("[simulator] app initialised — entering run loop\n");
+    pal_logger_log(true, "[simulator] app initialised — entering run loop\n");
 
     while (true) {
         app_run();

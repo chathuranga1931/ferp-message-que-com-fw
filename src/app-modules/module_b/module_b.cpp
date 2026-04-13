@@ -4,8 +4,6 @@
 #include "app_msg_table.h"
 #include "msg_sensor_data.h"
 
-#include <stdio.h>
-
 // ---------------------------------------------------------------------------
 // Singleton instance
 // ---------------------------------------------------------------------------
@@ -20,7 +18,7 @@ ModuleB *module_b_instance(void) { return &s_instance; }
 
 void ModuleB::init()
 {
-    printf("[%s] init\n", name());
+    log("init");
     subscribe(MsgSensorData::ID);
 }
 
@@ -34,17 +32,15 @@ void ModuleB::on_msg_received(const hsys_msg_t &msg)
 
         case MsgSensorData::ID: {
             const auto p = MsgSensorData::deserialize(msg);
-
-            printf("[%s] MsgSensorData  #%lu  temp=%.1f°C  ts=%lums\n",
-                   name(),
-                   (unsigned long)p.counter,
-                   p.temperature,
-                   (unsigned long)msg.timestamp);
+            log("MsgSensorData  #%lu  temp=%.1f\xc2\xb0""C  ts=%lums",
+                (unsigned long)p.counter,
+                p.temperature,
+                (unsigned long)msg.timestamp);
             break;
         }
 
         default:
-            printf("[%s] unhandled msg_id=0x%04X\n", name(), msg.msg_id);
+            log_error("unhandled msg_id=0x%04X", msg.msg_id);
             break;
     }
 }

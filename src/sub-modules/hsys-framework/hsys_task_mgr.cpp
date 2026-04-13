@@ -22,6 +22,7 @@
 #include "hsys_queue.h"
 #include "hsys_mutex.h"
 #include "hsys_event.h"
+#include "hsys_log.h"
 
 #include <string.h>
 #include <stdio.h>
@@ -134,7 +135,7 @@ static void dispatch_loop(void *param)
     barrier_complete_phase(&s_post_init_done, BIT_POST_INIT_DONE);
     barrier_wait_phase(BIT_POST_INIT_DONE);
 
-    printf("[%s] lifecycle complete — entering message loop\n", entry->name);
+    hsys_log("[%s] lifecycle complete \xe2\x80\x94 entering message loop\n", entry->name);
 
     // ── Message loop ────────────────────────────────────────────────────────
     // Queue items are hsys_msg_t* pointers (zero-copy delivery).

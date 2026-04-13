@@ -4,8 +4,6 @@
 #include "hsys_soft_timer.h"
 #include "msg_tick_1000ms.h"
 
-#include <stdio.h>
-
 // ---------------------------------------------------------------------------
 // Singleton instance
 // ---------------------------------------------------------------------------
@@ -27,7 +25,7 @@ void Ticker::tick()
 {
     hsys_msg_t *msg = create_typed<MsgTick1000ms>(MsgTick1000ms::Payload{});
     if (msg == nullptr) {
-        printf("[%s] ERROR: create_typed<MsgTick1000ms> failed\n", name());
+        log_error("create_typed<MsgTick1000ms> failed");
         return;
     }
     publish(msg);
@@ -39,18 +37,18 @@ void Ticker::tick()
 
 void Ticker::init()
 {
-    printf("[%s] init\n", name());
+    log("init");
 
     hsys_timer_handle_t tmr = hsys_timer_create(
         "ticker_1000ms",
         TICKER_PERIOD_MS,
-        true,       // auto-reload
-        this,       // user_data → passed back to timer_cb
+        true,
+        this,
         timer_cb
     );
 
     if (tmr == nullptr || !hsys_start_timer(tmr)) {
-        printf("[%s] ERROR: failed to start soft timer\n", name());
+        log_error("failed to start soft timer");
     }
 }
 
@@ -61,5 +59,5 @@ void Ticker::init()
 void Ticker::on_msg_received(const hsys_msg_t &msg)
 {
     (void)msg;
-    printf("[%s] unexpected message received\n", name());
+    log_error("unexpected message received");
 }

@@ -5,8 +5,6 @@
 #include "msg_sensor_data.h"
 #include "msg_tick_1000ms.h"
 
-#include <stdio.h>
-
 // ---------------------------------------------------------------------------
 // Singleton instance
 // ---------------------------------------------------------------------------
@@ -21,9 +19,7 @@ ModuleA *module_a_instance(void) { return &s_instance; }
 
 void ModuleA::pre_init()
 {
-    // Hardware / peripheral setup goes here.
-    // For this simulation there is nothing to do.
-    printf("[%s] pre_init\n", name());
+    log("pre_init");
 }
 
 // ---------------------------------------------------------------------------
@@ -32,9 +28,7 @@ void ModuleA::pre_init()
 
 void ModuleA::init()
 {
-    printf("[%s] init\n", name());
-
-    // Subscribe to the 1 s heartbeat — this is what drives publishing.
+    log("init");
     subscribe(MsgTick1000ms::ID);
 }
 
@@ -44,8 +38,7 @@ void ModuleA::init()
 
 void ModuleA::post_init()
 {
-    // Nothing needed here, but the hook is available for cross-module wiring.
-    printf("[%s] post_init\n", name());
+    log("post_init");
 }
 
 // ---------------------------------------------------------------------------
@@ -61,7 +54,7 @@ void ModuleA::on_msg_received(const hsys_msg_t &msg)
             break;
 
         default:
-            printf("[%s] unhandled msg_id=0x%04X\n", name(), msg.msg_id);
+            log_error("unhandled msg_id=0x%04X", msg.msg_id);
             break;
     }
 }
@@ -79,16 +72,16 @@ void ModuleA::publish_sensor_data()
 
     hsys_msg_t *msg = create_typed<MsgSensorData>(p);
     if (msg == nullptr) {
-        printf("[%s] ERROR: create_typed<MsgSensorData> failed\n", name());
+        log_error("create_typed<MsgSensorData> failed");
         return;
     }
 
     hsys_status_t rc = publish(msg);
     if (rc == HSYS_OK) {
-        printf("[%s] published MsgSensorData #%lu  temp=%.1f\n",
-               name(), (unsigned long)p.counter, p.temperature);
+        log("published MsgSensorData #%lu  temp=%.1f",
+            (unsigned long)p.counter, p.temperature);
     } else {
-        printf("[%s] publish failed (%d)\n", name(), rc);
+        log_error("publish failed (%d)", rc);
         hsys_msg_release(msg);
     }
 }
