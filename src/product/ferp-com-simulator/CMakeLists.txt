@@ -83,18 +83,44 @@ add_library(app_product STATIC
 target_include_directories(app_product PUBLIC ${APP})
 target_link_libraries(app_product PRIVATE hsys_framework app_modules app_messages)
 
-# ── 7. main executable ────────────────────────────────────────────────────────
+# ── 7. sim_bridge (TCP ↔ Python UI) ──────────────────────────────────────────
+set(SIM_BRIDGE "${CMAKE_CURRENT_SOURCE_DIR}/sim_bridge")
+add_library(sim_bridge STATIC
+    ${SIM_BRIDGE}/module_sim_bridge.cpp
+)
+target_include_directories(sim_bridge PUBLIC
+    ${SIM_BRIDGE}   # module_sim_bridge.h
+    ${HSYS_FW}      # hsys_module.h, hsys_msg.h
+    ${HSYS_OS}      # hsys_mutex.h, hsys_types.h
+    ${APP}          # app_msg_ids.h
+    ${APP_MSGS}     # msg_tick_1000ms.h etc.
+    ${PAL}          # pal_time.h
+)
+target_link_libraries(sim_bridge PRIVATE hsys_framework hsys_os pal_mac app_messages)
+
+# ── 8. main executable ────────────────────────────────────────────────────────
 # hsys_framework_hooks.cpp here is the *strong* override — it replaces the
 # weak defaults compiled into hsys_framework.  It must be linked directly
 # into the executable (not a static library) so the linker picks it up.
 add_executable(ferp-com-simulator
     main/main.cpp
-    hsys_framework_hooks.cpp   # strong overrides: routes hsys_log → pal_logger
+    sim_init.cpp                 # simulator-extended app_init (adds sim_bridge task)
+    hsys_framework_hooks.cpp     # strong overrides: routes hsys_log → pal_logger
 )
 target_include_directories(ferp-com-simulator PRIVATE
-    ${HSYS_FW}   # hsys_log.h
-    ${PAL}       # pal_logger.h
+    ${HSYS_FW}                   # hsys_log.h, hsys_module.h
+    ${HSYS_OS}                   # hsys_mutex.h, hsys_types.h
+    ${PAL}                       # pal_logger.h
+    ${SIM_BRIDGE}                # module_sim_bridge.h
+    ${CMAKE_CURRENT_SOURCE_DIR}  # sim_init.h
+    ${APP}                       # app.h, app_msg_ids.h
+    ${APP_MSGS}                  # msg_*.h
+    ${APP_MODS}                  # app_msg_table.h
+    ${APP_MODS}/ticker
+    ${APP_MODS}/module_a
+    ${APP_MODS}/module_b
+    ${APP_MODS}/module_sysmon
 )
 target_link_libraries(ferp-com-simulator PRIVATE
-    app_product app_messages hsys_framework hsys_os pal_mac
+    app_product app_messages hsys_framework hsys_os pal_mac sim_bridge
 )

@@ -1,0 +1,25 @@
+/*----------  Component : Navbar  ----------*/
+
+.navbar.dark-mode {
+    background-color: var(--dm-navbar-bg-color);
+    background-image: var(--dm-navbar-bg-image);
+    border-color: var(--dm-navbar-border-color);
+    -moz-box-shadow: var(--dm-navbar-box-shadow);
+    -webkit-box-shadow: var(--dm-navbar-box-shadow);
+    box-shadow: var(--dm-navbar-box-shadow);
+}
+
+.navbar-logo-wrapper {
+    display: flex;
+    margin-left: 1rem;
+    height: 100%;
+    background-color: #fff;
+    border-radius: 50%;
+    padding: 0.75rem;
+    overflow: hidden;
+
+    img {
+        height: 3rem;
+        margin: auto;
+    }
+}

@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <link rel="stylesheet" type="text/css" href="styles.css">
+</head>
+
+<body onload="onLoadBody()">
+    <div class="topnav">
+    
+        <a href="/">Home</a>
+        <a class="active" href="/deviceConfigurations">Device Configurations</a>
+        <!-- <a href="/deviceConfigurations">Device Configurations</a> -->
+        <a href="/update" target="_blank">Update Firmware</a>
+        <a href="/webserial" target="_blank">Web Serial</a>
+        <a href="/contact">Contact</a>
+        <a href="/about">About</a>
+    </div>
+<!-- <h1>WiFi Configuration</h1> -->
+<!-- <br> -->
+
+<h1 class="configListheading">WiFi Configurations</h1>
+<ul>
+    <li class="configListInputLine">
+        <label for="n_ssid">SSID :</label>
+        <input size="75" type="text" id="id_ssid" name="n_ssid">
+    </li>
+    <li class="configListInputLine">
+        <label for="n_password">Password: </label>
+        <input size="75" type="password" id="id_password" name="n_password">
+    </li>
+</ul>
+<!-- <h1 class="configListheading">Cloud Configurations</h1>
+<ul>
+    <li class="configListInputLine">
+        <label for="n_cloud_URL">URL :</label>
+        <input size="110" type="text" id="id_cloud_url" name="n_cloud_URL">
+    </li>
+    <li class="configListInputLine">
+        <label for="n_cloud_secret">Secret: </label>
+        <input size="75" type="text" id="id_cloud_secret" name="n_cloud_secret">
+    </li>
+    <li class="configListInputLine">
+        <label for="n_uuid">UUID: </label>
+        <input size="75" type="text" id="id_uuid" name="n_uuid">
+    </li>
+</ul>
+<h1 class="configListheading">Device Configurations</h1>
+<ul>
+    <li class="configListInputLine" >
+        <label for="n_nozzel_id">Nozzel ID: </label>
+        <input size="10" type="text" id="id_nozzel_id" name="n_nozzel_id">
+    </li>
+    <li class="configListInputLine">
+        <label for="n_fuel_type">Fuel Type: </label>
+        <input size="10" type="text" id="id_fuel_type" name="n_fuel_type">
+    </li>
+</ul>
+<h1 class="configListheading">Printer Configurations</h1>
+<ul>
+    <li class="configListInputLine">
+        <label for="n_printer_URL">URL :</label>
+        <input size="110" type="text" id="id_printer_URL" name="n_printer_URL">
+    </li>
+</ul>
+<br> -->
+
+<button class="button button2" onclick="saveConfigurationPost()">Save Configuration</button>
+
+<script>
+    function saveConfiguration() {
+
+        //alert("Content Saving...");
+        var xhttp = new XMLHttpRequest();
+        let ssid = document.getElementById("id_ssid").value;
+        let password = document.getElementById("id_password").value;
+        xhttp.onreadystatechange = function() {
+            if (this.readyState == 4 && this.status == 200) {
+                // alert(this.responseText);
+            }
+        };
+        xhttp.open("GET", "setDeviceConfigurations?ssid="+ ssid 
+            + "&password=" + password, true);
+        xhttp.send();
+    }
+
+    function saveConfigurationPost() {
+
+        //alert("Content Saving...");
+        var xhttp = new XMLHttpRequest();
+        let ssid = document.getElementById("id_ssid").value;
+        let password = document.getElementById("id_password").value;
+        var data = {
+            ssid: ssid,
+            password: password,
+            // cloud_url: document.getElementById("id_cloud_url").value,
+            // cloud_secret: document.getElementById("id_cloud_secret").value,
+            // uuid: document.getElementById("id_uuid").value,
+            // nozzel_id: document.getElementById("id_nozzel_id").value,
+            // fuel_type: document.getElementById("id_fuel_type").value,
+            // printer_url: document.getElementById("id_printer_URL").value,
+        }
+        // alert(JSON.stringify(data));
+        xhttp.open("POST", "setDeviceConfigurationsPost", true);
+        xhttp.setRequestHeader('Content-type', 'application/json');
+        xhttp.onreadystatechange = function() {
+            if (this.readyState == 4 && this.status == 200) {
+                alert("OK");
+            }
+        };
+        xhttp.send(JSON.stringify(data));
+    }
+
+    /*
+     * Neet to get the current settings from the device 
+     */
+    function onLoadBody(){
+
+        var xhttp = new XMLHttpRequest();
+        xhttp.onreadystatechange = function() {
+            if (this.readyState == 4 && this.status == 200) {
+
+                var obj = JSON.parse(this.responseText);
+
+                let ssid = obj.ssid;
+                let password = obj.password;
+
+                document.getElementById("id_ssid").value = ssid;
+                document.getElementById("id_password").value = password;
+                // document.getElementById("id_cloud_url").value = obj.cloud_url;
+                // document.getElementById("id_cloud_secret").value = obj.cloud_secret;
+                // document.getElementById("id_uuid").value = obj.uuid;
+                // document.getElementById("id_nozzel_id").value = obj.nozzel_id;
+                // document.getElementById("id_fuel_type").value = obj.fuel_type;
+                // document.getElementById("id_printer_URL").value = obj.printer_url;
+            }
+        };
+        xhttp.open("GET", "getDeviceConfigurations", true);
+        xhttp.send();
+    }
+</script>
+
+
+<footer>
+    <p style="font-size: 16px;">SMART AUTOMATION SOLUTIONS (PVT) LTD.<br>
+    <p style="font-size: 13px;">131/11, Dhammananda Mw, Templers Road, Mount Lavinia.<br>
+    <a href="mailto:chathurangadissa@gmail.com">chathurangadissa@gmail.com</a></p>
+</footer>
+
+</body>
+</html>

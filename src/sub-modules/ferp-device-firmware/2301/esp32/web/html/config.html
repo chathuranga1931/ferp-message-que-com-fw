@@ -1,0 +1,30 @@
+<div class="w-full p-20">
+    <div class="card mx-auto" style="max-width: 650px">
+        <form class="input-list" onsubmit="event.preventDefault(); return false">
+            <input-item data-description="The WiFi network to connect to." data-title="SSID">
+                <div class="input-group w-250">
+                    <input-from class="w-250" pattern="" name="ssid" value="" placeholder="SSID Name">
+                    </input-from>
+                </div>
+            </input-item>
+
+            <input-item data-description="The password required for the desired SSID." data-title="Password">
+                <div class="input-group w-250">
+                    <input-from name="password" type="password" pattern=""></input-from>
+                    <div class="input-group-append">
+                        <button class="btn btn-primary">
+                            <i class="fa fa-fw fa-lg fa-eye-slash"></i>
+                        </button>
+                    </div>
+                </div>
+            </input-item>
+
+            <!-- FORM ACTIONS -->
+            <div class="card-actions flex-column flex-sm-row">
+                <button class="btn btn-success" data-action="user.save">Save</button>
+                <button class="btn btn-primary ml-0 mt-10 mt-sm-0 ml-sm-10" data-action="user.connect">Connect to
+                    Tablet</button>
+            </div>
+        </form>
+    </div>
+</div>

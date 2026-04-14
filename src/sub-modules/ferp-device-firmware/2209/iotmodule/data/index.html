@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <link rel="stylesheet" type="text/css" href="styles.css">
+</head>
+<body onload="onLoadBody()">
+
+<div class="topnav">
+    <a class="active" href="/">Home</a>
+    <a href="/deviceConfigurations">Device Configurations</a>
+    <a href="/update" target="_blank">Update Firmware</a>
+    <a href="/webserial" target="_blank">Web Serial</a>
+    <a href="contact">Contact</a>
+    <a href="about">About</a>
+</div>
+  
+<h1 class="configListheading" style="font-size: 25px;">Device Information</h1>
+
+<li class="InfoListInputLine">
+    <label >Device Version :</label>
+    <label id="id_device_version" ></label>
+</li>
+<li class="InfoListInputLine">
+    <label >Device IP Address :</label>
+    <label id="id_ip_address" ></label>
+</li>
+<li class="InfoListInputLine">
+    <label >SSID :</label>
+    <label id="id_ssid" ></label>
+</li>
+<li class="InfoListInputLine">
+    <label >Nozzel Display Value :</label>
+    <label id="id_display_value" ></label>
+</li>
+
+<!-- <li class="InfoListInputLine">
+    <label >Printer IP Address :</label>
+    <label id="id_printer_ip_address" ></label>
+</li> -->
+
+
+<script>
+    /*
+     * Neet to get the current settings from the device 
+     */
+    function onLoadBody(){
+
+        var xhttp = new XMLHttpRequest();
+        xhttp.onreadystatechange = function() {
+            if (this.readyState == 4 && this.status == 200) {
+
+                var obj = JSON.parse(this.responseText);
+
+                let ssid = obj.ssid;
+                let password = obj.password;
+
+                document.getElementById("id_ssid").innerHTML =  obj.ssid;
+                document.getElementById("id_ip_address").innerHTML =  obj.ipaddress;
+                document.getElementById("id_device_version").innerHTML =  obj.device_version;
+                document.getElementById("id_display_value").innerHTML = obj.displayvalue;
+            }
+        };
+        xhttp.open("GET", "getDeviceInformation", true);
+        xhttp.send();
+    }
+</script>
+
+
+<footer>
+    <p style="font-size: 16px;">SMART AUTOMATION SOLUTIONS (PVT) LTD.<br>
+    <p style="font-size: 13px;">131/11, Dhammananda Mw, Templers Road, Mount Lavinia.<br>
+    <a href="mailto:chathurangadissa@gmail.com">chathurangadissa@gmail.com</a></p>
+</footer>
+
+
+</body>
+</html>

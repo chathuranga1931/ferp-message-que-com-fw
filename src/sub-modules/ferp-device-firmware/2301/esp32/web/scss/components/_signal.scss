@@ -1,0 +1,17 @@
+/*----------  Component : Select Signal  ----------*/
+
+$signal-colors: (
+    rgba(255, 77, 79, 0.95),
+    rgba(255, 142, 40, 0.95),
+    rgba(255, 207, 0, 0.95),
+    rgba(133, 220, 65, 0.95),
+    rgba(11, 232, 129, 0.95)
+);
+
+.signal {
+    @for $strength from 1 through length($signal-colors) {
+        &[data-signal='#{$strength - 1}'] {
+            background-color: nth($signal-colors, $strength);
+        }
+    }
+}

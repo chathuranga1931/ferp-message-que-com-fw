@@ -1,0 +1,20 @@
+{
+    "compilerOptions": {
+        "alwaysStrict": true,
+        "noImplicitAny": true,
+        "strictNullChecks": true,
+
+        "target": "ES2017",
+        "module": "CommonJS",
+        "moduleResolution": "node",
+
+        "types": [],
+        "lib": ["DOM", "DOM.Iterable", "ES5", "ScriptHost", "ES2019"],
+
+        "removeComments": true,
+        "preserveConstEnums": true
+    },
+
+    "include": ["web/lib/**/*"],
+    "exclude": ["web/archive/**/*", "web/dist/**/*", "../node_modules/**/*"]
+}

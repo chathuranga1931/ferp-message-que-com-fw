@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+
+<html lang="en">
+
+<head>
+    <!-- META -->
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>AGI-Drive WiFi Module</title>
+
+    <meta name="description" content="AGI-Drive WiFi Module Application" />
+    <meta name="author" content="SPLat Controls Pty Ltd" />
+
+    <!-- ICONS -->
+    <link rel="stylesheet" href="fa/fontawesome.min.css" />
+    <link rel="stylesheet" href="fa/solid.min.css" />
+
+    <!-- STYLING -->
+    <link rel="stylesheet" href="halfmoon.css" />
+    <link rel="stylesheet" href="styles.css" />
+</head>
+
+<body class="with-custom-webkit-scrollbars with-custom-css-scrollbars">
+    <!-- MODALS -->
+    <div id="modal-instance" class="modal" role="dialog" tab-index="-1" data-esc-dismissal-disabled>
+        <div class="modal-dialog" role="document">
+            <div class="modal-content"></div>
+        </div>
+    </div>
+
+    <!-- HALFMOON PAGE LAYOUT -->
+    <div class="page-wrapper with-navbar">
+        <!-- NAVBAR -->
+        <nav class="navbar dark-mode user-select-none px-20">
+            <!-- DATE/DEVICE DISPLAY -->
+            <div class="navbar-content mr-auto ml-sm-10">
+                <span id="nav-status"
+                    class="badge badge-danger text-monospace text-dark px-5 px-sm-10 py-1">Disconnected</span>
+
+                <span class="badge-group text-monospace ml-10 d-none d-sm-flex">
+                    <span class="badge badge-primary px-5 px-sm-10"><span
+                            class="d-none d-md-inline">Date/</span>Time</span>
+                    <span id="nav-timestamp" class="badge bg-white text-dark px-5 px-sm-10"></span>
+                </span>
+            </div>
+
+            <!-- BRAND NAME -->
+            <a href="/" class="navbar-brand">
+                AGI-Drive
+                <span class="navbar-logo-wrapper">
+                    <img src="images/logo.jpeg">
+                </span>
+            </a>
+        </nav>
+
+        <!-- CONTENT -->
+        <div class="content-wrapper overflow-hidden">
+            <!-- SECONDARY WRAPPER -->
+            <div class="w-full h-full position-relative" style="margin-top: -1rem">
+                <!-- NOTIFICATIONS -->
+                <div id="alerts-wrapper"
+                    class="d-flex flex-column justify-content-end position-absolute pointer-events-none p-10 p-sm-20 w-full h-full"
+                    style="z-index: 100"></div>
+
+                <!-- CONTENT NAVIGATION -->
+                <div class="px-20 pt-20 pb-5 mx-sm-10 mt-10">
+                    <div class="content-header d-flex px-10">
+                        <h4 id="content-title" class="flex-fill font-italic m-0">Status</h4>
+
+                        <nav class="content-navigation d-none align-items-end" aria-label="Content Navigation Tabs">
+                        </nav>
+                    </div>
+                </div>
+
+                <!-- PAGE CONTENT -->
+                <div class="content-body">
+                    <div class="page-instance"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SCRIPTS -->
+    <script defer src="halfmoon.js"></script>
+    <script defer src="cash.js"></script>
+    <script defer src="bundle.js"></script>
+</body>
+
+</html>

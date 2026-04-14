@@ -1,0 +1,47 @@
+{
+    "name": "agi-drive-wifi-module-builder",
+    "version": "1.0.0",
+    "description": "AGI-Drive WiFi Module FS Builder",
+    "author": "Reuben Roessler",
+    "scripts": {
+        "start": "node web/test/server.js",
+        "build": "run-p build:*",
+        "build:webpack": "webpack",
+        "build:styling": "sass --no-source-map web/scss/styles.scss web/build/styles.css",
+        "bundle": "run-p bundle:*",
+        "bundle:js": "terser web/build/bundle.js -o web/build/bundle.js --compress --mangle",
+        "bundle:css": "cleancss web/build/styles.css -o web/build/styles.css -O2",
+        "bundle:assets": "run-p bundle:assets:*",
+        "bundle:assets:cash-dom.js": "cpy node_modules/cash-dom/dist/cash.min.js web/build --flat --rename cash.js",
+        "bundle:assets:halfmoon.css": "cpy node_modules/halfmoon/css/halfmoon-variables.min.css web/build --flat --rename halfmoon.css",
+        "bundle:assets:halfmoon.js": "cpy node_modules/halfmoon/js/halfmoon.min.js web/build --flat --rename halfmoon.js",
+        "bundle:assets:font-awesome.css": "cpy web/assets/font-awesome/css web/build/fa --flat",
+        "bundle:assets:font-awesome.fonts": "cpy web/assets/font-awesome/webfonts web/build/webfonts --flat",
+        "bundle:assets:images": "cpy web/assets/images web/build/images --flat",
+        "compress": "run-p compress:*",
+        "compress:assets": "gzipper c web/build web/dist --include js,css,ttf,woff2",
+        "compress:html": "gzipper c web web/dist --include html",
+        "clean": "rimraf web/dist web/build",
+        "dist": "run-s clean build bundle compress"
+    },
+    "devDependencies": {
+        "@types/halfmoon": "^1.0.2",
+        "clean-css-cli": "^5.6.1",
+        "cpy-cli": "^4.2.0",
+        "express": "^4.18.1",
+        "gzipper": "^7.1.0",
+        "halfmoon": "^1.1.1",
+        "local-devices": "^3.0.0",
+        "npm-run-all": "^4.1.5",
+        "rimraf": "^3.0.2",
+        "sass": "^1.54.9",
+        "terser": "^5.15.0",
+        "ts-loader": "^9.3.1",
+        "typescript": "^4.8.3",
+        "webpack": "^5.74.0",
+        "webpack-cli": "^4.10.0"
+    },
+    "dependencies": {
+        "cash-dom": "^8.1.1"
+    }
+}

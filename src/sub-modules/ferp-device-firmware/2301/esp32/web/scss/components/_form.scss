@@ -1,0 +1,116 @@
+/// Mixins
+@use '../mixins/screen' as screen;
+
+/*----------  Component : Form  ----------*/
+
+@mixin form-inline {
+    display: ms-flexbox;
+    display: flex;
+    -ms-flex-flow: row wrap;
+    flex-flow: row wrap;
+    -ms-flex-align: center;
+    align-items: center;
+}
+
+@each $size in ('sm', 'md', 'lg') {
+    .form-#{$size}-inline {
+        @include screen.query-min($size, width) {
+            @include form-inline;
+        }
+    }
+}
+
+/*----------  Component : Validity  ----------*/
+
+.is-invalid + span[data-tooltip]:not([data-tooltip='']) {
+    opacity: 0;
+    transition: 0.2s ease-in-out;
+}
+
+.is-invalid:focus + span[data-tooltip]:not([data-tooltip='']) {
+    opacity: 1;
+
+    &::before {
+        content: attr(data-tooltip);
+        position: absolute;
+        width: max-content;
+        top: -3rem;
+        left: 0;
+        color: var(--dm-base-text-color);
+        background-color: var(--dm-navbar-bg-color);
+        border-radius: var(--base-border-radius);
+        padding: 0.1rem 0.5rem;
+    }
+}
+
+/*----------  Component : Input List  ----------*/
+
+.input-list {
+    padding: 0 0.25rem;
+}
+
+.input-list-item {
+    position: relative;
+    display: flex;
+    flex-direction: row;
+    padding: 1.5rem 1rem;
+
+    &:not(.no-collapse) {
+        @include screen.query-max('sm', width) {
+            flex-direction: column;
+        }
+    }
+
+    + .input-list-item:before {
+        position: absolute;
+        content: '';
+        top: 0;
+        left: 0;
+        height: 1px;
+        width: 100%;
+        background-color: rgba(0, 0, 0, 0.2);
+    }
+}
+
+.input-item-header {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    max-width: 400px;
+    padding-right: 1.5rem;
+}
+
+.input-item-title {
+    font-size: 1.6rem;
+    font-weight: 600;
+    margin: 0;
+    margin-bottom: 0.25rem;
+}
+
+.input-item-description {
+    margin: 0;
+}
+
+.input-item-body {
+    display: flex;
+    flex: 1 1;
+    justify-content: end;
+    align-items: center;
+}
+
+.input-list-item:not(.no-collapse) {
+    @include screen.query-max('sm', width) {
+        .input-item-description {
+            margin-bottom: 0.75rem;
+        }
+
+        .input-item-body {
+            margin-bottom: 0.5rem;
+        }
+
+        .input-item-body > *:not(span[data-tooltip]) {
+            width: 100% !important;
+            max-width: 100% !important;
+        }
+    }
+}

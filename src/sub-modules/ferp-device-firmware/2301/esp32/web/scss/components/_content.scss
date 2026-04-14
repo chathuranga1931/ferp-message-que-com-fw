@@ -1,0 +1,16 @@
+/*----------  Component : Content  ----------*/
+
+.content-header {
+    border-bottom: 1px solid var(--lm-pagination-item-border-color);
+}
+
+.content-body {
+    height: calc(100% - 6.5rem);
+    overflow: overlay;
+}
+
+.content-header,
+.page-instance {
+    max-width: 1024px;
+    margin: auto;
+}

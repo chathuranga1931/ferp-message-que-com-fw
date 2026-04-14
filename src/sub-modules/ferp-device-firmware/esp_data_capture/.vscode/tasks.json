@@ -1,0 +1,28 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Export Binaries",
+      "type": "shell",
+      "command": [
+        "Remove-Item -LiteralPath 'bin_files' -Force -Recurse -ErrorAction SilentlyContinue\r\n",
+        "mkdir bin_files\r\n",
+        "mkdir bin_files/bootloader\r\n",
+        "mkdir bin_files/partition_table\r\n",
+        "cp build/bootloader/bootloader.bin bin_files/bootloader/\r\n",
+        // "cp build/storage.bin bin_files/\r\n",
+        "cp build/partition_table/partition-table.bin bin_files/partition_table/\r\n",
+        "cp  build/${command:espIdf.getProjectName}.bin bin_files/\r\n",
+        // "cp build/ota_data_initial.bin bin_files/\r\n",
+        "echo '--chip esp32' 'write_flash -z'> bin_files/flash_args.txt\r\n",
+        "type build/flash_args >> bin_files/flash_args.txt\r\n"
+      ],
+      "group": "build",
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      },
+      "problemMatcher": []
+    }
+  ]
+}

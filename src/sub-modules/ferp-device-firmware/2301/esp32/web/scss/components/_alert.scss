@@ -1,0 +1,15 @@
+/*----------  Component : Alert  ----------*/
+
+.alert {
+    pointer-events: auto;
+    opacity: 1;
+    transition: 0.2s ease-in-out;
+
+    &.dismissing {
+        opacity: 0;
+    }
+
+    .close {
+        outline: none !important;
+    }
+}

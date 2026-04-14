@@ -1,0 +1,18 @@
+{
+    "files.associations": {
+        "array": "c",
+        "deque": "c",
+        "string": "c",
+        "unordered_map": "c",
+        "unordered_set": "c",
+        "vector": "c",
+        "string_view": "c",
+        "initializer_list": "c",
+        "*.tcc": "cpp",
+        "string.h": "c",
+        "sys.h": "c",
+        "ppp_opts.h": "c",
+        "pppapi.h": "c",
+        "pppos.h": "c"
+    }
+}

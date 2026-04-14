@@ -1,0 +1,31 @@
+/*----------  Component : Modal  ----------*/
+
+.modal {
+    transition: none !important;
+}
+
+.modal-dialog {
+    padding: 2rem 1.5rem;
+}
+
+.modal-content {
+    max-width: 80rem;
+}
+
+.modal-title {
+    margin: 0;
+    padding: 0 0 2rem;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.2);
+}
+
+.modal-actions {
+    display: flex;
+    flex-direction: row;
+    justify-content: flex-end;
+    padding-top: 2rem;
+    border-top: 1px solid rgba(0, 0, 0, 0.2);
+
+    > *:not(:first-child) {
+        margin-left: 1rem;
+    }
+}

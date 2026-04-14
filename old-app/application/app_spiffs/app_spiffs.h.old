@@ -1,0 +1,15 @@
+#ifndef __APP_SPIFFS_H__
+#define __APP_SPIFFS_H__
+
+#include <stdint.h>
+#include <string>
+
+// SPIFFS function declarations
+int32_t app_spiffs_init(fp_app_spiffs_on_event_t on_event);
+int32_t app_spiffs_write_file(const std::string& filepath, const std::string& content, uint32_t timeout_ms);
+int32_t app_spiffs_read_file(const std::string& filepath, std::string& content, uint32_t timeout_ms);
+bool app_spiffs_file_exists(const std::string& filepath);
+int32_t app_spiffs_delete_file(const std::string& filepath);
+int32_t app_spiffs_get_info(size_t * total, size_t * used);
+
+#endif // __APP_SPIFFS_H__

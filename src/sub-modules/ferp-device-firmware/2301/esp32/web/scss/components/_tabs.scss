@@ -1,0 +1,41 @@
+/*----------  Component : Tabs  ----------*/
+
+.content-tab {
+    display: block;
+    margin-bottom: 0;
+}
+
+.content-tab-link {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    position: relative;
+    cursor: pointer;
+
+    padding: 0.5rem 1rem;
+    margin: 0 0 0 0.5rem;
+    min-width: var(--pagination-item-width);
+    max-height: var(--pagination-item-height);
+    line-height: var(--pagination-item-line-height);
+
+    font-size: var(--pagination-item-font-size);
+    border-bottom: none !important;
+    border: var(--pagination-item-border-width) solid var(--lm-pagination-item-border-color);
+    border-top-left-radius: var(--pagination-item-border-radius);
+    border-top-right-radius: var(--pagination-item-border-radius);
+
+    color: var(--lm-pagination-item-text-color);
+    background-color: var(--lm-pagination-item-bg-color);
+
+    &:hover {
+        text-decoration: none;
+        color: var(--lm-pagination-item-text-color-hover);
+        background-color: var(--lm-pagination-item-bg-color-hover);
+    }
+}
+
+.content-tab.active .content-tab-link {
+    color: var(--lm-pagination-item-text-color-active);
+    background-color: var(--lm-pagination-item-bg-color-active);
+}

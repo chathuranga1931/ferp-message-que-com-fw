@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html>
+<body onload="onLoadBody()">
+
+<h1>Menu Configuration</h1>
+<hr />
+<p>Please don't use & character within the inputs...</p>
+<br>
+<!-- <input type="button" value="Add Device" onclick="gotoAddDevice()" />
+<br> -->
+<!-- <br> -->
+<!-- <input type="button" value="Generate Table" onclick="GenerateTable()" /> -->
+<!-- <hr /> -->
+<div id="itemTable"></div>
+
+<!-- <br>
+<button onclick="saveConfiguration()">Save Configuration</button> -->
+
+<select id="id_deviceSelect"> </select>
+<input type="button" value="Add" onclick="addDeviceToTable()" />
+
+<hr />
+<div id="id_editItemDetails">
+    <label >Selected Table Index :</label>
+    <label id="id_tableIndex"> Not Selected </label>
+    <br>
+    <label >U-ID :</label>
+    <label id="id_deviceUID"> N/A </label>
+    <br>
+    <label >Device Name :</label>
+    <label id="id_deviceName"> N/A</label>
+    <br>
+    <label for="n_itemTitle">Title :</label>
+    <input type="text" id="id_itemTitle" name="n_itemTitle" />
+    <br>
+    <label >Image File Path :</label>
+    <label id="id_itemFilePath"> N/A </label>
+    <br>
+    <label for="n_actionList">Select Action :</label>
+    <select id="id_actionList" name="n_actionList"></select>
+    <br>
+    <label for="n_browseIcon">Browse Icon :</label>
+    <!-- <button onclick="browseIcon()" name="n_browseIcon" >Browse</button>   -->
+    <input id="image-file" type="file" onchange="SavePhoto(this)" >  
+    <br>
+    <img id="id_iconImage" width="107" height="98">
+    <br>
+    <br>
+    <button onclick="modifyMenuItem()">Save Changes</button>
+    <br>
+    <hr />
+</div>
+
+<p><a href="/">Home Page</a></p>
+
+<script type="text/javascript">
+
+    var deviceList;
+    var iconFile;
+
+    function displayIcon(file){
+        if (file) {
+            var reader = new FileReader();
+
+            reader.onload = function (e) {
+
+                var x = document.getElementById("id_iconImage");
+                x.src = e.target.result;
+            };
+
+            reader.readAsDataURL(file);
+        }
+    }
+
+    function uploadIconFile(file){
+
+        let xhr = new XMLHttpRequest();
+        let formData = new FormData();    
+        formData.append("file", file);
+
+        //xhr.onreadystatechange = state => { console.log(xhr.status); } // err handling
+        xhr.onreadystatechange = function() {
+            if (this.readyState == 4 && this.status == 200) {
+                alert(this.responseText);
+            }
+        };
+        xhr.open("POST", '/iconFileupload');  
+        xhr.send(formData);
+    }
+
+    function SavePhoto(input) {
+        
+        if (input.files && input.files[0]) {
+            iconFile = input.files[0];
+            displayIcon(iconFile);
+            uploadIconFile(iconFile);
+        }
+    }  
+    
+    function goToMenuConfig(){        
+        window.location  = "/menuItemConfigurations";
+    }
+
+    function modifyMenuItem(){
+
+        var xhttp = new XMLHttpRequest();   
+
+        var tableIndex = document.getElementById("id_tableIndex").innerHTML;
+        var UID = document.getElementById("id_deviceUID").innerHTML;
+        var matchedUID = 0;
+        for(var i=0; deviceList.length; i++){
+            if( deviceList[i].id == UID){
+                matchedUID = i;
+                break;
+            }
+        }
+
+        var actionList = document.getElementById("id_actionList");
+        var command = (deviceList[matchedUID].commands)[actionList.selectedIndex].command;   
+        var title = document.getElementById("id_itemTitle").value;
+        var iconPath;
+        if(iconFile){
+            iconPath = iconFile.name;
+        }
+        else{
+            strPath = document.getElementById("id_itemFilePath").innerHTML;
+            var res = strPath.split("/");
+            iconPath = res[res.length-1];
+
+        }       
+
+        xhttp.onreadystatechange = function() {
+            if (this.readyState == 4 && this.status == 200) {
+                alert(this.responseText);
+                goToMenuConfig();
+            }
+        };
+        var url = "modifyMenuItem?index=" + tableIndex + "&command=" + command
+                                          + "&title="+ title + "&iconPath=" + iconPath
+        xhttp.open("GET", url , true);
+        xhttp.send();
+    }
+
+    function addDeviceToTable(){
+
+        var itemSelectBox = document.getElementById("id_deviceSelect");
+        let id = deviceList[itemSelectBox.selectedIndex].id;
+
+        var xhttp = new XMLHttpRequest();
+        xhttp.onreadystatechange = function() {
+            if (this.readyState == 4 && this.status == 200) {
+
+                //var obj = JSON.parse(this.responseText);
+                //document.getElementById("id_allDeviceListJson").innerHTML = this.responseText;
+
+
+                // let baseURL = obj.base_url;
+                // let accessToken = obj.access_token;
+
+                // document.getElementById("id_accessToken").value = accessToken;
+                // document.getElementById("id_baseURL").value = baseURL;
+                alert(this.responseText);                           
+                goToMenuConfig();
+                
+            }
+        };
+        let url = "addMenuItem?id="+id+"&title=default&command=default&icon=default";
+        xhttp.open("GET", url, true);
+        xhttp.send();
+    }
+
+    function getAllDeviceList(){
+
+        var xhttp = new XMLHttpRequest();
+        xhttp.onreadystatechange = function() {
+            if (this.readyState == 4 && this.status == 200) { 
+                
+                try {
+
+                    var obj = JSON.parse(this.responseText);
+                    deviceList = JSON.parse(this.responseText);
+                    // document.getElementById("id_allDeviceListJson").innerHTML = this.responseText;  
+
+                    if(obj.error == true){
+                        alert("Error: Type-" + obj.type + ", Message-" + obj.message);
+                        gotoHome();
+                        return;
+                    }
+                    
+                    var x = document.getElementById("id_deviceSelect");
+                    for(var k=0; k<obj.length; k++){
+                        var option = document.createElement("option");
+                        option.text = obj[k].name;
+                        x.add(option);
+                    }
+                }
+                catch(err){
+                    alert("Error: Please check the base URL");
+                    gotoHome();
+                }
+
+                // let baseURL = obj.base_url;
+                // let accessToken = obj.access_token;
+
+                // document.getElementById("id_accessToken").value = accessToken;
+                // document.getElementById("id_baseURL").value = baseURL;
+                
+            }
+        };
+        xhttp.open("GET", "getDeviceList", true);
+        xhttp.send();    
+    }
+
+    function saveConfiguration() {
+
+        //alert("Content Saving...");
+        // var xhttp = new XMLHttpRequest();
+        // let accessToken = document.getElementById("id_accessToken").value;
+        // let baseURL = document.getElementById("id_baseURL").value;
+        // xhttp.onreadystatechange = function() {
+        //     if (this.readyState == 4 && this.status == 200) {
+        //         // alert(this.responseText);
+        //     }
+        // };
+        // xhttp.open("GET", "setNetworkConfigurations?baseURL="+ baseURL 
+        //     + "&accessToken=" + accessToken, true);
+        // xhttp.send();
+    }
+
+    function itemTableappendRaw(tableIndex, id, icon, title, action){
+
+        var raw = document.createElement("tr");
+        //itemTable.border = "1";
+        //var raw = itemTable.insertRow(-1);
+
+        var cell1 = raw.insertCell(-1);
+        cell1.innerHTML = id;
+        var cell2 = raw.insertCell(-1);
+        cell2.innerHTML = icon;
+        var cell3 = raw.insertCell(-1);
+        cell3.innerHTML = title;
+        var cell4 = raw.insertCell(-1);
+        cell4.innerHTML = action;
+
+        // // Create anchor element. 
+        // var a = document.createElement('a');  
+        // // Create the text node for anchor element. 
+        // var link = document.createTextNode("Edit");         
+        // // Append the text node to anchor element. 
+        // a.appendChild(link);          
+        // // Set the title. 
+        // //a.title = "This is Link";          
+        // // Set the href property. 
+        // a.href = "/editItem?index="+tableIndex;          
+        // // Append the anchor element to the body.         
+        // cell5.appendChild(a);
+        
+        var cell = raw.insertCell(-1);
+        input = document.createElement('input');  
+        input.type = "button"
+        input.value = "Edit"
+        input.setAttribute( "onClick", "javascript: onEditItem("+tableIndex+");" );
+        cell.appendChild(input);
+        
+        cell = raw.insertCell(-1);
+        input = document.createElement('input');  
+        input.type = "button"
+        input.value = "Delete"
+        input.onclick = "HelloWorld()";
+        input.setAttribute( "onClick", "javascript: onDeleteMenuItem("+tableIndex+");" );
+        cell.appendChild(input);
+
+        var itemTableElement = document.getElementById("id_tableItem");
+        itemTableElement.appendChild(raw);
+    }
+
+    function onDeleteMenuItem(index){
+
+        var xhttp = new XMLHttpRequest();
+        xhttp.onreadystatechange = function() {
+            if (this.readyState == 4 && this.status == 200) {
+                alert(this.responseText);                
+                goToMenuConfig();
+            }
+        };
+        xhttp.open("GET", "deleteMenuItem?index=" + index, true);
+        xhttp.send();
+    }
+    
+    function onEditItem(index){
+        loadEditItem(index);
+    }
+
+    function GenerateTable() {
+
+        var itemTable = document.createElement("TABLE");
+        itemTable.border = "1";
+        itemTable.id = "id_tableItem";
+        var headerRaw = itemTable.insertRow(-1);
+        
+        //colum1
+        var headerCell1 = document.createElement("TH");
+        headerCell1.innerHTML = "U-ID";
+        headerRaw.appendChild(headerCell1);
+        //colum2
+        var headerCell2 = document.createElement("TH");
+        headerCell2.innerHTML = "Icon";
+        headerRaw.appendChild(headerCell2);
+        //colum3
+        var headerCell3 = document.createElement("TH");
+        headerCell3.innerHTML = "Title";
+        headerRaw.appendChild(headerCell3);
+        //colum4
+        var headerCell4 = document.createElement("TH");
+        headerCell4.innerHTML = "Action";
+        headerRaw.appendChild(headerCell4);
+        //colum5
+        var headerCell5 = document.createElement("TH");
+        headerCell5.innerHTML = "Edit";
+        headerRaw.appendChild(headerCell5);
+        //colum6
+        var headerCell6 = document.createElement("TH");
+        headerCell6.innerHTML = "Delete";
+        headerRaw.appendChild(headerCell6);
+
+        var itemTableElement = document.getElementById("itemTable");
+        itemTableElement.innerHTML = "";
+        itemTableElement.appendChild(itemTable);
+
+        // var commands = ["On","Off","Toggle"];
+        // itemTableappendRaw(0, "12", "bulb.icon", "Light on", "On");
+        
+        GetItems(0);       
+    }
+
+    function gotoHome(){
+        window.location  = "/";
+    }
+
+    function gotoAddDevice(){
+        //window.open("/addItem");
+        window.location  = "/addItem";
+    }
+
+    function GetItems(index){
+
+        var xhttp = new XMLHttpRequest();
+        xhttp.onreadystatechange = function() {
+            if (this.readyState == 4 && this.status == 200) {
+
+                var obj = JSON.parse(this.responseText);
+
+                let errorCode = obj.error_code;
+                if(errorCode!="0") return;
+
+                let tableSize = obj.table_size;
+                let tableIndex = obj.table_index;
+                let itemId = obj.item_id;
+                let itemCommand = obj.item_command
+                let itemTitile = obj.item_title;
+                let itemIconFilePath = obj.item_iconFilePath;
+
+                itemTableappendRaw(tableIndex, itemId, itemIconFilePath, itemTitile, itemCommand);
+
+                tableIndex++;
+                if(tableIndex < tableSize){
+                    GetItems(tableIndex);
+                } 
+                else{                   
+                }               
+            }
+        };
+        xhttp.open("GET", "getMenuConfigTable?index=" + index, true);
+        xhttp.send();
+    }    
+
+    function loadEditItem(index){
+
+        var xhttp = new XMLHttpRequest();
+        xhttp.onreadystatechange = function() {
+            if (this.readyState == 4 && this.status == 200) {
+
+                var obj = JSON.parse(this.responseText);
+
+                let errorCode = obj.error_code;
+                if(errorCode!="0") return;
+
+                let tableSize = obj.table_size;
+                let tableIndex = obj.table_index;
+                let itemId = obj.item_id;
+                let itemCommand = obj.item_command
+                let itemTitile = obj.item_title;
+                let itemIconFilePath = obj.item_iconFilePath;  
+                
+                var lbl_tableIndex = document.getElementById("id_tableIndex");
+                lbl_tableIndex.innerHTML = tableIndex;
+
+                var lbl_itemFilePath = document.getElementById("id_itemFilePath");
+                lbl_itemFilePath.innerHTML = itemIconFilePath;
+
+                var tb_itemTitle = document.getElementById("id_itemTitle");
+                tb_itemTitle.value = itemTitile;
+                
+                var tb_itemID = document.getElementById("id_deviceUID");
+                tb_itemID.innerHTML = itemId;
+
+                var tb_itemName = document.getElementById("id_deviceName");
+                var matchedUID = 0;
+                for(var i=0; deviceList.length; i++){
+                    if( deviceList[i].id == itemId){
+                        tb_itemName.innerHTML = deviceList[i].name;
+                        matchedUID = i;
+                        break;
+                    }
+                }
+
+                var select_actionList = document.getElementById("id_actionList"); 
+                select_actionList.innerHTML = "";
+                for(var j=0; j<deviceList[matchedUID].commands.length; j++){
+                    var option = document.createElement("option");
+                    option.text = deviceList[matchedUID].commands[j].command;
+                    select_actionList.add(option); 
+                }  
+
+                loadIcon(itemIconFilePath);
+
+                //var image_iconImage = document.getElementById("id_iconImage");
+                //image_iconImage.src = "https://encrypted-tbn0.gstatic.com/images?q=tbn%3AANd9GcTwKYijx8FAjLzYnE0H_FwD55Ak55hDpjB2UzOXQS9qBdhNsezV&usqp=CAU";
+            }
+        };
+        xhttp.open("GET", "getMenuConfigTable?index=" + index, true);
+        xhttp.send();
+    }    
+
+    /*
+     * Neet to get the current settings from the device 
+     */
+    function onLoadBody(){ 
+        setTimeout(getAllDeviceList, 2000);
+        setTimeout(GenerateTable, 200); 
+    }
+
+    function loadIcon(iconpath){
+
+        var xhttp = new XMLHttpRequest();
+        xhttp.onreadystatechange = function() {
+            if (this.readyState == 4 && this.status == 200) {
+
+                //var obj = JSON.parse(this.responseText);
+
+                //this.response
+
+                var image_iconImage = document.getElementById("id_iconImage");
+                image_iconImage.src = this.responseURL; //"https://encrypted-tbn0.gstatic.com/images?q=tbn%3AANd9GcTwKYijx8FAjLzYnE0H_FwD55Ak55hDpjB2UzOXQS9qBdhNsezV&usqp=CAU";
+            }
+        }
+        let url = "downloadIcon?iconpath=" + iconpath;
+        xhttp.open("GET", url , true);
+        xhttp.send();
+        
+    }
+
+</script>
+</body>
+</html>

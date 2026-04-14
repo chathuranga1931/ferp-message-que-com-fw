@@ -1,0 +1,27 @@
+#ifndef __APP_CONFIG_H__
+#define __APP_CONFIG_H__
+
+#include <stdint.h>
+#include "middleware/hsys_config.h"
+#include "app.h"
+
+// Config initialization structure
+typedef struct {
+    fp_app_config_on_event_t fp_app_config_on_event;
+    config_t * config_table;
+    uint16_t config_table_size;
+    app_init_t app_init;
+}app_config_init_t;
+
+// Function declarations
+void app_config_init(const app_config_init_t * p_config_init);
+void app_config_run(void);
+int32_t app_config_set(const char * config_name, const void * config_value, uint16_t bytes, hsys_type_t type, uint32_t timeout_ms);
+int32_t app_config_get(const char * config_name, void * config_value, uint16_t * bytes, hsys_type_t * type, uint32_t timeout_ms);
+int32_t app_config_get_config(const char * config_name, void * config_value, uint32_t timeout_ms);
+int32_t app_config_get_config_json(char * config_json, uint32_t * json_size, uint32_t timeout_ms);
+int32_t app_config_set_config_json(char * config_json, uint32_t json_size, uint32_t timeout_ms);
+int32_t app_config_get_mac_str(char * mac_str, uint32_t timeout_ms);
+int32_t app_config_get_wifi_init(hsys_wifi_init_t * wifi_init, uint32_t timeout_ms);
+
+#endif // __APP_CONFIG_H__

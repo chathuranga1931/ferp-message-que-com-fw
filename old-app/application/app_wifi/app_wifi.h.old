@@ -1,0 +1,28 @@
+#ifndef __APP_WIFI_H__
+#define __APP_WIFI_H__
+
+#include <stdint.h>
+#include "app_common.h"
+
+// WiFi initialization structure
+typedef struct {
+    fp_app_wifi_on_event_t fp_app_wifi_on_event;
+    app_init_t app_init;
+}app_wifi_init_t;
+
+// WiFi status structure
+typedef struct {
+    bool connected;
+    int8_t rssi;
+    char ssid[32];
+    uint8_t mac[6];
+}app_wifi_status_t;
+
+// Function declarations
+void app_wifi_init(const app_wifi_init_t * p_wifi_init);
+void app_wifi_run(void);
+int32_t app_wifi_connect(const char * ssid, const char * password, uint32_t timeout_ms);
+int32_t app_wifi_disconnect(void);
+int32_t app_wifi_get_status(app_wifi_status_t * status);
+
+#endif // __APP_WIFI_H__
