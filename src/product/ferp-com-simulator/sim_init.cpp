@@ -12,6 +12,7 @@
  */
 
 #include "sim_init.h"
+#include "hsys_log.h"
 
 #include <stdio.h>
 
@@ -76,7 +77,7 @@ static const hsys_task_desc_t k_task_table[] = {
 
 void sim_app_init(void)
 {
-    printf("\n=== HSYS Messaging Architecture — Simulator ===\n\n");
+    FWK_LOG_INF("=== HSYS Messaging Architecture — Simulator ===");
 
     // 1. Memory pool
     hsys_pool_init(k_pool_table, POOL_TABLE_SIZE);
@@ -92,5 +93,5 @@ void sim_app_init(void)
     // 4. Task manager — creates all tasks (including sim_bridge_task)
     hsys_task_mgr_init(k_task_table, TASK_TABLE_SIZE);
 
-    printf("\n[sim] Tasks created. Lifecycle phases running in tasks.\n\n");
+    FWK_LOG_INF("[sim] Tasks created. Lifecycle phases running in tasks.");
 }

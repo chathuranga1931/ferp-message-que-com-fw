@@ -25,7 +25,6 @@
 #include "hsys_log.h"
 
 #include <string.h>
-#include <stdio.h>
 
 // ---------------------------------------------------------------------------
 // Internal types
@@ -135,7 +134,7 @@ static void dispatch_loop(void *param)
     barrier_complete_phase(&s_post_init_done, BIT_POST_INIT_DONE);
     barrier_wait_phase(BIT_POST_INIT_DONE);
 
-    hsys_log("[%s] lifecycle complete \xe2\x80\x94 entering message loop\n", entry->name);
+    FWK_LOG_INF("[%s] lifecycle complete \xe2\x80\x94 entering message loop", entry->name);
 
     // ── Message loop ────────────────────────────────────────────────────────
     // Queue items are hsys_msg_t* pointers (zero-copy delivery).

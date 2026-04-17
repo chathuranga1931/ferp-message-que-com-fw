@@ -1,51 +1,44 @@
 // hsys_log.h
 //
-// Weak-linkable logging hook for the HSYS framework.
+// Framework logging macros — wraps pal_logger directly so that __LINE__
+// is always captured at the call site (no function indirection).
 //
-// By default, hsys_log() and hsys_log_error() are implemented as weak
-// symbols that fall back to plain printf().  To redirect framework logs
-// into your application's PAL logger, override these two functions by
-// providing strong definitions — typically in hsys_framework_hooks.cpp
-// placed in your product layer.
+// Usage (anywhere in the framework or app-messages layer):
 //
-// Signature is deliberately identical to pal_logger_log() so that a
-// one-line hook body suffices:
+//   #include "hsys_log.h"
 //
-//   void hsys_log(const char *fmt, ...) {
-//       va_list ap; va_start(ap, fmt);
-//       pal_logger_logv(true, fmt, ap);
-//       va_end(ap);
-//   }
+//   FWK_LOG_INF("pool init: %u blocks", count);
+//   FWK_LOG_ERR("msg create failed for id=0x%04X", msg_id);
 //
-// Log levels used by the framework:
-//   hsys_log()        — informational / lifecycle traces
-//   hsys_log_error()  — error conditions (pool exhausted, bad IDs, …)
+// All four levels map to the same pal_logger_log() call with the
+// appropriate colour/level code.  The tag is always "HSYS_FWK" (8 chars).
+//
+// No weak functions, no overrides, no hooks — just macros.
 
 #ifndef HSYS_LOG_H
 #define HSYS_LOG_H
 
-#include <stdarg.h>
+#include "pal_logger.h"
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+// "HSYS_FWK" is exactly TAG_SIZE (8) chars — verified at compile time.
+#define FWK_TAG "HSYS_FWK"
+_Static_assert(sizeof(FWK_TAG) - 1 == TAG_SIZE,
+               "FWK_TAG must be exactly TAG_SIZE characters");
 
-/**
- * @brief  Informational log — lifecycle traces, state changes.
- *         Weak default: printf(fmt, ...) + newline.
- *         Override in hsys_framework_hooks.cpp to route to pal_logger.
- */
-void hsys_log(const char *fmt, ...);
+/** Debug log — verbose traces. __LINE__ captured at call site. */
+#define FWK_LOG_DBG(fmt, ...) \
+    pal_logger_log(true, DEBUG_CODE FWK_TAG "  %4d : " fmt, __LINE__, ##__VA_ARGS__)
 
-/**
- * @brief  Error log — pool exhausted, unknown IDs, init failures.
- *         Weak default: printf(fmt, ...) + newline.
- *         Override in hsys_framework_hooks.cpp to route to pal_logger.
- */
-void hsys_log_error(const char *fmt, ...);
+/** Informational log — lifecycle events, state transitions. */
+#define FWK_LOG_INF(fmt, ...) \
+    pal_logger_log(true, INFO_CODE  FWK_TAG "  %4d : " fmt, __LINE__, ##__VA_ARGS__)
 
-#ifdef __cplusplus
-}
-#endif
+/** Warning log — unexpected but recoverable conditions. */
+#define FWK_LOG_WRN(fmt, ...) \
+    pal_logger_log(true, WARN_CODE  FWK_TAG "  %4d : " fmt, __LINE__, ##__VA_ARGS__)
+
+/** Error log — pool exhausted, unknown IDs, init failures. */
+#define FWK_LOG_ERR(fmt, ...) \
+    pal_logger_log(true, ERROR_CODE FWK_TAG "  %4d : " fmt, __LINE__, ##__VA_ARGS__)
 
 #endif /* HSYS_LOG_H */

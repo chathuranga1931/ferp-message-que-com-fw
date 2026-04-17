@@ -11,6 +11,7 @@ cmake_minimum_required(VERSION 3.16)
 set(EXTRA_COMPONENT_DIRS
     "src/sub-modules/hsys-os"
     "src/sub-modules/hsys-framework"
+    "src/sub-modules/pal"
     "src/app-modules"
     "src/product/ferp-com"
 )

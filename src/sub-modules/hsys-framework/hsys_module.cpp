@@ -55,13 +55,12 @@ void HsysModule::log(const char *fmt, ...) const
 {
     va_list ap;
     va_start(ap, fmt);
-    // Build "[name] <user message>\n" and forward through the hook
     char buf[256];
     int off = snprintf(buf, sizeof(buf), "[%s] ", m_name);
     if (off > 0 && (size_t)off < sizeof(buf))
         vsnprintf(buf + off, sizeof(buf) - (size_t)off, fmt, ap);
     va_end(ap);
-    hsys_log("%s\n", buf);
+    FWK_LOG_INF("%s", buf);
 }
 
 void HsysModule::log_error(const char *fmt, ...) const
@@ -69,11 +68,11 @@ void HsysModule::log_error(const char *fmt, ...) const
     va_list ap;
     va_start(ap, fmt);
     char buf[256];
-    int off = snprintf(buf, sizeof(buf), "[%s] ERROR: ", m_name);
+    int off = snprintf(buf, sizeof(buf), "[%s] ", m_name);
     if (off > 0 && (size_t)off < sizeof(buf))
         vsnprintf(buf + off, sizeof(buf) - (size_t)off, fmt, ap);
     va_end(ap);
-    hsys_log_error("%s\n", buf);
+    FWK_LOG_ERR("%s", buf);
 }
 
 // ---------------------------------------------------------------------------
@@ -145,7 +144,7 @@ void hsys_module_pre_init_for_task(const hsys_module_id_t *ids, uint8_t count)
     for (uint8_t i = 0; i < count; i++) {
         HsysModule *m = hsys_module_find(ids[i]);
         if (m) {
-            hsys_log("[hsys] pre_init  \xe2\x86\x92 %s\n", m->name());
+            FWK_LOG_INF("[hsys] pre_init  \xe2\x86\x92 %s", m->name());
             m->pre_init();
         }
     }
@@ -156,7 +155,7 @@ void hsys_module_init_for_task(const hsys_module_id_t *ids, uint8_t count)
     for (uint8_t i = 0; i < count; i++) {
         HsysModule *m = hsys_module_find(ids[i]);
         if (m) {
-            hsys_log("[hsys] init      \xe2\x86\x92 %s\n", m->name());
+            FWK_LOG_INF("[hsys] init      \xe2\x86\x92 %s", m->name());
             m->init();
         }
     }
@@ -167,7 +166,7 @@ void hsys_module_post_init_for_task(const hsys_module_id_t *ids, uint8_t count)
     for (uint8_t i = 0; i < count; i++) {
         HsysModule *m = hsys_module_find(ids[i]);
         if (m) {
-            hsys_log("[hsys] post_init \xe2\x86\x92 %s\n", m->name());
+            FWK_LOG_INF("[hsys] post_init \xe2\x86\x92 %s", m->name());
             m->post_init();
         }
     }

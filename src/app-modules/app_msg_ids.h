@@ -15,19 +15,14 @@
 //   0x0001 – 0x00FF  — sensor / data messages
 //   0x0100 – 0x01FF  — control / command messages
 //   0x0200 – 0x02FF  — system / timing messages
-//   0x0300 – 0xFFFE  — reserved for future use
+//   0x0300 – 0x03FF  — config messages
+//   0x0400 – 0xFFFE  — reserved for future use
 //   0xFFFF           — reserved (HSYS_MSG_ID_INVALID)
 
 #ifndef APP_MSG_IDS_H
 #define APP_MSG_IDS_H
 
 #include "hsys_types.h"   // hsys_msg_id_t
-
-// ---------------------------------------------------------------------------
-// Application message ID registry
-// The enum underlying type matches hsys_msg_id_t (uint16_t).
-// Duplicate values are a compile error — guaranteed uniqueness.
-// ---------------------------------------------------------------------------
 
 typedef enum : uint16_t
 {
@@ -42,9 +37,16 @@ typedef enum : uint16_t
     MSG_ID_TICK_1000MS      = 0x0200,   ///< Ticker -> all: 1 s heartbeat
 
     // ------------------------------------------------------------------
+    // Config  (0x0300 – 0x03FF)
+    // ------------------------------------------------------------------
+    MSG_ID_CONFIG_READY         = 0x0300,   ///< ModuleConfig -> all: config is loaded / updated
+    MSG_ID_CONFIG_SET           = 0x0301,   ///< Any -> ModuleConfig: set one config field
+    MSG_ID_CONFIG_GET_REQUEST   = 0x0302,   ///< Any -> ModuleConfig: request re-publish of current config
+
+    // ------------------------------------------------------------------
     // Sentinel — keep one above the highest assigned ID
     // ------------------------------------------------------------------
-    MSG_ID_MAX              = 0x0201,
+    MSG_ID_MAX              = 0x0303,
 
 } app_msg_id_e;
 

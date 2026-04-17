@@ -187,13 +187,13 @@ hsys_msg_t *hsys_msg_create(hsys_msg_id_t msg_id, hsys_module_id_t sender_id)
 
     const hsys_msg_desc_t *desc = find_desc(msg_id);
     if (!desc) {
-        hsys_log_error("[hsys_msg] create: unknown msg_id=0x%04X\n", msg_id);
+        FWK_LOG_ERR("[hsys_msg] create: unknown msg_id=0x%04X", msg_id);
         return nullptr;
     }
 
     hsys_msg_t *msg = header_alloc();
     if (!msg) {
-        hsys_log_error("[hsys_msg] create: header pool exhausted\n");
+        FWK_LOG_ERR("[hsys_msg] create: header pool exhausted");
         return nullptr;
     }
 
@@ -209,7 +209,7 @@ hsys_msg_t *hsys_msg_create(hsys_msg_id_t msg_id, hsys_module_id_t sender_id)
     if (desc->payload_size > 0) {
         msg->payload = hsys_pool_alloc(desc->payload_size);
         if (!msg->payload) {
-            hsys_log_error("[hsys_msg] create: pool exhausted for msg_id=0x%04X size=%u\n",
+            FWK_LOG_ERR("[hsys_msg] create: pool exhausted for msg_id=0x%04X size=%u",
                    msg_id, desc->payload_size);
             header_free(msg);
             return nullptr;

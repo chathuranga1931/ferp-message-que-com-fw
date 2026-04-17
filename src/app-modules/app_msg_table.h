@@ -23,10 +23,13 @@
 #ifndef APP_MSG_TABLE_H
 #define APP_MSG_TABLE_H
 
-#include "hsys_msg.h"           // hsys_msg_desc_t
-#include "app_msg_ids.h"        // MSG_ID_* — single source of truth for IDs
-#include "msg_sensor_data.h"    // MsgSensorData
-#include "msg_tick_1000ms.h"    // MsgTick1000ms
+#include "hsys_msg.h"                   // hsys_msg_desc_t
+#include "app_msg_ids.h"                // MSG_ID_* — single source of truth for IDs
+#include "msg_sensor_data.h"            // MsgSensorData
+#include "msg_tick_1000ms.h"            // MsgTick1000ms
+#include "msg_config_ready.h"           // MsgConfigReady        (0x0300)
+#include "msg_config_set.h"             // MsgConfigSet           (0x0301)
+#include "msg_config_get_request.h"     // MsgConfigGetRequest    (0x0302)
 
 // ---------------------------------------------------------------------------
 // Descriptor table macro
@@ -37,6 +40,9 @@
     static const hsys_msg_desc_t k_msg_table[] = {                               \
         MsgSensorData::DESCRIPTOR,                                                \
         MsgTick1000ms::DESCRIPTOR,                                                \
+        MsgConfigReady::DESCRIPTOR,                                               \
+        MsgConfigSet::DESCRIPTOR,                                                 \
+        MsgConfigGetRequest::DESCRIPTOR,                                          \
     };                                                                            \
     static const uint16_t k_msg_table_count =                                    \
         (uint16_t)(sizeof(k_msg_table) / sizeof(k_msg_table[0]))

@@ -13,6 +13,7 @@ set(PAL_MAC    "${PAL}/mac-pc")
 set(APP_MSGS   "${ROOT}/app-messages")
 set(APP_MODS   "${ROOT}/app-modules")
 set(APP        "${ROOT}/product/app")
+set(MOD_CONFIG "${ROOT}/app-modules/module_config")
 
 # ── 1. hsys-os (macOS) ────────────────────────────────────────────────────────
 add_library(hsys_os STATIC
@@ -46,17 +47,22 @@ add_library(hsys_framework STATIC
     ${HSYS_FW}/hsys_task_mgr.cpp
     ${HSYS_FW}/hsys_framework_hooks.cpp   # weak defaults — overridden by product layer
 )
-target_include_directories(hsys_framework PUBLIC ${HSYS_FW})
-target_link_libraries(hsys_framework PRIVATE hsys_os)
+target_include_directories(hsys_framework PUBLIC ${HSYS_FW} ${PAL})
+target_link_libraries(hsys_framework PRIVATE hsys_os pal_mac)
 
 # ── 4. app-messages (typed message classes) ───────────────────────────────────
 add_library(app_messages STATIC
     ${APP_MSGS}/msg_sensor_data.cpp
     ${APP_MSGS}/msg_tick_1000ms.cpp
+    ${APP_MSGS}/msg_config_ready.cpp
+    ${APP_MSGS}/msg_config_set.cpp
+    ${APP_MSGS}/msg_config_get_request.cpp
 )
 target_include_directories(app_messages PUBLIC
     ${APP_MSGS}    # msg_*.h, IHsysMsg.h
     ${APP}         # app_msg_ids.h
+    ${MOD_CONFIG}  # app_config.h
+    ${PAL}         # pal_logger.h (for FWK_LOG_* via hsys_log.h)
 )
 target_link_libraries(app_messages PRIVATE hsys_framework)
 
