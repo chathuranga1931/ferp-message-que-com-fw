@@ -6,98 +6,49 @@
 //   1. At boot, after the config file has been read and defaults merged.
 //   2. After every successful MSG_ID_CONFIG_SET update.
 //
-// The payload carries a pointer to ModuleConfig's internal static
-// app_config_t instance.  Subscribers MUST only read the pointer inside
-// their on_msg_received() callback — do NOT store it.  The instance is
-// valid for the lifetime of the firmware but fields may be updated by a
-// future CONFIG_SET; storing a stale pointer is safe but the values may
-// be out of date.
+// This is an empty notification — no payload.  Subscribers that need
+// config values should call app_config_get_handle() from the application
+// layer directly.  Config data is application-layer concern and must not
+// leak into the message or module layers.
 //
 // Publisher (ModuleConfig):
 //
-//   MsgConfigReady::Payload p{ .config = &m_config };
-//   auto *msg = create_typed<MsgConfigReady>(p);
+//   hsys_msg_t *msg = MsgConfigReady::create(id());
 //   publish(msg);
 //
-// Subscriber (e.g. ModuleWifi):
+// Subscriber:
 //
-//   case MsgConfigReady::ID: {
-//       auto p = MsgConfigReady::deserialize(msg);
-//       if (p.config) {
-//           strncpy(m_ssid, p.config->wifi_ssid, sizeof(m_ssid));
-//       }
-//   }
+//   case MsgConfigReady::ID:
+//       // config is ready — fetch values via app_config_get_handle()
+//       break;
 
 #ifndef MSG_CONFIG_READY_H
 #define MSG_CONFIG_READY_H
 
 #include "IHsysMsg.h"
 #include "hsys_msg.h"
-#include "app_msg_ids.h"        // MSG_ID_CONFIG_READY
-#include "app_config.h"         // app_config_t
+#include "app_msg_ids.h"    // MSG_ID_CONFIG_READY
 
 // ---------------------------------------------------------------------------
-// MsgConfigReady
+// MsgConfigReady — empty notification
 // ---------------------------------------------------------------------------
 
 class MsgConfigReady : public IHsysMsg
 {
 public:
-    // -----------------------------------------------------------------------
-    // Identity
-    // -----------------------------------------------------------------------
-
     static constexpr hsys_msg_id_t ID = MSG_ID_CONFIG_READY;
-
-    // -----------------------------------------------------------------------
-    // Payload — pointer only (8 bytes); the config struct lives in
-    // ModuleConfig's static storage, not in the pool buffer.
-    // -----------------------------------------------------------------------
-
-    struct Payload {
-        const app_config_t *config;   ///< Pointer to the live config instance
-    };
-
-    // -----------------------------------------------------------------------
-    // Descriptor — small pool block (32 bytes) because payload is a pointer
-    // -----------------------------------------------------------------------
 
     static constexpr hsys_msg_desc_t DESCRIPTOR =
         HSYS_MSG_DESC(ID,
                       HSYS_MSG_NOTIFICATION,
-                      sizeof(Payload),
+                      0,
                       HSYS_PERM_ANY,
                       HSYS_PERM_ANY);
 
-    // -----------------------------------------------------------------------
-    // Construction
-    // -----------------------------------------------------------------------
-
-    explicit MsgConfigReady(const Payload &payload) : m_payload(payload) {}
-
-    // -----------------------------------------------------------------------
-    // IHsysMsg interface
-    // -----------------------------------------------------------------------
-
     hsys_msg_id_t msg_id() const override { return ID; }
+    void serialize(hsys_msg_t *) const override {}   // nothing to serialize
 
-    void serialize(hsys_msg_t *msg) const override;
-
-    // -----------------------------------------------------------------------
-    // Static factory
-    // -----------------------------------------------------------------------
-
-    static hsys_msg_t *create(hsys_module_id_t      sender_id,
-                               const app_config_t   *config);
-
-    // -----------------------------------------------------------------------
-    // Static deserializer
-    // -----------------------------------------------------------------------
-
-    static Payload deserialize(const hsys_msg_t &msg);
-
-private:
-    Payload m_payload;
+    static hsys_msg_t *create(hsys_module_id_t sender_id);
 };
 
 #endif // MSG_CONFIG_READY_H

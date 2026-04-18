@@ -1,52 +1,46 @@
-// msg_config_get_request.h
+// msg_config_get.h
 //
-// Typed message class for MSG_ID_CONFIG_GET_REQUEST.
+// Typed message class for MSG_ID_CONFIG_GET.
 //
 // A zero-payload notification that tells ModuleConfig to re-publish the
 // current config as a fresh MSG_ID_CONFIG_READY message.
 //
 // Typical senders:
-//   - ModuleMqtt    — on receipt of "ferp/config/get" topic
+//   - ModuleMqtt      — on receipt of "ferp/config/get" topic
 //   - ModuleWebServer — on GET /config REST request
 //   - ModuleSimBridge — on "SIM_CFG_GET" TCP command from Python UI
-//   - Any module    — after reconnect, to refresh its cached config values
+//   - Any module      — after reconnect, to refresh its cached config values
 //
 // Publisher:
 //
-//   auto *msg = MsgConfigGetRequest::create(module_id());
+//   auto *msg = MsgConfigGet::create(module_id());
 //   publish(msg);
 //
 // Receiver (ModuleConfig only):
 //
-//   case MsgConfigGetRequest::ID:
+//   case MsgConfigGet::ID:
 //       publish_config_ready();   // re-publishes MsgConfigReady
 //       break;
 
-#ifndef MSG_CONFIG_GET_REQUEST_H
-#define MSG_CONFIG_GET_REQUEST_H
+#ifndef MSG_CONFIG_GET_H
+#define MSG_CONFIG_GET_H
 
 #include "IHsysMsg.h"
 #include "hsys_msg.h"
-#include "app_msg_ids.h"    // MSG_ID_CONFIG_GET_REQUEST
+#include "app_msg_ids.h"    // MSG_ID_CONFIG_GET
 
 // ---------------------------------------------------------------------------
-// MsgConfigGetRequest
+// MsgConfigGet
 // ---------------------------------------------------------------------------
 
-class MsgConfigGetRequest : public IHsysMsg
+class MsgConfigGet : public IHsysMsg
 {
 public:
     // -----------------------------------------------------------------------
     // Identity
     // -----------------------------------------------------------------------
 
-    static constexpr hsys_msg_id_t ID = MSG_ID_CONFIG_GET_REQUEST;
-
-    // -----------------------------------------------------------------------
-    // Payload — intentionally empty; the message is the signal
-    // -----------------------------------------------------------------------
-
-    struct Payload {};
+    static constexpr hsys_msg_id_t ID = MSG_ID_CONFIG_GET;
 
     // -----------------------------------------------------------------------
     // Descriptor — zero payload_size, uses no pool buffer
@@ -63,7 +57,7 @@ public:
     // Construction
     // -----------------------------------------------------------------------
 
-    MsgConfigGetRequest() = default;
+    MsgConfigGet() = default;
 
     // -----------------------------------------------------------------------
     // IHsysMsg interface
@@ -80,4 +74,4 @@ public:
     static hsys_msg_t *create(hsys_module_id_t sender_id);
 };
 
-#endif // MSG_CONFIG_GET_REQUEST_H
+#endif // MSG_CONFIG_GET_H

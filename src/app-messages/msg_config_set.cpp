@@ -50,7 +50,7 @@ hsys_msg_t *MsgConfigSet::create_str(hsys_module_id_t sender_id,
 {
     Payload p{};
     strncpy(p.key, key, KEY_MAX_LEN - 1);
-    p.type = APP_CFG_TYPE_STRING;
+    p.type = HSYS_TYPE_STRING;
     strncpy(p.value.as_str, value, STR_MAX_LEN - 1);
     return create(sender_id, p);
 }
@@ -65,7 +65,7 @@ hsys_msg_t *MsgConfigSet::create_uint32(hsys_module_id_t sender_id,
 {
     Payload p{};
     strncpy(p.key, key, KEY_MAX_LEN - 1);
-    p.type           = APP_CFG_TYPE_UINT32;
+    p.type           = HSYS_TYPE_UINT32;
     p.value.as_uint32 = value;
     return create(sender_id, p);
 }
@@ -80,7 +80,7 @@ hsys_msg_t *MsgConfigSet::create_bool(hsys_module_id_t sender_id,
 {
     Payload p{};
     strncpy(p.key, key, KEY_MAX_LEN - 1);
-    p.type          = APP_CFG_TYPE_BOOL;
+    p.type          = HSYS_TYPE_BOOL;
     p.value.as_bool = value;
     return create(sender_id, p);
 }

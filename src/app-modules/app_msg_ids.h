@@ -42,7 +42,7 @@ typedef enum : uint16_t
     // ------------------------------------------------------------------
     MSG_ID_CONFIG_READY         = 0x0300,   ///< ModuleConfig -> all: config is loaded / updated
     MSG_ID_CONFIG_SET           = 0x0301,   ///< Any -> ModuleConfig: set one config field
-    MSG_ID_CONFIG_GET_REQUEST   = 0x0302,   ///< Any -> ModuleConfig: request re-publish of current config
+    MSG_ID_CONFIG_GET           = 0x0302,   ///< Any -> ModuleConfig: request re-publish of current config
 
     // ------------------------------------------------------------------
     // Sentinel — keep one above the highest assigned ID

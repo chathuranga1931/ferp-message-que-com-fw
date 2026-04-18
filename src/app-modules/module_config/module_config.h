@@ -16,7 +16,6 @@
 #pragma once
 
 #include "hsys_module.h"
-#include "app_config.h"      // app_config_t
 #include "hsys_config.h"     // config_handle_t
 
 // ---------------------------------------------------------------------------

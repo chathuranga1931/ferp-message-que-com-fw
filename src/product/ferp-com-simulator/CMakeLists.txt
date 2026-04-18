@@ -4,25 +4,24 @@ project(ferp-com-simulator CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# ── Paths (relative to this CMakeLists.txt) ───────────────────────────────────
+# ── Paths ─────────────────────────────────────────────────────────────────────
 set(ROOT       "${CMAKE_CURRENT_SOURCE_DIR}/../..")   # src/
 set(HSYS_OS    "${ROOT}/sub-modules/hsys-os")
 set(HSYS_FW    "${ROOT}/sub-modules/hsys-framework")
 set(PAL        "${ROOT}/sub-modules/pal")
 set(PAL_MAC    "${PAL}/mac-pc")
-set(APP_MSGS   "${ROOT}/app-messages")
-set(APP_MODS   "${ROOT}/app-modules")
-set(APP        "${ROOT}/product/app")
-set(MOD_CONFIG "${ROOT}/app-modules/module_config")
-
-# Force-include user_config.h as the very first header in every TU so that
-# all per-file log enable flags are defined before any other #include.
-add_compile_options(-include "${APP}/user_config.h")
-
 set(MIDDLEWARE "${ROOT}/sub-modules/middleware")
 set(PERIPHERAL "${ROOT}/sub-modules/peripheral")
+set(APP_MSGS   "${ROOT}/app-messages")
+set(APP_MODS   "${ROOT}/app-modules")
+set(APP_PHR    "${ROOT}/app-pheripherals")
+set(APP        "${ROOT}/product/app")
+set(SIM_BRIDGE "${CMAKE_CURRENT_SOURCE_DIR}/sim_bridge")
 
-# ── 1. hsys-os (macOS) ────────────────────────────────────────────────────────
+# Force-include user_config.h first in every TU
+add_compile_options(-include "${APP}/user_config.h")
+
+# ── 1. hsys-os (macOS pthreads) ───────────────────────────────────────────────
 add_library(hsys_os STATIC
     ${HSYS_OS}/mac_os/hsys_task.cpp
     ${HSYS_OS}/mac_os/hsys_task_append.cpp
@@ -35,31 +34,24 @@ add_library(hsys_os STATIC
 target_include_directories(hsys_os PUBLIC ${HSYS_OS})
 
 # ── 2. PAL — mac-pc implementations ──────────────────────────────────────────
+# All platform-specific implementations live here.
+# pal_spiffs.h interface is in PAL/; the POSIX impl is in mac-pc/.
 add_library(pal_mac STATIC
     ${PAL_MAC}/pal_mac_time.cpp
     ${PAL_MAC}/pal_mac_logger_uart.cpp
     ${PAL_MAC}/pal_mac_logger.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/SPIFFS/pal_mac_spiffs.cpp
+    ${PAL_MAC}/pal_mac_spiffs.cpp       # POSIX emulation of SPIFFS
+    ${PAL_MAC}/hsys_config_mac.cpp      # plain-C++ hsys_config (no ArduinoJson)
 )
 target_include_directories(pal_mac PUBLIC
-    ${PAL}        # pal_logger.h, pal_time.h, pal_logger_uart.h
-    ${PAL_MAC}    # implementation-private headers (if any)
+    ${PAL}          # all pal_*.h interfaces
+    ${MIDDLEWARE}   # hsys_config.h  (needed by hsys_config_mac.cpp)
+    ${PERIPHERAL}   # hsys_type.h
+    ${APP}          # user_config.h
 )
 target_link_libraries(pal_mac PRIVATE hsys_os)
 
-# ── 3. middleware (hsys_config — simulator native, no ArduinoJson) ────────────
-add_library(middleware STATIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/middleware/hsys_config_mac.cpp
-)
-target_include_directories(middleware PUBLIC
-    ${MIDDLEWARE}   # hsys_config.h
-    ${PERIPHERAL}   # hsys_type.h
-    ${PAL}          # pal_logger.h
-    ${APP}          # user_config.h (for HSYS_CFG_LOG_EN, ERROR_OK, ERR_CONFIG_OFFSET)
-)
-target_link_libraries(middleware PRIVATE pal_mac)
-
-# ── 4. hsys-framework ─────────────────────────────────────────────────────────
+# ── 3. hsys-framework ─────────────────────────────────────────────────────────
 add_library(hsys_framework STATIC
     ${HSYS_FW}/hsys_pool.cpp
     ${HSYS_FW}/hsys_msg.cpp
@@ -69,26 +61,25 @@ add_library(hsys_framework STATIC
 target_include_directories(hsys_framework PUBLIC ${HSYS_FW} ${PAL})
 target_link_libraries(hsys_framework PRIVATE hsys_os pal_mac)
 
-# ── 4. app-messages (typed message classes) ───────────────────────────────────
+# ── 4. app-messages ───────────────────────────────────────────────────────────
 add_library(app_messages STATIC
     ${APP_MSGS}/msg_sensor_data.cpp
     ${APP_MSGS}/msg_tick_1000ms.cpp
     ${APP_MSGS}/msg_spiffs_ready.cpp
     ${APP_MSGS}/msg_config_ready.cpp
     ${APP_MSGS}/msg_config_set.cpp
-    ${APP_MSGS}/msg_config_get_request.cpp
+    ${APP_MSGS}/msg_config_get.cpp
 )
 target_include_directories(app_messages PUBLIC
-    ${APP_MSGS}    # msg_*.h, IHsysMsg.h
-    ${APP}         # app_msg_ids.h
-    ${MOD_CONFIG}  # app_config.h
-    ${PERIPHERAL}  # hsys_type.h (pulled in via app_config.h)
-    ${PAL}         # pal_logger.h (for FWK_LOG_* via hsys_log.h)
+    ${APP_MSGS}
+    ${APP}           # app_msg_ids.h
+    ${APP_MODS}/module_config   # app_config.h
+    ${PERIPHERAL}    # hsys_type.h
+    ${PAL}           # pal_logger.h
 )
 target_link_libraries(app_messages PRIVATE hsys_framework)
 
-# ── 5a. app-pheripherals (app_spiffs — mutex-protected PAL wrapper) ───────────
-set(APP_PHR "${ROOT}/app-pheripherals")
+# ── 5. app-pheripherals ───────────────────────────────────────────────────────
 add_library(app_pheripherals STATIC
     ${APP_PHR}/app_spiffs.cpp
 )
@@ -99,7 +90,7 @@ target_include_directories(app_pheripherals PUBLIC
 )
 target_link_libraries(app_pheripherals PRIVATE pal_mac hsys_os)
 
-# ── 5. app-modules ────────────────────────────────────────────────────────────
+# ── 6. app-modules ────────────────────────────────────────────────────────────
 add_library(app_modules STATIC
     ${APP_MODS}/ticker/ticker.cpp
     ${APP_MODS}/module_a/module_a.cpp
@@ -115,61 +106,71 @@ target_include_directories(app_modules PUBLIC
     ${APP_MODS}/module_b
     ${APP_MODS}/module_sysmon
     ${APP_MODS}/module_spiffs
-    ${APP_MODS}/module_config    # module_config.h
-    ${APP_PHR}   # app_spiffs.h
-    ${APP}       # app_msg_ids.h, app.h
+    ${APP_MODS}/module_config
+    ${APP_PHR}       # app_spiffs.h
+    ${APP}           # app_msg_ids.h, app.h
+    ${MIDDLEWARE}    # hsys_config.h
+    ${PERIPHERAL}    # hsys_type.h
 )
-target_link_libraries(app_modules PRIVATE hsys_framework hsys_os app_messages app_pheripherals middleware)
+target_link_libraries(app_modules PRIVATE
+    hsys_framework hsys_os app_messages app_pheripherals pal_mac)
 
-# ── 6. app (product-level) ────────────────────────────────────────────────────
+# ── 7. app (product-level glue: app.cpp owns _app_config + config handle) ─────
 add_library(app_product STATIC
     ${APP}/app.cpp
 )
 target_include_directories(app_product PUBLIC
     ${APP}
-    ${MOD_CONFIG}
+    ${APP_MODS}/module_config
     ${MIDDLEWARE}
     ${PERIPHERAL}
-    ${APP_MODS}/module_spiffs   # module_spiffs.h
+    ${APP_MODS}/module_spiffs
 )
-target_link_libraries(app_product PRIVATE hsys_framework app_modules app_messages middleware)
+target_link_libraries(app_product PRIVATE hsys_framework app_modules app_messages pal_mac)
 
-# ── 7. sim_bridge (TCP ↔ Python UI) ──────────────────────────────────────────
-set(SIM_BRIDGE "${CMAKE_CURRENT_SOURCE_DIR}/sim_bridge")
+# ── 8. sim_bridge (TCP <-> Python UI) — simulator-only ───────────────────────
 add_library(sim_bridge STATIC
     ${SIM_BRIDGE}/module_sim_bridge.cpp
 )
 target_include_directories(sim_bridge PUBLIC
-    ${SIM_BRIDGE}   # module_sim_bridge.h
-    ${HSYS_FW}      # hsys_module.h, hsys_msg.h
-    ${HSYS_OS}      # hsys_mutex.h, hsys_types.h
-    ${APP}          # app_msg_ids.h
-    ${APP_MSGS}     # msg_tick_1000ms.h etc.
-    ${PAL}          # pal_time.h
+    ${SIM_BRIDGE}
+    ${HSYS_FW}
+    ${HSYS_OS}
+    ${APP}
+    ${APP_MSGS}
+    ${PAL}
 )
 target_link_libraries(sim_bridge PRIVATE hsys_framework hsys_os pal_mac app_messages)
 
-# ── 8. main executable ────────────────────────────────────────────────────────
-# into the executable (not a static library) so the linker picks it up.
+# ── 8. Executable ─────────────────────────────────────────────────────────────
 add_executable(ferp-com-simulator
     main/main.cpp
-    sim_init.cpp                 # simulator-extended app_init (adds sim_bridge task)
 )
 target_include_directories(ferp-com-simulator PRIVATE
-    ${HSYS_FW}                   # hsys_log.h, hsys_module.h
-    ${HSYS_OS}                   # hsys_mutex.h, hsys_types.h
-    ${PAL}                       # pal_logger.h
-    ${SIM_BRIDGE}                # module_sim_bridge.h
-    ${CMAKE_CURRENT_SOURCE_DIR}  # sim_init.h
-    ${APP}                       # app.h, app_msg_ids.h
-    ${APP_MSGS}                  # msg_*.h
-    ${APP_MODS}                  # app_msg_table.h
+    ${HSYS_FW}
+    ${HSYS_OS}
+    ${PAL}
+    ${SIM_BRIDGE}
+    ${APP}
+    ${APP_MSGS}
+    ${APP_MODS}
     ${APP_MODS}/ticker
     ${APP_MODS}/module_sysmon
-    ${APP_MODS}/module_spiffs    # module_spiffs.h
-    ${APP_MODS}/module_config    # module_config.h
-    ${APP_PHR}                   # app_spiffs.h
+    ${APP_MODS}/module_spiffs
+    ${APP_MODS}/module_config
+    ${APP_PHR}
+    ${MIDDLEWARE}
+    ${PERIPHERAL}
 )
 target_link_libraries(ferp-com-simulator PRIVATE
-    app_product app_messages hsys_framework hsys_os pal_mac sim_bridge app_modules app_pheripherals
+    hsys_framework hsys_os pal_mac
+    app_messages app_pheripherals app_modules app_product
+    sim_bridge
+)
+
+# Tell the binary where its own source tree lives so it can chdir to it
+# at startup — this ensures SPIFFS/spiffs/ is always found relative to
+# the ferp-com-simulator folder, regardless of where the binary is invoked.
+target_compile_definitions(ferp-com-simulator PRIVATE
+    SIMULATOR_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
 )

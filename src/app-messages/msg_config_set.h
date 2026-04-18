@@ -36,8 +36,8 @@
 
 #include "IHsysMsg.h"
 #include "hsys_msg.h"
+#include "hsys_type.h"      // hsys_type_t  (HSYS_TYPE_STRING / UINT32 / BOOL)
 #include "app_msg_ids.h"    // MSG_ID_CONFIG_SET
-#include "app_config.h"     // app_cfg_type_t
 
 // ---------------------------------------------------------------------------
 // MsgConfigSet
@@ -60,8 +60,8 @@ public:
     static constexpr uint16_t STR_MAX_LEN  = 128;  // longest config field
 
     struct Payload {
-        char           key[KEY_MAX_LEN];   ///< Config field name  e.g. "wifi_ssid"
-        app_cfg_type_t type;               ///< APP_CFG_TYPE_STRING / UINT32 / BOOL
+        char         key[KEY_MAX_LEN];   ///< Config field name  e.g. "wifi_ssid"
+        hsys_type_t  type;               ///< HSYS_TYPE_STRING / UINT32 / BOOL
         uint8_t        _pad[3];            ///< Explicit alignment padding
         union {
             bool     as_bool;

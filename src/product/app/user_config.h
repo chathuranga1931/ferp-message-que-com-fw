@@ -22,7 +22,7 @@
 #define MSG_TICK_LOG_EN     true    // msg_tick_1000ms.cpp
 #define MSG_CFGR_LOG_EN     true    // msg_config_ready.cpp
 #define MSG_CFGS_LOG_EN     true    // msg_config_set.cpp
-#define MSG_CFGG_LOG_EN     true    // msg_config_get_request.cpp
+#define MSG_CFGG_LOG_EN     true    // msg_config_get.cpp
 
 // App-modules
 #define MOD_A_LOG_EN        true    // module_a.cpp

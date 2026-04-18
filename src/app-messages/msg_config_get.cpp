@@ -1,8 +1,8 @@
-// msg_config_get_request.cpp
+// msg_config_get.cpp
 //
-// MsgConfigGetRequest — factory implementation.
+// MsgConfigGet — factory implementation.
 
-#include "msg_config_get_request.h"
+#include "msg_config_get.h"
 #include "pal_logger.h"
 
 #define __TAG__ "MSG_CFGG"
@@ -14,7 +14,7 @@
 // Static factory
 // ---------------------------------------------------------------------------
 
-hsys_msg_t *MsgConfigGetRequest::create(hsys_module_id_t sender_id)
+hsys_msg_t *MsgConfigGet::create(hsys_module_id_t sender_id)
 {
     hsys_msg_t *msg = hsys_msg_create(ID, sender_id);
     if (msg == nullptr) {

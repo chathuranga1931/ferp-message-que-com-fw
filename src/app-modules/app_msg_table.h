@@ -30,7 +30,7 @@
 #include "msg_spiffs_ready.h"           // MsgSpiffsReady         (0x0201)
 #include "msg_config_ready.h"           // MsgConfigReady         (0x0300)
 #include "msg_config_set.h"             // MsgConfigSet           (0x0301)
-#include "msg_config_get_request.h"     // MsgConfigGetRequest    (0x0302)
+#include "msg_config_get.h"         // MsgConfigGet           (0x0302)
 
 // ---------------------------------------------------------------------------
 // Descriptor table macro
@@ -44,7 +44,7 @@
         MsgSpiffsReady::DESCRIPTOR,                                               \
         MsgConfigReady::DESCRIPTOR,                                               \
         MsgConfigSet::DESCRIPTOR,                                                 \
-        MsgConfigGetRequest::DESCRIPTOR,                                          \
+        MsgConfigGet::DESCRIPTOR,                                                 \
     };                                                                            \
     static const uint16_t k_msg_table_count =                                    \
         (uint16_t)(sizeof(k_msg_table) / sizeof(k_msg_table[0]))

@@ -78,10 +78,10 @@ void ModuleConfig::_load_and_save()
 
     if (rc != APP_SPIFFS_OK || bytes_read < 10) {
         if (rc != APP_SPIFFS_OK) {
-            LOG_MSG_WARN(MOD_CONFIG_LOG_EN,
+            LOG_MSG_WARNING(MOD_CONFIG_LOG_EN,
                          "config file read failed (%ld) — using defaults", (long)rc);
         } else {
-            LOG_MSG_WARN(MOD_CONFIG_LOG_EN,
+            LOG_MSG_WARNING(MOD_CONFIG_LOG_EN,
                          "config file too small (%zu bytes) — using defaults", bytes_read);
         }
         // Fall through: save defaults to create / repair the file.
@@ -93,7 +93,7 @@ void ModuleConfig::_load_and_save()
 
         rc = hsys_config_load_from_json(hndl, s_json_buf, bytes_read);
         if (rc != CONFIG_SUCCESS) {
-            LOG_MSG_WARN(MOD_CONFIG_LOG_EN,
+            LOG_MSG_WARNING(MOD_CONFIG_LOG_EN,
                          "JSON parse failed (%ld) — keeping defaults", (long)rc);
         } else {
             LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "config loaded from file");
@@ -124,9 +124,7 @@ void ModuleConfig::_load_and_save()
 
 publish:
     // ── 5. Publish MsgConfigReady — always, even if save failed ──────────────
-    // _app_config is the live instance owned by app.cpp.
-    extern app_config_t _app_config;
-    hsys_msg_t *out = MsgConfigReady::create(id(), &_app_config);
+    hsys_msg_t *out = MsgConfigReady::create(id());
     if (out) {
         publish(out);
         LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "MsgConfigReady published");

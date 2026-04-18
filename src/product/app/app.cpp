@@ -28,6 +28,9 @@
 #include <stdio.h>
 #include <string.h>
 
+/* Own header — ensures extern "C" linkage matches the declaration */
+#include "app.h"
+
 /* HSYS architecture */
 #include "hsys_pool.h"
 #include "hsys_module.h"
@@ -166,6 +169,18 @@ static const hsys_task_desc_t k_task_table[] = {
 #define TASK_TABLE_SIZE  (sizeof(k_task_table) / sizeof(k_task_table[0]))
 
 // ============================================================================
+// app_config_init — load defaults + initialise the config handle
+// Called by app_init() and directly by the simulator's main().
+// ============================================================================
+
+extern "C" void app_config_init(void)
+{
+    app_config_load_defaults(&_app_config);
+    config_init_t cfg_init = { (uint16_t)CONFIG_TABLE_SIZE, k_config_table };
+    hsys_config_init(cfg_init, &g_config_handle);
+}
+
+// ============================================================================
 // app_main
 // ============================================================================
 
@@ -174,9 +189,7 @@ extern "C" void app_init(void)
     printf("\n=== HSYS Messaging Architecture Demo ===\n\n");
 
     // 0. Device config — load defaults then initialise the hsys_config handle
-    app_config_load_defaults(&_app_config);
-    config_init_t cfg_init = { (uint16_t)CONFIG_TABLE_SIZE, k_config_table };
-    hsys_config_init(cfg_init, &g_config_handle);
+    app_config_init();
 
     // 1. Memory pool
     hsys_pool_init(k_pool_table, POOL_TABLE_SIZE);

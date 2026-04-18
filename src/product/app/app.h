@@ -10,6 +10,10 @@ extern "C" {
 void app_init(void);
 void app_run(void);
 
+/** Loads config defaults and initialises the config handle.
+ *  Call this before the module/task lifecycle when not using app_init(). */
+void app_config_init(void);
+
 /** Returns a pointer to the live config handle (owned by app.cpp). */
 config_handle_t *app_config_get_handle(void);
 
