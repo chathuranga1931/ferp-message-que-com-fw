@@ -15,7 +15,12 @@
 #include "hsys_task_mgr.h"
 #include "hsys_mutex.h"
 #include "hsys_task_append.h"
-#include "hsys_log.h"
+#include "pal_logger.h"
+
+#define __TAG__ "HSYS_MSG"
+#ifndef HSYS_MSG_LOG_EN
+#define HSYS_MSG_LOG_EN true
+#endif
 
 #include <string.h>
 
@@ -187,13 +192,13 @@ hsys_msg_t *hsys_msg_create(hsys_msg_id_t msg_id, hsys_module_id_t sender_id)
 
     const hsys_msg_desc_t *desc = find_desc(msg_id);
     if (!desc) {
-        FWK_LOG_ERR("[hsys_msg] create: unknown msg_id=0x%04X", msg_id);
+        LOG_MSG_ERROR(HSYS_MSG_LOG_EN, "create: unknown msg_id=0x%04X", msg_id);
         return nullptr;
     }
 
     hsys_msg_t *msg = header_alloc();
     if (!msg) {
-        FWK_LOG_ERR("[hsys_msg] create: header pool exhausted");
+        LOG_MSG_ERROR(HSYS_MSG_LOG_EN, "create: header pool exhausted");
         return nullptr;
     }
 
@@ -209,7 +214,7 @@ hsys_msg_t *hsys_msg_create(hsys_msg_id_t msg_id, hsys_module_id_t sender_id)
     if (desc->payload_size > 0) {
         msg->payload = hsys_pool_alloc(desc->payload_size);
         if (!msg->payload) {
-            FWK_LOG_ERR("[hsys_msg] create: pool exhausted for msg_id=0x%04X size=%u",
+            LOG_MSG_ERROR(HSYS_MSG_LOG_EN, "create: pool exhausted for msg_id=0x%04X size=%u",
                    msg_id, desc->payload_size);
             header_free(msg);
             return nullptr;

@@ -4,7 +4,6 @@ idf_component_register(
         "hsys_msg.cpp"
         "hsys_module.cpp"
         "hsys_task_mgr.cpp"
-        "hsys_framework_hooks.cpp"   # empty stub — FWK_LOG_* macros go direct to pal_logger
 
     INCLUDE_DIRS
         "."          # exposes hsys_pool.h, hsys_module.h, hsys_msg.h, hsys_task_mgr.h, hsys_log.h etc.

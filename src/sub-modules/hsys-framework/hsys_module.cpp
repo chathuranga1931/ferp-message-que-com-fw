@@ -12,7 +12,12 @@
 
 #include "hsys_module.h"
 #include "hsys_mutex.h"
-#include "hsys_log.h"
+#include "pal_logger.h"
+
+#define __TAG__ "HSYS_MOD"
+#ifndef HSYS_MOD_LOG_EN
+#define HSYS_MOD_LOG_EN true
+#endif
 
 #include <string.h>
 #include <stdarg.h>
@@ -60,7 +65,7 @@ void HsysModule::log(const char *fmt, ...) const
     if (off > 0 && (size_t)off < sizeof(buf))
         vsnprintf(buf + off, sizeof(buf) - (size_t)off, fmt, ap);
     va_end(ap);
-    FWK_LOG_INF("%s", buf);
+    LOG_MSG_INFO(HSYS_MOD_LOG_EN, "%s", buf);
 }
 
 void HsysModule::log_error(const char *fmt, ...) const
@@ -72,7 +77,7 @@ void HsysModule::log_error(const char *fmt, ...) const
     if (off > 0 && (size_t)off < sizeof(buf))
         vsnprintf(buf + off, sizeof(buf) - (size_t)off, fmt, ap);
     va_end(ap);
-    FWK_LOG_ERR("%s", buf);
+    LOG_MSG_ERROR(HSYS_MOD_LOG_EN, "%s", buf);
 }
 
 // ---------------------------------------------------------------------------
@@ -144,7 +149,7 @@ void hsys_module_pre_init_for_task(const hsys_module_id_t *ids, uint8_t count)
     for (uint8_t i = 0; i < count; i++) {
         HsysModule *m = hsys_module_find(ids[i]);
         if (m) {
-            FWK_LOG_INF("[hsys] pre_init  \xe2\x86\x92 %s", m->name());
+            LOG_MSG_INFO(HSYS_MOD_LOG_EN, "pre_init  \xe2\x86\x92 %s", m->name());
             m->pre_init();
         }
     }
@@ -155,7 +160,7 @@ void hsys_module_init_for_task(const hsys_module_id_t *ids, uint8_t count)
     for (uint8_t i = 0; i < count; i++) {
         HsysModule *m = hsys_module_find(ids[i]);
         if (m) {
-            FWK_LOG_INF("[hsys] init      \xe2\x86\x92 %s", m->name());
+            LOG_MSG_INFO(HSYS_MOD_LOG_EN, "init      \xe2\x86\x92 %s", m->name());
             m->init();
         }
     }
@@ -166,7 +171,7 @@ void hsys_module_post_init_for_task(const hsys_module_id_t *ids, uint8_t count)
     for (uint8_t i = 0; i < count; i++) {
         HsysModule *m = hsys_module_find(ids[i]);
         if (m) {
-            FWK_LOG_INF("[hsys] post_init \xe2\x86\x92 %s", m->name());
+            LOG_MSG_INFO(HSYS_MOD_LOG_EN, "post_init \xe2\x86\x92 %s", m->name());
             m->post_init();
         }
     }

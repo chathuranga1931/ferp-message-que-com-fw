@@ -15,6 +15,13 @@ set(APP_MODS   "${ROOT}/app-modules")
 set(APP        "${ROOT}/product/app")
 set(MOD_CONFIG "${ROOT}/app-modules/module_config")
 
+# Force-include user_config.h as the very first header in every TU so that
+# all per-file log enable flags are defined before any other #include.
+add_compile_options(-include "${APP}/user_config.h")
+
+set(MIDDLEWARE "${ROOT}/sub-modules/middleware")
+set(PERIPHERAL "${ROOT}/sub-modules/peripheral")
+
 # ── 1. hsys-os (macOS) ────────────────────────────────────────────────────────
 add_library(hsys_os STATIC
     ${HSYS_OS}/mac_os/hsys_task.cpp
@@ -32,6 +39,7 @@ add_library(pal_mac STATIC
     ${PAL_MAC}/pal_mac_time.cpp
     ${PAL_MAC}/pal_mac_logger_uart.cpp
     ${PAL_MAC}/pal_mac_logger.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/SPIFFS/pal_mac_spiffs.cpp
 )
 target_include_directories(pal_mac PUBLIC
     ${PAL}        # pal_logger.h, pal_time.h, pal_logger_uart.h
@@ -39,13 +47,24 @@ target_include_directories(pal_mac PUBLIC
 )
 target_link_libraries(pal_mac PRIVATE hsys_os)
 
-# ── 3. hsys-framework ─────────────────────────────────────────────────────────
+# ── 3. middleware (hsys_config — simulator native, no ArduinoJson) ────────────
+add_library(middleware STATIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/middleware/hsys_config_mac.cpp
+)
+target_include_directories(middleware PUBLIC
+    ${MIDDLEWARE}   # hsys_config.h
+    ${PERIPHERAL}   # hsys_type.h
+    ${PAL}          # pal_logger.h
+    ${APP}          # user_config.h (for HSYS_CFG_LOG_EN, ERROR_OK, ERR_CONFIG_OFFSET)
+)
+target_link_libraries(middleware PRIVATE pal_mac)
+
+# ── 4. hsys-framework ─────────────────────────────────────────────────────────
 add_library(hsys_framework STATIC
     ${HSYS_FW}/hsys_pool.cpp
     ${HSYS_FW}/hsys_msg.cpp
     ${HSYS_FW}/hsys_module.cpp
     ${HSYS_FW}/hsys_task_mgr.cpp
-    ${HSYS_FW}/hsys_framework_hooks.cpp   # weak defaults — overridden by product layer
 )
 target_include_directories(hsys_framework PUBLIC ${HSYS_FW} ${PAL})
 target_link_libraries(hsys_framework PRIVATE hsys_os pal_mac)
@@ -54,6 +73,7 @@ target_link_libraries(hsys_framework PRIVATE hsys_os pal_mac)
 add_library(app_messages STATIC
     ${APP_MSGS}/msg_sensor_data.cpp
     ${APP_MSGS}/msg_tick_1000ms.cpp
+    ${APP_MSGS}/msg_spiffs_ready.cpp
     ${APP_MSGS}/msg_config_ready.cpp
     ${APP_MSGS}/msg_config_set.cpp
     ${APP_MSGS}/msg_config_get_request.cpp
@@ -62,9 +82,22 @@ target_include_directories(app_messages PUBLIC
     ${APP_MSGS}    # msg_*.h, IHsysMsg.h
     ${APP}         # app_msg_ids.h
     ${MOD_CONFIG}  # app_config.h
+    ${PERIPHERAL}  # hsys_type.h (pulled in via app_config.h)
     ${PAL}         # pal_logger.h (for FWK_LOG_* via hsys_log.h)
 )
 target_link_libraries(app_messages PRIVATE hsys_framework)
+
+# ── 5a. app-pheripherals (app_spiffs — mutex-protected PAL wrapper) ───────────
+set(APP_PHR "${ROOT}/app-pheripherals")
+add_library(app_pheripherals STATIC
+    ${APP_PHR}/app_spiffs.cpp
+)
+target_include_directories(app_pheripherals PUBLIC
+    ${APP_PHR}   # app_spiffs.h
+    ${PAL}       # pal_spiffs.h, pal_logger.h
+    ${HSYS_OS}   # hsys_mutex.h
+)
+target_link_libraries(app_pheripherals PRIVATE pal_mac hsys_os)
 
 # ── 5. app-modules ────────────────────────────────────────────────────────────
 add_library(app_modules STATIC
@@ -72,6 +105,8 @@ add_library(app_modules STATIC
     ${APP_MODS}/module_a/module_a.cpp
     ${APP_MODS}/module_b/module_b.cpp
     ${APP_MODS}/module_sysmon/module_sysmon.cpp
+    ${APP_MODS}/module_spiffs/module_spiffs.cpp
+    ${APP_MODS}/module_config/module_config.cpp
 )
 target_include_directories(app_modules PUBLIC
     ${APP_MODS}
@@ -79,15 +114,25 @@ target_include_directories(app_modules PUBLIC
     ${APP_MODS}/module_a
     ${APP_MODS}/module_b
     ${APP_MODS}/module_sysmon
+    ${APP_MODS}/module_spiffs
+    ${APP_MODS}/module_config    # module_config.h
+    ${APP_PHR}   # app_spiffs.h
+    ${APP}       # app_msg_ids.h, app.h
 )
-target_link_libraries(app_modules PRIVATE hsys_framework hsys_os app_messages)
+target_link_libraries(app_modules PRIVATE hsys_framework hsys_os app_messages app_pheripherals middleware)
 
 # ── 6. app (product-level) ────────────────────────────────────────────────────
 add_library(app_product STATIC
     ${APP}/app.cpp
 )
-target_include_directories(app_product PUBLIC ${APP})
-target_link_libraries(app_product PRIVATE hsys_framework app_modules app_messages)
+target_include_directories(app_product PUBLIC
+    ${APP}
+    ${MOD_CONFIG}
+    ${MIDDLEWARE}
+    ${PERIPHERAL}
+    ${APP_MODS}/module_spiffs   # module_spiffs.h
+)
+target_link_libraries(app_product PRIVATE hsys_framework app_modules app_messages middleware)
 
 # ── 7. sim_bridge (TCP ↔ Python UI) ──────────────────────────────────────────
 set(SIM_BRIDGE "${CMAKE_CURRENT_SOURCE_DIR}/sim_bridge")
@@ -105,13 +150,10 @@ target_include_directories(sim_bridge PUBLIC
 target_link_libraries(sim_bridge PRIVATE hsys_framework hsys_os pal_mac app_messages)
 
 # ── 8. main executable ────────────────────────────────────────────────────────
-# hsys_framework_hooks.cpp here is the *strong* override — it replaces the
-# weak defaults compiled into hsys_framework.  It must be linked directly
 # into the executable (not a static library) so the linker picks it up.
 add_executable(ferp-com-simulator
     main/main.cpp
     sim_init.cpp                 # simulator-extended app_init (adds sim_bridge task)
-    hsys_framework_hooks.cpp     # strong overrides: routes hsys_log → pal_logger
 )
 target_include_directories(ferp-com-simulator PRIVATE
     ${HSYS_FW}                   # hsys_log.h, hsys_module.h
@@ -123,10 +165,11 @@ target_include_directories(ferp-com-simulator PRIVATE
     ${APP_MSGS}                  # msg_*.h
     ${APP_MODS}                  # app_msg_table.h
     ${APP_MODS}/ticker
-    ${APP_MODS}/module_a
-    ${APP_MODS}/module_b
     ${APP_MODS}/module_sysmon
+    ${APP_MODS}/module_spiffs    # module_spiffs.h
+    ${APP_MODS}/module_config    # module_config.h
+    ${APP_PHR}                   # app_spiffs.h
 )
 target_link_libraries(ferp-com-simulator PRIVATE
-    app_product app_messages hsys_framework hsys_os pal_mac sim_bridge
+    app_product app_messages hsys_framework hsys_os pal_mac sim_bridge app_modules app_pheripherals
 )

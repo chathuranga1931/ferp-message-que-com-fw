@@ -46,6 +46,12 @@ void ModuleSysmon::on_msg_received(const hsys_msg_t &msg)
 
 void ModuleSysmon::print_report()
 {
+
+}
+
+#if 0
+void ModuleSysmon::print_report()
+{
     log("\xe2\x94\x80\xe2\x94\x80 Pool status  (t=%lu s) \xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80",
         (unsigned long)m_tick_count);
     log("  %-6s  %-10s  %-6s  %-6s  %-6s  %s",
@@ -83,3 +89,4 @@ void ModuleSysmon::print_report()
         (unsigned)hdr.used_slots,
         (unsigned)hdr.peak_used_slots);
 }
+#endif

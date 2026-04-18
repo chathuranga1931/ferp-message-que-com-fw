@@ -46,14 +46,18 @@ private:
     void _read_loop(int client_fd); ///< reads commands from the Python UI
     void _send_json(const char *id, const char *data_json);
     void _send_pool_status();       ///< samples pool + msg-header stats → SIM_POOL_STATUS
+    void _send_state_snapshot();    ///< replays cached system state to a newly connected client
 
     /** Pool status is sent every N ticks (seconds). */
     static constexpr uint32_t POOL_REPORT_INTERVAL_TICKS = 5;
 
-    int      _server_fd  = -1;
-    int      _client_fd  = -1;      ///< only one UI client at a time
-    uint16_t _port       = 9000;
-    uint32_t _tick_count = 0;       ///< counts MSG_TICK_1000MS ticks
+    int      _server_fd   = -1;
+    int      _client_fd   = -1;      ///< only one UI client at a time
+    uint16_t _port        = 9000;
+    uint32_t _tick_count  = 0;       ///< counts MSG_TICK_1000MS ticks
+
+    // ── State snapshot — replayed to any new UI client on connect ────────────
+    bool     _spiffs_ready = false;
 
     // protect _client_fd from concurrent writer + reader threads
     hsys_mutex_handle_t _mutex = nullptr;

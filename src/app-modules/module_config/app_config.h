@@ -13,21 +13,21 @@
 
 #pragma once
 
+#include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include "hsys_type.h"
 
 // ---------------------------------------------------------------------------
-// Config field types
-// Matches hsys_type_t from the middleware layer.  Defined here so that
-// message headers (msg_config_set.h) have no dependency on the peripheral
-// sub-module.
+// Config field type — thin alias over hsys_type_t so the message layer
+// doesn't need to depend on the peripheral sub-module directly.
 // ---------------------------------------------------------------------------
 
-typedef enum {
-    APP_CFG_TYPE_UINT32 = 0,
-    APP_CFG_TYPE_STRING = 1,
-    APP_CFG_TYPE_BOOL   = 2,
-} app_cfg_type_t;
+typedef hsys_type_t app_cfg_type_t;
+
+#define APP_CFG_TYPE_UINT32  HSYS_TYPE_UINT32
+#define APP_CFG_TYPE_STRING  HSYS_TYPE_STRING
+#define APP_CFG_TYPE_BOOL    HSYS_TYPE_BOOL
 
 // ---------------------------------------------------------------------------
 // app_config_t  — generated from app_config_fields.h

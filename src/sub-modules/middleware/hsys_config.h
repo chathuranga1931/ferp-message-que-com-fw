@@ -1,6 +1,6 @@
 
-#ifndef HSYS_CONFIG_H
-#define HSYS_CONFIG_H
+#ifndef MIDDLEWARE_HSYS_CONFIG_H
+#define MIDDLEWARE_HSYS_CONFIG_H
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -45,4 +45,4 @@ int32_t hsys_config_init(config_init_t config_init, config_handle_t * config_hnd
 int32_t hsys_config_convert_to_json(config_handle_t * config_hndl, char * json_buffer, size_t buffer_size, size_t * json_length);
 int32_t hsys_config_load_from_json(config_handle_t * config_hndl, const char * json_string, size_t json_length);
 
-#endif //HSYS_CONFIG_H
+#endif //MIDDLEWARE_HSYS_CONFIG_H

@@ -78,6 +78,7 @@ void ModuleSimBridge::init()
     // Subscribe to every message that the Python UI wants to visualise.
     // Add entries here as each sprint adds new message types.
     subscribe(MSG_ID_TICK_1000MS);
+    subscribe(MSG_ID_SPIFFS_READY);
     // subscribe(MSG_ID_SENSOR_DATA);  // uncomment once demo module is live
 
     log("init  (UI port %u)", _port);
@@ -98,6 +99,12 @@ void ModuleSimBridge::on_msg_received(const hsys_msg_t &msg)
             if (_tick_count % POOL_REPORT_INTERVAL_TICKS == 0) {
                 _send_pool_status();
             }
+            break;
+
+        case MSG_ID_SPIFFS_READY:
+            _spiffs_ready = true;
+            snprintf(data, sizeof(data), "{}");
+            _send_json("MSG_SPIFFS_READY", data);
             break;
 
         // ── Add cases here as each sprint adds message types ──────────────
@@ -151,6 +158,9 @@ void ModuleSimBridge::_accept_loop()
         _client_fd = fd;
         hsys_mutex_unlock(_mutex);
 
+        // Immediately replay current system state so the UI is in sync
+        _send_state_snapshot();
+
         // Spin up a reader thread for inbound commands; this call blocks until
         // the client disconnects, then loops back to accept().
         _read_loop(fd);
@@ -193,6 +203,15 @@ void ModuleSimBridge::_read_loop(int client_fd)
         {
             line_buf[pos++] = ch;
         }
+    }
+}
+
+void ModuleSimBridge::_send_state_snapshot()
+{
+    // Replay any system-ready events that fired before the client connected.
+    // Add one entry per stateful message as each sprint adds more.
+    if (_spiffs_ready) {
+        _send_json("MSG_SPIFFS_READY", "{}");
     }
 }
 

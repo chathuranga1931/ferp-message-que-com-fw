@@ -41,6 +41,7 @@ typedef enum : uint16_t
     // System / timing  (0x0200 – 0x02FF)
     // ------------------------------------------------------------------
     MSG_ID_TICK_1000MS      = 0x0200,   ///< Ticker -> all: 1 s heartbeat
+    MSG_ID_SPIFFS_READY     = 0x0201,   ///< ModuleSpiffs -> all: SPIFFS mounted and ready
 
     // ------------------------------------------------------------------
     // Config  (0x0300 – 0x03FF)

@@ -12,7 +12,12 @@
  */
 
 #include "sim_init.h"
-#include "hsys_log.h"
+#include "pal_logger.h"
+
+#define __TAG__ "SIM_INIT"
+#ifndef SIM_INIT_LOG_EN
+#define SIM_INIT_LOG_EN true
+#endif
 
 #include <stdio.h>
 
@@ -24,9 +29,9 @@
 
 /* Shared app modules */
 #include "ticker.h"
-#include "module_a.h"
-#include "module_b.h"
 #include "module_sysmon.h"
+#include "module_spiffs.h"
+#include "module_config.h"
 #include "app_msg_table.h"
 
 /* Simulator-only modules */
@@ -51,9 +56,9 @@ static const hsys_pool_class_cfg_t k_pool_table[] = {
 
 static HsysModule *k_module_table[] = {
     ticker_instance(),
-    module_a_instance(),
-    module_b_instance(),
     module_sysmon_instance(),
+    ModuleSpiffs::instance(),
+    ModuleConfig::instance(),
     ModuleSimBridge::instance(),   // ← simulator-only
 };
 #define MODULE_TABLE_SIZE  (sizeof(k_module_table) / sizeof(k_module_table[0]))
@@ -64,9 +69,9 @@ static HsysModule *k_module_table[] = {
 
 static const hsys_task_desc_t k_task_table[] = {
     { "ticker_task",     1024,  6,  0,  { TICKER_MODULE_ID,          0 } },
-    { "sensor_task",     2048,  5,  0,  { MODULE_A_ID,               0 } },
-    { "display_task",    2048,  4,  0,  { MODULE_B_ID,               0 } },
     { "sysmon_task",     2048,  3,  0,  { SYSMON_MODULE_ID,          0 } },
+    { "spiffs_task",     2048,  5,  0,  { MODULE_SPIFFS_ID,          0 } },
+    { "config_task",     4096,  5,  0,  { MODULE_CONFIG_ID,          0 } },
     { "sim_bridge_task", 4096,  2,  0,  { SIM_BRIDGE_MODULE_ID,      0 } },
 };
 #define TASK_TABLE_SIZE  (sizeof(k_task_table) / sizeof(k_task_table[0]))
@@ -77,7 +82,7 @@ static const hsys_task_desc_t k_task_table[] = {
 
 void sim_app_init(void)
 {
-    FWK_LOG_INF("=== HSYS Messaging Architecture — Simulator ===");
+    LOG_MSG_INFO(SIM_INIT_LOG_EN, "=== HSYS Messaging Architecture — Simulator ===");
 
     // 1. Memory pool
     hsys_pool_init(k_pool_table, POOL_TABLE_SIZE);
@@ -93,5 +98,5 @@ void sim_app_init(void)
     // 4. Task manager — creates all tasks (including sim_bridge_task)
     hsys_task_mgr_init(k_task_table, TASK_TABLE_SIZE);
 
-    FWK_LOG_INF("[sim] Tasks created. Lifecycle phases running in tasks.");
+    LOG_MSG_INFO(SIM_INIT_LOG_EN, "[sim] Tasks created. Lifecycle phases running in tasks.");
 }

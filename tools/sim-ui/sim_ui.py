@@ -40,6 +40,7 @@ from widgets.log_widget    import LogWidget
 from widgets.mqtt_widget   import MqttWidget
 from widgets.ota_widget    import OtaWidget
 from widgets.pool_widget   import PoolWidget
+from widgets.config_widget import ConfigWidget
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -202,6 +203,12 @@ class App(tk.Tk):
         notebook.add(pool_frame, text="Pool")
         self._pool = PoolWidget(pool_frame)
         self._pool.pack(fill=tk.BOTH, expand=True)
+
+        # Tab: Device Config
+        config_frame = tk.Frame(notebook, bg="#1e1e2e")
+        notebook.add(config_frame, text="Config")
+        self._config = ConfigWidget(config_frame)
+        self._config.pack(fill=tk.BOTH, expand=True)
 
     def _build_system_panel(self, parent):
         frame = tk.LabelFrame(

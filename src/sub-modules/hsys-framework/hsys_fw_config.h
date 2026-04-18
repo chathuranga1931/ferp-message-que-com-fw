@@ -1,20 +1,15 @@
-// hsys_config.h// hsys_config.h — framework tunable redirect
-
-//// Renamed to hsys_fw_config.h to avoid collision with middleware/hsys_config.h
-
-// Compile-time tunables for the HSYS messaging architecture.// This shim keeps any stale includes working.
-
-// All pool sizes, counts, and limits are defined here.#include "hsys_fw_config.h"
-
+// hsys_fw_config.h
 //
-
+// Compile-time tunables for the HSYS messaging architecture.
+// All pool sizes, counts, and limits are defined here.
+//
 // To customise: override any of these defines BEFORE including this header,
 // or pass them via compiler flags (-DHSYS_MAX_MODULES=32).
 // When using ESP-IDF with Kconfig, generated values from sdkconfig.h will
 // eventually map here.
 
-#ifndef HSYS_CONFIG_H
-#define HSYS_CONFIG_H
+#ifndef HSYS_FW_CONFIG_H
+#define HSYS_FW_CONFIG_H
 
 // ---------------------------------------------------------------------------
 // Module registry
@@ -70,4 +65,4 @@
 #define HSYS_POOL_CLASS_COUNT       8
 #endif
 
-#endif // HSYS_CONFIG_H
+#endif // HSYS_FW_CONFIG_H
