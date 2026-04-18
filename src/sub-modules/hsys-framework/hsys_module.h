@@ -136,6 +136,19 @@ protected:
     hsys_status_t publish(hsys_msg_t *msg);
 
     /**
+     * Send a point-to-point (DIRECT) message to a specific module.
+     * Sets msg->receiver_id and calls hsys_msg_send().
+     * Do NOT access the message after this call.
+     *
+     * @param msg          Message created with create_msg() / create_typed().
+     * @param receiver_id  Destination module ID.
+     * @param timeout_ms   Queue send timeout (0 = non-blocking).
+     */
+    hsys_status_t send(hsys_msg_t      *msg,
+                       hsys_module_id_t receiver_id,
+                       uint32_t         timeout_ms = 0);
+
+    /**
      * Log an informational message via the active hsys_log hook.
      * Identical signature to printf — routes through hsys_log() which
      * the product layer can override to redirect to pal_logger.

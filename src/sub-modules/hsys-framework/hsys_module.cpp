@@ -56,6 +56,15 @@ hsys_status_t HsysModule::publish(hsys_msg_t *msg)
     return hsys_msg_publish(msg);
 }
 
+hsys_status_t HsysModule::send(hsys_msg_t      *msg,
+                                hsys_module_id_t receiver_id,
+                                uint32_t         timeout_ms)
+{
+    if (!msg) return HSYS_ERR_NULL;
+    msg->receiver_id = receiver_id;
+    return hsys_msg_send(msg, timeout_ms);
+}
+
 void HsysModule::log(const char *fmt, ...) const
 {
     va_list ap;

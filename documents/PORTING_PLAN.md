@@ -1,6 +1,476 @@
 # Porting Plan — Old Event-Based App → HSYS Message Queue Architecture
 
+## Progress legend
+- ✅ **DONE** — built, verified in simulator
+- 🔶 **PARTIAL** — core done, some sub-tasks remain
+- ⬜ **PENDING** — not yet started
+
+---
+
 ## Philosophy
+
+- **One module per sprint.** Each sprint ends with the simulator running and the
+  Python UI showing the correct visual state for that module.
+- **Stub-first.** Every new module is created as a stub (compiles, publishes
+  nothing, subscribes to nothing) before real logic is added. This keeps the
+  build green at every commit.
+- **Test at the task boundary.** The simulator + Python UI is the test bench.
+  Real hardware is only needed for things the simulator physically cannot do
+  (UART tap, SD card, actual WiFi RF).
+- **No regressions.** The old demo modules (module_a, module_b, ticker,
+  sysmon) stay in the build until explicitly replaced.
+
+---
+
+## Layer diagram (what you are building toward)
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  Python UI  (TCP socket, localhost:9000)                        │
+│  • LED circles  • nozzle state  • WiFi/internet bars            │
+│  • OTA progress  • MQTT log  • cloud heartbeat counter          │
+└───────────────────────┬─────────────────────────────────────────┘
+                        │  JSON lines  (stdin of Python / TCP)
+┌───────────────────────▼─────────────────────────────────────────┐
+│  ferp-com-simulator  (macOS native C++17 binary)                │
+│                                                                 │
+│  ModuleSimBridge  ← simulator-only helper module                │
+│    subscribes to every "UI-visible" message and serialises      │
+│    it as a JSON line to stdout / TCP socket                     │
+│                                                                 │
+│  [All real app modules running in their tasks]                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Step 0 — Infrastructure: SimBridge + Python UI skeleton  ✅ DONE
+
+### 0-A  `ModuleSimBridge` (C++) ✅
+- `src/product/ferp-com-simulator/sim_bridge/module_sim_bridge.h/.cpp`
+- TCP server on port 9000; serialises messages as JSON lines to connected client
+- Registered as a simulator-only extra module via `app_register_extra_module()`
+
+### 0-B  Python UI (`tools/sim-ui/`) ✅
+```
+tools/sim-ui/
+    sim_ui.py           ← main window, TCP client on localhost:9000
+    widgets/
+        led_widget.py
+        nozzle_widget.py
+        log_widget.py
+        config_widget.py
+    README.md
+```
+
+Launch:
+```bash
+# Terminal 1 — simulator binary
+cd src/product/ferp-com-simulator && ./build/ferp-com-simulator
+
+# Terminal 2 — Python UI
+cd tools/sim-ui && python3 sim_ui.py --port 9000
+```
+
+### 0-C  Shared app.cpp architecture ✅
+- `src/product/app/app.cpp` — fully shared between simulator and ESP32-IDF
+- `src/product/ferp-com-simulator/main/main.cpp` — thin platform wrapper only
+  (`app_platform_pre_init` override + `app_run` nanosleep override)
+- `src/product/ferp-com-esp32-idf/main/main.cpp` — `app_init()` + loop only
+
+**✅ Gate: Simulator builds, Python UI connects, tick heartbeat visible.**
+
+---
+
+## Step 0-D — Shared timer service ✅ DONE
+
+`ModuleTimer` implemented as a shared infrastructure module (not simulator-only):
+
+- `src/app-modules/module_timer/module_timer.h/.cpp`
+- 20 timer slots, 100 ms tick resolution
+- Messages: `MsgTimerStart`, `MsgTimerStop`, `MsgTimerStartResponse`,
+  `MsgTimerStopResponse`, `MsgTimerAlarm` (IDs 0x0100–0x0104)
+- Any module can request a one-shot or repetitive timer via DIRECT message
+
+---
+
+## Sprint 1 — Config module  🔶 PARTIAL
+
+### What is done ✅
+- `src/app-modules/module_config/module_config.h/.cpp` — full implementation
+- `src/app-messages/msg_config_ready.h/.cpp` (ID 0x0300) — published when config loaded/updated
+- `src/app-messages/msg_config_set.h/.cpp` (ID 0x0301) — set one config field by key/value
+- `src/app-messages/msg_config_get.h/.cpp` (ID 0x0302) — request re-publish of current config
+- `src/product/ferp-com-simulator/SPIFFS/spiffs/Configs/DeviceConfigs.json` — config file on SPIFFS
+
+### What remains ⬜
+- `MsgConfigResetRequest` (factory-reset to defaults) — not yet implemented
+- Python UI "Config loaded" badge/panel (config_widget.py exists but bridge subscription limited)
+
+### Simulator config flow
+ModuleSpiffs mounts → publishes `MsgSpiffsReady` → ModuleConfig reads JSON from SPIFFS →
+publishes `MsgConfigReady` with full `app_config_t` snapshot.
+
+### Test in simulator
+- Simulator starts → SPIFFS mounts → Config loads from `DeviceConfigs.json`
+- Any module can send `MsgConfigGet` → receives `MsgConfigReady` with current values
+- Python UI `config_widget.py` shows current values
+
+---
+
+## Sprint 2 — WiFi module  ⬜ PENDING
+
+### Files to create
+```
+src/app-modules/module_wifi/
+    module_wifi.h
+    module_wifi.cpp
+src/app-messages/
+    msg_wifi_event.h / .cpp   (ID 0x0400)
+```
+
+### Simulator stub for WiFi
+`src/product/ferp-com-simulator/sim_wifi/sim_wifi_module.cpp`  
+Subscribes to `MsgConfigReady`, then after a configurable delay (e.g. 2 s)
+publishes a fake `MsgWifiEvent(STA_GOT_IP, ip=192.168.1.100)`.
+
+### Python UI widget
+- WiFi signal bar widget (0–4 bars)
+- Shows "STA_CONNECTED", "GOT_IP 192.168.1.100", "DISCONNECTED"
+
+### Test
+1. Simulator starts → Config loads → WiFi "connects" after 2 s → Python shows bars
+2. Manually trigger `STA_DISCONNECTED` → bars drop to 0
+
+---
+
+## Sprint 3 — Internet module  ⬜ PENDING
+
+### Files to create
+```
+src/app-modules/module_internet/
+    module_internet.h
+    module_internet.cpp
+src/app-messages/
+    msg_internet_status.h / .cpp   (ID 0x0500)
+```
+
+### Simulator stub
+Subscribes to `MsgWifiEvent(GOT_IP)`, publishes `MsgInternetStatus(connected=true)`
+after a 1 s delay.  No actual HTTP ping needed in simulator.
+
+### Python UI widget
+Globe icon: grey = disconnected, green = connected.
+
+---
+
+## Sprint 4 — Fuel / DispTap modules  *(the core domain)*  ⬜ PENDING
+
+> This is the most important module to test in the simulator because it has
+> the most complex state machine and it is impossible to test without hardware
+> **unless** you write a simulator stub that injects fake display-tap frames.
+
+### Files to create
+```
+src/app-modules/module_fuel/
+    module_fuel.h
+    module_fuel.cpp
+src/app-modules/module_disptap/
+    module_disptap.h
+    module_disptap.cpp
+src/app-messages/
+    msg_disptap_data.h / .cpp         (ID 0x0800)
+    msg_nozzle_state.h / .cpp         (ID 0x0801)
+    msg_fuel_pumped.h / .cpp          (ID 0x0802)
+    msg_disptap_fw_version.h / .cpp   (ID 0x0803)
+```
+
+### Simulator stub for display-tap hardware
+`src/product/ferp-com-simulator/sim_disptap/sim_disptap_injector.cpp`
+
+A soft-timer fires every ~3 s and publishes a scripted sequence of
+`MsgDispTapData` frames that simulate a complete pump transaction:
+1. Nozzle 0 lifted (START)
+2. 10 × display-tap frames with increasing volume/price
+3. Nozzle 0 replaced (STOP)
+
+The Sanki state machine inside `ModuleFuel` processes these frames exactly as
+it would process real serial frames on hardware.
+
+### Python UI widgets
+```
+┌──────────────────────────────────┐
+│  Nozzle 0          Nozzle 1      │
+│  ●  PUMPING        ○  IDLE       │
+│  Vol:  12.345 L                  │
+│  Unit: 1.85 /L                   │
+│  Total: 22.84                    │
+└──────────────────────────────────┘
+```
+
+### Test
+Scripted injection → Python shows nozzle state transitions and final
+`MsgFuelPumped` values matching the injected data.
+
+---
+
+## Sprint 5 — Buttons (Print + Default)  ⬜ PENDING
+
+### Files to create
+```
+src/app-modules/module_print_btn/
+src/app-modules/module_default_btn/
+src/app-messages/
+    msg_print_btn_event.h / .cpp     (ID 0x0900)
+    msg_default_btn_event.h / .cpp   (ID 0x0A00)
+```
+
+### Simulator stub
+`src/product/ferp-com-simulator/sim_buttons/sim_button_injector.cpp`
+
+Reads keyboard input (non-blocking stdin or TCP command from Python UI) and
+publishes the corresponding `MsgPrintBtnEvent` or `MsgDefaultBtnEvent`.
+
+### Python UI widgets
+Four clickable buttons in the UI:
+- `[Print 1 Short]` `[Print 1 Long]`
+- `[Print 2 Short]` `[Print 2 Long]`
+- `[Default Short]` `[Default Long]`
+
+---
+
+## Sprint 6 — LEDs + Buzzer  ⬜ PENDING
+
+### Files to create
+```
+src/app-modules/module_leds/
+src/app-modules/module_buzzer/
+```
+No new messages needed — these only subscribe.
+
+### Python UI
+- 3–4 coloured circles for LEDs (Power, WiFi, Cloud, Pump)
+- `SimBridge` intercepts LED PAL calls via a weak stub `pal_led_set()` and
+  publishes a `SimLedState` JSON event
+- Python shows a "🔔 BEEP" toast notification for 300 ms when buzzer fires
+
+---
+
+## Sprint 7 — MQTT module  ⬜ PENDING
+
+### Files to create
+```
+src/app-modules/module_mqtt/
+src/app-messages/
+    msg_mqtt_event.h / .cpp           (ID 0x0700)
+    msg_mqtt_rx_message.h / .cpp      (ID 0x0701)
+    msg_mqtt_publish_request.h / .cpp (ID 0x0702)
+```
+
+### Simulator stub
+`src/product/ferp-com-simulator/sim_mqtt/sim_mqtt_broker_stub.cpp`
+
+- On `MsgInternetStatus(connected)`: publish `MsgMqttEvent(CONNECTED)`
+- Python UI has a text field: type a topic + payload, click "Inject" →
+  simulator receives `MsgMqttRxMessage`
+- Outbound `MsgMqttPublishRequest` → Python UI shows in a "Published" log panel
+
+---
+
+## Sprint 8 — Cloud module  ⬜ PENDING
+
+### Files to create
+```
+src/app-modules/module_cloud/
+src/app-messages/
+    msg_cloud_status.h / .cpp   (ID 0x0600)
+```
+
+### Simulator stub
+`src/product/ferp-com-simulator/sim_cloud/sim_cloud_driver_stub.cpp`
+
+Implements `cloud_driver_t` function pointers with stubs that log their
+arguments and return `ERROR_OK`.  Python UI shows:
+- "Register" / "Startup" / "Heartbeat" / "Pumped" call log with timestamps
+
+---
+
+## Sprint 9 — OTA module  ⬜ PENDING
+
+### Files to create
+```
+src/app-modules/module_ota/
+src/app-messages/
+    msg_ota_event.h / .cpp     (ID 0x0B00)
+    msg_ota_trigger.h / .cpp   (ID 0x0B01)
+```
+
+### Simulator stubs
+- `sim_ota_server_stub.cpp`: implements `fp_check_version` returning a fake
+  "new version available" response after `MsgInternetStatus` is connected.
+  `fp_download_and_flash` sleeps for 2 s (simulating download), returns OK
+  but does **not** call `pal_power_reset()` in the simulator.
+
+### Python UI
+- OTA status card: "IDLE / CHECKING / DOWNLOADING (n%) / COMPLETE"
+- Progress bar driven by `MsgOtaEvent(DOWNLOAD_PROGRESS)`
+- "Trigger OTA" button → sends JSON command to simulator
+
+---
+
+## Sprint 10 — Time, Storage, Retransmit  ⬜ PENDING
+
+Lower urgency — can run later.
+
+```
+src/app-modules/module_time/
+src/app-modules/module_sd/
+src/app-modules/module_retransmit/
+```
+
+Simulator stubs: in-memory file maps for SD.
+
+---
+
+## Sprint 11 — WebServer module  ⬜ PENDING
+
+Lowest priority — only needed once WiFi AP mode works on hardware.
+
+---
+
+## Sprint 12 — Cleanup  ⬜ PENDING
+
+- Remove demo modules (module_a, module_b)
+- Remove old `event_table_t` glue from app_common.h
+- Final memory pool sizing based on peak usage from sysmon reports
+
+---
+
+## File / folder conventions
+
+```
+src/
+  app-messages/
+    msg_<name>.h              ← typed message class declaration
+    msg_<name>.cpp            ← constructor / static ID
+
+  app-modules/
+    module_<name>/
+      module_<name>.h         ← HsysModule subclass
+      module_<name>.cpp
+
+  product/
+    app/
+      app.cpp                 ← module table, pool table, task table (shared)
+      app_msg_ids.h           ← single ID registry (add IDs here each sprint)
+      app_msg_table.h         ← descriptor table
+
+    ferp-com-simulator/
+      sim_<name>/             ← one stub folder per sprint
+        sim_<name>_module.cpp
+      sim_bridge/
+        module_sim_bridge.cpp ← JSON serialiser for Python UI
+      CMakeLists.txt
+
+    ferp-com-esp32-idf/
+      main/
+        main.cpp              ← app_init() + while(true){app_run()} only
+
+tools/
+  sim-ui/
+    sim_ui.py
+    widgets/
+      led_widget.py
+      nozzle_widget.py
+      mqtt_widget.py
+      ota_widget.py
+      log_widget.py
+    README.md
+```
+
+---
+
+## Python UI — communication protocol
+
+Two modes, selected at launch:
+
+### Mode A — stdin pipe (simplest, no sockets)
+```bash
+./build/ferp-com-simulator | python3 tools/sim-ui/sim_ui.py
+```
+- Limitation: no bidirectional communication (buttons can't inject messages)
+
+### Mode B — TCP duplex (recommended, currently implemented)
+```bash
+./build/ferp-com-simulator &
+python3 tools/sim-ui/sim_ui.py --port 9000
+```
+- **Simulator → Python**: `{"dir":"out","ts":1234,"id":"MSG_WIFI_EVENT","data":{...}}\n`
+- **Python → Simulator**: `{"dir":"in","id":"SIM_BTN","data":{"btn":"print1_short"}}\n`
+- `ModuleSimBridge` owns the TCP server socket inside the simulator
+
+### JSON event catalogue (grows with each sprint)
+```json
+{"id":"MSG_TICK_1000MS",       "data":{"count":42}}
+{"id":"MSG_SPIFFS_READY",      "data":{}}
+{"id":"MSG_CONFIG_READY",      "data":{"wifi_ssid":"...","cloud_url":"..."}}
+{"id":"MSG_WIFI_EVENT",        "data":{"event":"GOT_IP","ip":"192.168.1.100","rssi":-65}}
+{"id":"MSG_INTERNET_STATUS",   "data":{"connected":true}}
+{"id":"MSG_NOZZLE_STATE",      "data":{"idx":0,"state":"PUMPING","ts":12345}}
+{"id":"MSG_FUEL_PUMPED",       "data":{"idx":0,"vol_l":12.345,"unit_p":1.85,"total_p":22.84}}
+{"id":"MSG_CLOUD_STATUS",      "data":{"event":"PUMPED_SUCCESS"}}
+{"id":"MSG_OTA_EVENT",         "data":{"event":"DOWNLOADING","driver":0,"pct":37}}
+{"id":"SIM_LED",               "data":{"led":"wifi","state":"on"}}
+{"id":"SIM_BUZZER",            "data":{"pattern":"double_beep"}}
+```
+
+---
+
+## What can be tested in the simulator vs hardware-only
+
+| Feature | Simulator testable? | Status |
+|---|---|---|
+| Module lifecycle (init/post_init) | ✅ fully | ✅ Done |
+| Message routing & subscriptions | ✅ fully | ✅ Done |
+| Shared timer service | ✅ fully | ✅ Done |
+| Config load / update | ✅ with SPIFFS stub | ✅ Done |
+| SPIFFS mount + read/write | ✅ POSIX emulation | ✅ Done |
+| WiFi state machine | ✅ with stub | ⬜ Sprint 2 |
+| Internet detection | ✅ with stub | ⬜ Sprint 3 |
+| Fuel state machine (Sanki) | ✅ with injector | ⬜ Sprint 4 |
+| Button debounce | ✅ with keyboard/TCP | ⬜ Sprint 5 |
+| LED patterns | ✅ via weak PAL stub | ⬜ Sprint 6 |
+| Buzzer patterns | ✅ via weak PAL stub | ⬜ Sprint 6 |
+| MQTT broker | ✅ with stub | ⬜ Sprint 7 |
+| Cloud HTTP | ✅ with stub | ⬜ Sprint 8 |
+| OTA cloud-pull | ✅ with stub | ⬜ Sprint 9 |
+| OTA web-upload | ✅ with stub | ⬜ Sprint 9 |
+| SPIFFS / SD read-write | ✅ in-memory map | ⬜ Sprint 10 |
+| Retransmit retry | ✅ with stub | ⬜ Sprint 10 |
+| Real WiFi RF | ❌ hardware only | |
+| Real UART display-tap | ❌ hardware only | |
+| Real flash write (OTA) | ❌ hardware only | |
+| Real SD card | ❌ hardware only | |
+
+---
+
+## Quick-start commands
+
+```bash
+# Configure + build simulator
+cd src/product/ferp-com-simulator
+cmake -B build -S . -DCMAKE_BUILD_TYPE=Debug
+cmake --build build
+
+# Run with Python UI (Mode B)
+./build/ferp-com-simulator &
+python3 ../../../../tools/sim-ui/sim_ui.py --port 9000
+
+# Build ESP-IDF (verify no regressions each sprint)
+cd ../ferp-com-esp32-idf
+idf.py build
+```
+
 
 - **One module per sprint.** Each sprint ends with the simulator running and the
   Python UI showing the correct visual state for that module.

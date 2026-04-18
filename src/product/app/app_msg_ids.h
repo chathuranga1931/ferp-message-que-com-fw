@@ -38,6 +38,15 @@ typedef enum : uint16_t
     MSG_ID_SENSOR_DATA      = 0x0001,   ///< ModuleA -> ModuleB: sensor reading
 
     // ------------------------------------------------------------------
+    // Timer  (0x0100 – 0x010F)
+    // ------------------------------------------------------------------
+    MSG_ID_TIMER_START          = 0x0100,   ///< Any -> ModuleTimer: start a timer slot
+    MSG_ID_TIMER_STOP           = 0x0101,   ///< Any -> ModuleTimer: stop a timer slot
+    MSG_ID_TIMER_START_RESPONSE = 0x0102,   ///< ModuleTimer -> requester: start result (DIRECT)
+    MSG_ID_TIMER_STOP_RESPONSE  = 0x0103,   ///< ModuleTimer -> requester: stop result (DIRECT)
+    MSG_ID_TIMER_ALARM          = 0x0104,   ///< ModuleTimer -> registered module: alarm fired (DIRECT)
+
+    // ------------------------------------------------------------------
     // System / timing  (0x0200 – 0x02FF)
     // ------------------------------------------------------------------
     MSG_ID_TICK_1000MS      = 0x0200,   ///< Ticker -> all: 1 s heartbeat

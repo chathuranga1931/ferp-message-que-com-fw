@@ -1,34 +1,32 @@
 /*
- * hello_world_main.cpp — Firmware entry point
+ * app.cpp — Shared application entry point.
  *
- * Message flow:
+ * This file is compiled into BOTH the simulator and ESP32-IDF targets.
+ * It owns:
+ *   - Device config (defaults, field table, config handle)
+ *   - Shared pool / module / task tables
+ *   - app_init()  — full framework initialisation
+ *   - app_run()   — default empty run hook (weak; override per platform)
+ *   - app_platform_pre_init() — default empty platform hook (weak; override per platform)
+ *   - app_register_extra_module() — injects platform-only modules before init
  *
- *   [Ticker soft-timer]
- *         │  MSG_TICK_1000MS (no payload)
- *         ▼
- *   [ModuleA::on_msg_received]  ←─ sensor_task inbox queue
- *         │  MSG_SENSOR_DATA (module_a_sensor_data_t payload)
- *         ▼
- *   [ModuleB::on_msg_received]  ←─ display_task inbox queue
+ * Platform-specific additions live in the product main.cpp only:
+ *   - app_platform_pre_init() override (chdir, logger init, TCP server, etc.)
+ *   - app_run() override (simulator: nanosleep loop)
+ *   - Extra modules registered via app_register_extra_module()
  *
- * Startup sequence (main only creates tables and calls framework inits):
- *
- *   1. hsys_pool_init()        — configure memory pool classes
- *   2. hsys_module_init()      — register all modules from k_module_table
- *   3. hsys_msg_init()         — initialise the message bus
- *   3b. hsys_msg_table_init()  — register app message descriptors
- *   4. hsys_task_mgr_init()    — pass k_task_table; initialises state + creates all tasks
- *
- * Each task's dispatch loop then runs the three lifecycle phases
- * (pre_init → init → post_init) automatically, with a global
- * barrier ensuring all tasks complete each phase before any task proceeds
- * to the next.  No lifecycle calls are made from main.
+ * Startup sequence inside app_init():
+ *   0. app_platform_pre_init()  — platform hook (chdir, server start, extra modules)
+ *   1. app_config_init()        — load defaults + init config handle
+ *   2. hsys_pool_init()         — memory pool
+ *   3. hsys_module_init()       — shared modules + any registered extras
+ *   4. hsys_msg_init() + table  — message bus + descriptors
+ *   5. hsys_task_mgr_init()     — shared tasks + any registered extras
  */
 
 #include <stdio.h>
 #include <string.h>
 
-/* Own header — ensures extern "C" linkage matches the declaration */
 #include "app.h"
 
 /* HSYS architecture */
@@ -43,6 +41,8 @@
 #include "module_b.h"
 #include "module_sysmon.h"
 #include "module_spiffs.h"
+#include "module_config.h"
+#include "module_timer.h"
 #include "app_msg_table.h"
 #include "app_config.h"
 #include "hsys_config.h"
@@ -53,10 +53,6 @@
 // ============================================================================
 
 app_config_t _app_config;
-
-// ---------------------------------------------------------------------------
-// Default values — applied before any file load
-// ---------------------------------------------------------------------------
 
 void app_config_load_defaults(app_config_t *cfg)
 {
@@ -82,12 +78,6 @@ void app_config_load_defaults(app_config_t *cfg)
     cfg->log_udp_port                = 4444;
 }
 
-// ---------------------------------------------------------------------------
-// Config field table — maps JSON keys to struct fields.
-// Type is config_t from hsys_config.h (name[32], hsys_type_t, void*, uint32_t max_length).
-// Passed to hsys_config_init() → config_handle_t for save/load.
-// ---------------------------------------------------------------------------
-
 static config_t k_config_table[] = {
     { "ssid",          HSYS_TYPE_STRING, _app_config.wifi_ssid,           sizeof(_app_config.wifi_ssid)           },
     { "password",      HSYS_TYPE_STRING, _app_config.wifi_password,       sizeof(_app_config.wifi_password)       },
@@ -112,12 +102,12 @@ static config_t k_config_table[] = {
 
 static config_handle_t g_config_handle;
 
-config_handle_t * app_config_get_handle(void)
+config_handle_t *app_config_get_handle(void)
 {
     return &g_config_handle;
 }
 
-config_t * app_config_get_table(uint16_t * out_size)
+config_t *app_config_get_table(uint16_t *out_size)
 {
     if (out_size) *out_size = (uint16_t)CONFIG_TABLE_SIZE;
     return k_config_table;
@@ -125,23 +115,21 @@ config_t * app_config_get_table(uint16_t * out_size)
 
 // ============================================================================
 // Pool class table
-// Columns: block_size (bytes) | block_count
-// Must be in ascending block_size order.
 // ============================================================================
 
-/*                                        size   count  */
 static const hsys_pool_class_cfg_t k_pool_table[] = {
-    {   4,   8 },   /* tiny flags / heartbeat acks */
-    {  32,  16 },   /* small sensor readings        */
-    {  64,  16 },   /* medium payloads              */
-    { 256,   8 },   /* large payloads               */
-    { 512,   4 },   /* bulk transfers               */
+    {   4,   8 },
+    {  32,  16 },
+    {  64,  16 },
+    { 256,   8 },
+    { 512,   4 },
 };
 #define POOL_TABLE_SIZE  (sizeof(k_pool_table) / sizeof(k_pool_table[0]))
 
 // ============================================================================
-// Module table  — passed to hsys_module_init()
-// All module instances are static singletons; no heap allocation.
+// Shared module table
+// Modules common to ALL product targets.
+// Platform-only modules are injected via app_register_extra_module().
 // ============================================================================
 
 static HsysModule *k_module_table[] = {
@@ -150,27 +138,54 @@ static HsysModule *k_module_table[] = {
     module_b_instance(),
     module_sysmon_instance(),
     ModuleSpiffs::instance(),
+    ModuleConfig::instance(),
+    ModuleTimer::instance(),
 };
 #define MODULE_TABLE_SIZE  (sizeof(k_module_table) / sizeof(k_module_table[0]))
 
 // ============================================================================
-// Task table  — task config + module binding in one place
-// Columns: name | stack(words) | priority | queue_depth | modules[]
+// Shared task table
 // ============================================================================
 
-/*                         name            stack  pri  qdepth  modules[]              */
 static const hsys_task_desc_t k_task_table[] = {
-    { "ticker_task",   1024,  6,  0,  { TICKER_MODULE_ID,   0 } },
-    { "sensor_task",   2048,  5,  0,  { MODULE_A_ID,        0 } },
-    { "display_task",  2048,  4,  0,  { MODULE_B_ID,        0 } },
-    { "sysmon_task",   2048,  3,  0,  { SYSMON_MODULE_ID,   0 } },
-    { "spiffs_task",   2048,  5,  0,  { MODULE_SPIFFS_ID,   0 } },
+    { "ticker_task",  1024,  6,  0,  { TICKER_MODULE_ID,    0 } },
+    { "sensor_task",  2048,  5,  0,  { MODULE_A_ID,         0 } },
+    { "display_task", 2048,  4,  0,  { MODULE_B_ID,         0 } },
+    { "sysmon_task",  2048,  3,  0,  { SYSMON_MODULE_ID,    0 } },
+    { "spiffs_task",  2048,  5,  0,  { MODULE_SPIFFS_ID,    0 } },
+    { "config_task",  4096,  5,  0,  { MODULE_CONFIG_ID,    0 } },
+    { "timer_task",   2048,  4,  0,  { MODULE_TIMER_ID,     0 } },
 };
 #define TASK_TABLE_SIZE  (sizeof(k_task_table) / sizeof(k_task_table[0]))
 
 // ============================================================================
-// app_config_init — load defaults + initialise the config handle
-// Called by app_init() and directly by the simulator's main().
+// Extra module injection (called by app_platform_pre_init)
+// ============================================================================
+
+#define APP_MAX_EXTRA_MODULES  8
+
+static HsysModule              *s_extra_modules[APP_MAX_EXTRA_MODULES] = {};
+static const hsys_task_desc_t  *s_extra_tasks[APP_MAX_EXTRA_MODULES]   = {};
+static uint8_t                  s_extra_count = 0;
+
+extern "C" void app_register_extra_module(HsysModule             *module,
+                                           const hsys_task_desc_t *task_desc)
+{
+    if (!module || !task_desc || s_extra_count >= APP_MAX_EXTRA_MODULES) return;
+    s_extra_modules[s_extra_count] = module;
+    s_extra_tasks[s_extra_count]   = task_desc;
+    s_extra_count++;
+}
+
+// ============================================================================
+// Platform hooks — weak defaults (override in platform main.cpp)
+// ============================================================================
+
+extern "C" __attribute__((weak)) void app_platform_pre_init(void) {}
+extern "C" __attribute__((weak)) void app_run(void) {}
+
+// ============================================================================
+// app_config_init
 // ============================================================================
 
 extern "C" void app_config_init(void)
@@ -181,39 +196,41 @@ extern "C" void app_config_init(void)
 }
 
 // ============================================================================
-// app_main
+// app_init
 // ============================================================================
 
 extern "C" void app_init(void)
 {
-    printf("\n=== HSYS Messaging Architecture Demo ===\n\n");
+    // 0. Platform-specific setup + extra module registration
+    app_platform_pre_init();
 
-    // 0. Device config — load defaults then initialise the hsys_config handle
+    // 1. Config — load defaults and initialise the config handle
     app_config_init();
 
-    // 1. Memory pool
+    // 2. Memory pool
     hsys_pool_init(k_pool_table, POOL_TABLE_SIZE);
 
-    // 2. Module registry — registers all instances in one call
-    hsys_module_init(k_module_table, MODULE_TABLE_SIZE);
+    // 3. Module registry — shared modules + platform extras
+    {
+        HsysModule *all_modules[MODULE_TABLE_SIZE + APP_MAX_EXTRA_MODULES];
+        memcpy(all_modules, k_module_table, sizeof(HsysModule *) * MODULE_TABLE_SIZE);
+        for (uint8_t i = 0; i < s_extra_count; i++)
+            all_modules[MODULE_TABLE_SIZE + i] = s_extra_modules[i];
+        hsys_module_init(all_modules, (uint8_t)(MODULE_TABLE_SIZE + s_extra_count));
+    }
 
-    // 3. Message bus + descriptor table
+    // 4. Message bus + descriptor table
     hsys_msg_init();
-
     APP_MSG_TABLE_INIT;
     hsys_msg_table_init(k_msg_table, k_msg_table_count);
 
-    // 4. Task manager — initialises shared state and creates all tasks.
-    //    Each task's dispatch loop runs the three lifecycle phases
-    //    automatically before entering its message loop.
-    hsys_task_mgr_init(k_task_table, TASK_TABLE_SIZE);
-
-    printf("\n[main] Tasks created. Lifecycle phases running in tasks.\n\n");
-
-    /* app_main returns — FreeRTOS scheduler takes over */
+    // 5. Task manager — shared tasks + platform extras
+    {
+        hsys_task_desc_t all_tasks[TASK_TABLE_SIZE + APP_MAX_EXTRA_MODULES];
+        memcpy(all_tasks, k_task_table, sizeof(hsys_task_desc_t) * TASK_TABLE_SIZE);
+        for (uint8_t i = 0; i < s_extra_count; i++)
+            all_tasks[TASK_TABLE_SIZE + i] = *s_extra_tasks[i];
+        hsys_task_mgr_init(all_tasks, (uint8_t)(TASK_TABLE_SIZE + s_extra_count));
+    }
 }
 
-extern "C" void app_run(void)
-{
-    
-}

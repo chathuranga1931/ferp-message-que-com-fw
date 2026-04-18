@@ -30,7 +30,12 @@
 #include "msg_spiffs_ready.h"           // MsgSpiffsReady         (0x0201)
 #include "msg_config_ready.h"           // MsgConfigReady         (0x0300)
 #include "msg_config_set.h"             // MsgConfigSet           (0x0301)
-#include "msg_config_get.h"         // MsgConfigGet           (0x0302)
+#include "msg_config_get.h"             // MsgConfigGet           (0x0302)
+#include "msg_timer_start.h"            // MsgTimerStart          (0x0100)
+#include "msg_timer_stop.h"             // MsgTimerStop           (0x0101)
+#include "msg_timer_start_response.h"   // MsgTimerStartResponse  (0x0102)
+#include "msg_timer_stop_response.h"    // MsgTimerStopResponse   (0x0103)
+#include "msg_timer_alarm.h"            // MsgTimerAlarm          (0x0104)
 
 // ---------------------------------------------------------------------------
 // Descriptor table macro
@@ -45,6 +50,11 @@
         MsgConfigReady::DESCRIPTOR,                                               \
         MsgConfigSet::DESCRIPTOR,                                                 \
         MsgConfigGet::DESCRIPTOR,                                                 \
+        MsgTimerStart::DESCRIPTOR,                                                \
+        MsgTimerStop::DESCRIPTOR,                                                 \
+        MsgTimerStartResponse::DESCRIPTOR,                                        \
+        MsgTimerStopResponse::DESCRIPTOR,                                         \
+        MsgTimerAlarm::DESCRIPTOR,                                                \
     };                                                                            \
     static const uint16_t k_msg_table_count =                                    \
         (uint16_t)(sizeof(k_msg_table) / sizeof(k_msg_table[0]))

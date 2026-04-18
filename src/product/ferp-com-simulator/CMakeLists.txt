@@ -69,6 +69,11 @@ add_library(app_messages STATIC
     ${APP_MSGS}/msg_config_ready.cpp
     ${APP_MSGS}/msg_config_set.cpp
     ${APP_MSGS}/msg_config_get.cpp
+    ${APP_MSGS}/msg_timer_start.cpp
+    ${APP_MSGS}/msg_timer_stop.cpp
+    ${APP_MSGS}/msg_timer_start_response.cpp
+    ${APP_MSGS}/msg_timer_stop_response.cpp
+    ${APP_MSGS}/msg_timer_alarm.cpp
 )
 target_include_directories(app_messages PUBLIC
     ${APP_MSGS}
@@ -98,6 +103,7 @@ add_library(app_modules STATIC
     ${APP_MODS}/module_sysmon/module_sysmon.cpp
     ${APP_MODS}/module_spiffs/module_spiffs.cpp
     ${APP_MODS}/module_config/module_config.cpp
+    ${APP_MODS}/module_timer/module_timer.cpp
 )
 target_include_directories(app_modules PUBLIC
     ${APP_MODS}
@@ -107,6 +113,7 @@ target_include_directories(app_modules PUBLIC
     ${APP_MODS}/module_sysmon
     ${APP_MODS}/module_spiffs
     ${APP_MODS}/module_config
+    ${APP_MODS}/module_timer
     ${APP_PHR}       # app_spiffs.h
     ${APP}           # app_msg_ids.h, app.h
     ${MIDDLEWARE}    # hsys_config.h
@@ -121,10 +128,18 @@ add_library(app_product STATIC
 )
 target_include_directories(app_product PUBLIC
     ${APP}
+    ${APP_MODS}               # app_msg_table.h
+    ${APP_MODS}/ticker
+    ${APP_MODS}/module_a
+    ${APP_MODS}/module_b
+    ${APP_MODS}/module_sysmon
+    ${APP_MODS}/module_spiffs
     ${APP_MODS}/module_config
+    ${APP_MODS}/module_timer
+    ${APP_MSGS}               # timer_types.h + msg_*.h
+    ${HSYS_OS}                # hsys_soft_timer.h (needed by module_timer.h)
     ${MIDDLEWARE}
     ${PERIPHERAL}
-    ${APP_MODS}/module_spiffs
 )
 target_link_libraries(app_product PRIVATE hsys_framework app_modules app_messages pal_mac)
 
@@ -147,20 +162,9 @@ add_executable(ferp-com-simulator
     main/main.cpp
 )
 target_include_directories(ferp-com-simulator PRIVATE
-    ${HSYS_FW}
-    ${HSYS_OS}
-    ${PAL}
-    ${SIM_BRIDGE}
-    ${APP}
-    ${APP_MSGS}
-    ${APP_MODS}
-    ${APP_MODS}/ticker
-    ${APP_MODS}/module_sysmon
-    ${APP_MODS}/module_spiffs
-    ${APP_MODS}/module_config
-    ${APP_PHR}
-    ${MIDDLEWARE}
-    ${PERIPHERAL}
+    ${SIM_BRIDGE}   # module_sim_bridge.h
+    ${PAL}          # pal_logger.h
+    ${MIDDLEWARE}   # hsys_config.h (transitively needed by app.h)
 )
 target_link_libraries(ferp-com-simulator PRIVATE
     hsys_framework hsys_os pal_mac

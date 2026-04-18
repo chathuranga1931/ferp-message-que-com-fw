@@ -1,7 +1,7 @@
 # Folder Structure
 
 > **Maintenance note**: Update this file whenever a source file is added, moved, or removed.
-> Last updated: 2026-04-18 — renamed `msg_config_get_request` → `msg_config_get` (`MsgConfigGetRequest` → `MsgConfigGet`, `MSG_ID_CONFIG_GET_REQUEST` → `MSG_ID_CONFIG_GET`)
+> Last updated: 2026-04-18 — added `ModuleTimer` + 5 timer messages + `timer_types.h`; added `send()` to `HsysModule`
 
 ---
 
@@ -31,13 +31,18 @@ src/
 │
 ├── app-messages/               # Application-level message definitions (implement IHsysMsg)
 │   ├── IHsysMsg.h              # Base interface for all app messages
-│   ├── msg_config_get_request.h/.cpp
+│   ├── timer_types.h           # timer_result_t enum + timer_meta_t struct (shared by msg + module)
 │   ├── msg_config_get.h/.cpp   # Empty notification — request ModuleConfig to re-publish config
 │   ├── msg_config_ready.h/.cpp # Empty notification — config is ready (no payload)
 │   ├── msg_config_set.h/.cpp   # Set a config field by key/type/value (uses hsys_type_t)
 │   ├── msg_sensor_data.h/.cpp
 │   ├── msg_spiffs_ready.h/.cpp # Published by ModuleSpiffs after SPIFFS mounts
-│   └── msg_tick_1000ms.h/.cpp
+│   ├── msg_tick_1000ms.h/.cpp
+│   ├── msg_timer_alarm.h/.cpp          # DIRECT: ModuleTimer → requester on alarm fire
+│   ├── msg_timer_start.h/.cpp          # NOTIF : any → ModuleTimer to request a timer slot
+│   ├── msg_timer_start_response.h/.cpp # DIRECT: ModuleTimer → requester with start result
+│   ├── msg_timer_stop.h/.cpp           # NOTIF : any → ModuleTimer to cancel a timer slot
+│   └── msg_timer_stop_response.h/.cpp  # DIRECT: ModuleTimer → requester with stop result
 │
 ├── app-modules/                # Application modules (extend HsysModule)
 │   ├── app_msg_ids.h           # ⚠ Duplicate — canonical copy is in src/product/app/
@@ -58,6 +63,9 @@ src/
 │   ├── module_sysmon/
 │   │   ├── module_sysmon.h
 │   │   └── module_sysmon.cpp
+│   ├── module_timer/
+│   │   ├── module_timer.h      # MODULE_TIMER_ID = 7; slot pool (default 20 slots, 100 ms tick)
+│   │   └── module_timer.cpp    # Manages timer slots; sends DIRECT ALARM/responses
 │   └── ticker/
 │       ├── ticker.h
 │       └── ticker.cpp
@@ -69,7 +77,8 @@ src/
 ├── product/                    # Product-specific configurations and builds
 │   ├── app/
 │   │   ├── app.h               # extern "C": app_init, app_run, app_config_get_handle, app_config_get_table
-│   │   ├── app.cpp             # Owns _app_config; defines app_config_get_handle()
+│   │   ├── app.cpp             # Shared init: pool/module/task tables, app_init(), weak app_platform_pre_init() + app_run()
+│   │   ├── app.h               # Public API: app_init, app_run, app_platform_pre_init, app_register_extra_module
 │   │   ├── app_config.h        # app_config_t struct — application-specific config data model
 │   │   ├── app_msg_ids.h       # Canonical message ID enum (MSG_ID_SPIFFS_READY, MSG_ID_CONFIG_READY, …)
 │   │   ├── user_config.h
@@ -79,11 +88,11 @@ src/
 │   │   ├── sdkconfig
 │   │   └── main/
 │   │       ├── CMakeLists.txt
-│   │       └── main.cpp
+│   │       └── main.cpp        # Thin: calls app_init() + while(true){app_run()} only
 │   └── ferp-com-simulator/     # macOS simulator target build
 │       ├── CMakeLists.txt      # Defines all cmake libraries: pal_mac, app_*, sim_bridge, ferp-com-simulator
 │       ├── main/
-│       │   └── main.cpp        # Entry point: chdir to source dir, pool/module/task tables + main()
+│       │   └── main.cpp        # Platform overrides only: app_platform_pre_init (chdir, sim_bridge), app_run (nanosleep), main()
 │       ├── sim_bridge/
 │       │   ├── module_sim_bridge.h   # SIM_BRIDGE_MODULE_ID; TCP socket bridge to Python UI
 │       │   └── module_sim_bridge.cpp
@@ -97,7 +106,7 @@ src/
     │   ├── CMakeLists.txt
     │   ├── hsys_config.h
     │   ├── hsys_fw_config.h
-    │   ├── hsys_module.h/.cpp  # HsysModule base class (pre_init, init, post_init, on_msg_received)
+    │   ├── hsys_module.h/.cpp  # HsysModule base class (pre_init, init, post_init, on_msg_received, publish, send)
     │   ├── hsys_msg.h/.cpp     # Message bus (publish, subscribe)
     │   ├── hsys_pool.h/.cpp    # Memory pool
     │   ├── hsys_task_mgr.h/.cpp
@@ -173,7 +182,7 @@ tools/
 | **Build targets** | `ferp-com-simulator` (macOS CMake), `ferp-com-esp32-idf` (ESP-IDF) |
 | **PAL split** | `pal/esp-idf/` for ESP32, `pal/mac-pc/` for simulator |
 | **Config JSON** | File path: `Configs/DeviceConfigs.json` → resolves to `<cwd>/SPIFFS/spiffs/Configs/DeviceConfigs.json` on Mac |
-| **Module IDs** | Ticker=1, SysMon=2, SimBridge=3, Spiffs=5, Config=6 |
-| **Message IDs** | Defined in `src/product/app/app_msg_ids.h` (canonical) |
+| **Module IDs** | Ticker=1, SysMon=2, SimBridge=3, Spiffs=5, Config=6, Timer=7 |
+| **Message IDs** | Defined in `src/product/app/app_msg_ids.h` (canonical); timer range 0x0100–0x0104 |
 | **Lifecycle** | `pre_init` → `init` (subscribe here) → `post_init` (publish here) |
 | **TAG size** | PAL enforces exactly 8 characters via `_Static_assert` |
