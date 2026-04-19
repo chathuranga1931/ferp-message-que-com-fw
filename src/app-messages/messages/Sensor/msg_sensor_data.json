@@ -1,0 +1,17 @@
+{
+  "msg_id": "0x0001",
+  "fields": [
+    {
+      "name":    "counter",
+      "label":   "Counter",
+      "type":    "uint32",
+      "default": 0
+    },
+    {
+      "name":    "temperature",
+      "label":   "Temperature (°C)",
+      "type":    "float",
+      "default": 25.0
+    }
+  ]
+}

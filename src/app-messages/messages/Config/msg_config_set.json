@@ -1,0 +1,27 @@
+{
+  "msg_id": "0x0301",
+  "fields": [
+    {
+      "name":    "key",
+      "label":   "Key",
+      "type":    "string",
+      "default": ""
+    },
+    {
+      "name":  "type",
+      "label": "Value type",
+      "type":  "enum",
+      "options": [
+        {"label": "uint32", "value": 0},
+        {"label": "string", "value": 1},
+        {"label": "bool",   "value": 2}
+      ]
+    },
+    {
+      "name":    "value",
+      "label":   "Value",
+      "type":    "string",
+      "default": ""
+    }
+  ]
+}

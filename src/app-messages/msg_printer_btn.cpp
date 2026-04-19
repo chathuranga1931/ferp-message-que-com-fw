@@ -50,3 +50,16 @@ MsgPrinterBtn::Payload MsgPrinterBtn::deserialize(const hsys_msg_t &msg)
     }
     return p;
 }
+
+#ifdef FERP_SIMULATOR
+#include <ArduinoJson.h>
+hsys_msg_t *MsgPrinterBtn::from_json(const char *payload_json, hsys_module_id_t sender_id)
+{
+    JsonDocument doc;
+    deserializeJson(doc, payload_json);
+    Payload p{};
+    p.button_id = doc["button_id"].as<uint8_t>();
+    p.status    = static_cast<btn_press_t>(doc["status"].as<uint8_t>());
+    return create(sender_id, p);
+}
+#endif

@@ -34,13 +34,15 @@ import tkinter as tk
 from tkinter import ttk, scrolledtext
 from datetime import datetime
 
-from widgets.led_widget    import LedWidget
-from widgets.nozzle_widget import NozzleWidget
-from widgets.log_widget    import LogWidget
-from widgets.mqtt_widget   import MqttWidget
-from widgets.ota_widget    import OtaWidget
-from widgets.pool_widget   import PoolWidget
-from widgets.config_widget import ConfigWidget
+from widgets.led_widget            import LedWidget
+from widgets.nozzle_widget         import NozzleWidget
+from widgets.log_widget            import LogWidget
+from widgets.mqtt_widget           import MqttWidget
+from widgets.ota_widget            import OtaWidget
+from widgets.pool_widget           import PoolWidget
+from widgets.config_widget         import ConfigWidget
+from widgets.spiffs_widget         import SpiffsWidget
+from widgets.message_inject_widget import MessageInjectWidget
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -181,9 +183,11 @@ class App(tk.Tk):
         # Tab: Nozzles
         nozzle_frame = tk.Frame(notebook, bg="#1e1e2e")
         notebook.add(nozzle_frame, text="Nozzles")
-        self._nozzle_0 = NozzleWidget(nozzle_frame, label="Nozzle 0")
+        self._nozzle_0 = NozzleWidget(nozzle_frame, label="Nozzle 1",
+                                       nozzle_idx=0, send_fn=self._send_cmd)
         self._nozzle_0.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=4, pady=4)
-        self._nozzle_1 = NozzleWidget(nozzle_frame, label="Nozzle 1")
+        self._nozzle_1 = NozzleWidget(nozzle_frame, label="Nozzle 2",
+                                       nozzle_idx=1, send_fn=self._send_cmd)
         self._nozzle_1.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=4, pady=4)
 
         # Tab: MQTT
@@ -210,6 +214,17 @@ class App(tk.Tk):
         self._config = ConfigWidget(config_frame)
         self._config.pack(fill=tk.BOTH, expand=True)
 
+        # Tab: SPIFFS Explorer
+        spiffs_frame = tk.Frame(notebook, bg="#1e1e2e")
+        notebook.add(spiffs_frame, text="SPIFFS")
+        self._spiffs = SpiffsWidget(spiffs_frame)
+        self._spiffs.pack(fill=tk.BOTH, expand=True)
+
+        # Tab: Message Injector
+        msg_frame = tk.Frame(notebook, bg="#1e1e2e")
+        notebook.add(msg_frame, text="Messages")
+        self._msg_inject = MessageInjectWidget(msg_frame, send_fn=self._send_cmd)
+        self._msg_inject.pack(fill=tk.BOTH, expand=True)
     def _build_system_panel(self, parent):
         frame = tk.LabelFrame(
             parent, text="System", bg="#1e1e2e",

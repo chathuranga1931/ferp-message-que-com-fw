@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <link rel="stylesheet" type="text/css" href="styles.css">
+    <style>
+        printer_input {
+            font-family: "Courier New";
+        }
+    </style>
+</head>
+
+<body onload="onLoadBody()">
+    <div class="topnav">
+    
+        <a href="/">Home</a>
+        <a class="active" href="/deviceConfigurations">Device Configurations</a>
+        <!-- <a href="/deviceConfigurations">Device Configurations</a> -->
+        <a href="/update" target="_blank">Update Firmware</a>
+        <a href="/webserial" target="_blank">Web Serial</a>
+        <a href="/contact">Contact</a>
+        <a href="/about">About</a>
+    </div>
+<!-- <h1>WiFi Configuration</h1> -->
+<!-- <br> -->
+
+<h1 class="configListheading">WiFi Configurations</h1>
+<ul>
+    <li class="configListInputLine">
+        <label for="n_ssid">SSID :</label>
+        <input size="75" type="text" id="id_ssid" name="n_ssid" >
+    </li>
+    <li class="configListInputLine">
+        <label for="n_password">Password: </label>
+        <input size="75" type="password" id="id_password" name="n_password">
+    </li>
+    <li class="configListInputLine">
+        <label for="n_name_l1">Fuel Center Name Line 1: </label>
+        <input size="35" type="text" id="id_name_l1" name="n_name_l1" style="font-family: 'Courier New'">
+    </li>
+    <li class="configListInputLine">
+        <label for="n_name_l2">Fuel Center Name Line 2: </label>
+        <input size="35" type="text" id="id_name_l2" name="n_name_l2" style="font-family: 'Courier New'">
+    </li>
+    <li class="configListInputLine">
+        <label for="n_name_l3">Fuel Center Name Line 3: </label>
+        <input size="35" type="text" id="id_name_l3" name="n_name_l3" style="font-family: 'Courier New'">
+    </li>
+    <li class="configListInputLine">
+        <label for="n_add_l1">Fuel Center Address Line 1: </label>
+        <input size="35" type="text" id="id_add_l1" name="n_add_l1" style="font-family: 'Courier New'">
+    </li>
+    <li class="configListInputLine">
+        <label for="n_add_l2">Fuel Center Address Line 2: </label>
+        <input size="35" type="text" id="id_add_l2" name="n_add_l2" style="font-family: 'Courier New'">
+    </li>
+    <li class="configListInputLine">
+        <label for="n_add_l3">Fuel Center Address Line 3: </label>
+        <input size="35" type="text" id="id_add_l3" name="n_add_l3" style="font-family: 'Courier New'">
+    </li>
+    <li class="configListInputLine">
+        <label for="n_tele">Telephone and Fax: </label>
+        <input size="35" type="text" id="id_tele" name="n_tele" style="font-family: 'Courier New'">
+    </li>
+    <li class="configListInputLine">
+        <label for="n_thank_l1">Thank you message Line 1: </label>
+        <input size="35" type="text" id="id_thank_l1" name="n_thank_l1" style="font-family: 'Courier New'">
+    </li>
+    <li class="configListInputLine">
+        <label for="n_thank_l2">Thank you message Line 2: </label>
+        <input size="35" type="text" id="id_thank_l2" name="n_thank_l2" style="font-family: 'Courier New'">
+    </li>
+    <li class="configListInputLine">
+        <label for="n_end_lines">No of lines after thank you message: </label>
+        <input size="35" type="number" id="id_end_lines" name="n_end_lines">
+    </li>
+    <li class="configListInputLine">
+        <label for="n_baud_rate">Printer Baudrate: </label>
+        <input size="35" type="number" id="id_baud_rate" name="n_baud_rate">
+    </li>
+    <li class="configListInputLine">
+        <label for="n_is_printtime_enabled">Enable Print Time: </label>
+        <input type="checkbox" id="id_is_printtime_enabled" name="n_is_printtime_enabled" value="Bike">
+    </li>
+</ul>
+<!-- <h1 class="configListheading">Cloud Configurations</h1>
+<ul>
+    <li class="configListInputLine">
+        <label for="n_cloud_URL">URL :</label>
+        <input size="110" type="text" id="id_cloud_url" name="n_cloud_URL">
+    </li>
+    <li class="configListInputLine">
+        <label for="n_cloud_secret">Secret: </label>
+        <input size="75" type="text" id="id_cloud_secret" name="n_cloud_secret">
+    </li>
+    <li class="configListInputLine">
+        <label for="n_uuid">UUID: </label>
+        <input size="75" type="text" id="id_uuid" name="n_uuid">
+    </li>
+</ul>
+<h1 class="configListheading">Device Configurations</h1>
+<ul>
+    <li class="configListInputLine" >
+        <label for="n_nozzel_id">Nozzel ID: </label>
+        <input size="10" type="text" id="id_nozzel_id" name="n_nozzel_id">
+    </li>
+    <li class="configListInputLine">
+        <label for="n_fuel_type">Fuel Type: </label>
+        <input size="10" type="text" id="id_fuel_type" name="n_fuel_type">
+    </li>
+</ul>
+<h1 class="configListheading">Printer Configurations</h1>
+<ul>
+    <li class="configListInputLine">
+        <label for="n_printer_URL">URL :</label>
+        <input size="110" type="text" id="id_printer_URL" name="n_printer_URL">
+    </li>
+</ul>
+<br> -->
+
+<button class="button button2" onclick="saveConfigurationPost()">Save Configuration</button>
+
+<script>
+    function saveConfiguration() {
+
+        //alert("Content Saving...");
+        var xhttp = new XMLHttpRequest();
+        let ssid = document.getElementById("id_ssid").value;
+        let password = document.getElementById("id_password").value;
+        xhttp.onreadystatechange = function() {
+            if (this.readyState == 4 && this.status == 200) {
+                // alert(this.responseText);
+            }
+        };
+        xhttp.open("GET", "setDeviceConfigurations?ssid="+ ssid 
+            + "&password=" + password, true);
+        xhttp.send();
+    }
+
+    function saveConfigurationPost() {
+
+        //alert("Content Saving...");
+        var xhttp = new XMLHttpRequest();
+        let ssid = document.getElementById("id_ssid").value;
+        let password = document.getElementById("id_password").value;
+        let print_name_l1 = document.getElementById("id_name_l1").value;
+        let print_name_l2 = document.getElementById("id_name_l2").value;
+        let print_name_l3 = document.getElementById("id_name_l3").value;
+        let print_add_l1 = document.getElementById("id_add_l1").value;
+        let print_add_l2 = document.getElementById("id_add_l2").value;
+        let print_add_l3 = document.getElementById("id_add_l3").value;
+        let print_tele = document.getElementById("id_tele").value;
+        let print_thank_l1 = document.getElementById("id_thank_l1").value;
+        let print_thank_l2 = document.getElementById("id_thank_l2").value;
+        let print_end_lines = document.getElementById("id_end_lines").value;
+        let print_baud_rate = document.getElementById("id_baud_rate").value;
+        let print_enable_print_time = document.getElementById("id_is_printtime_enabled").checked;
+        var data = {
+            ssid: ssid,
+            password: password,
+            print_name_l1: print_name_l1,
+            print_name_l2: print_name_l2,
+            print_name_l3: print_name_l3,
+            print_add_l1: print_add_l1,
+            print_add_l2: print_add_l2,
+            print_add_l3: print_add_l3,
+            print_tele: print_tele,
+            print_thank_l1: print_thank_l1,
+            print_thank_l2: print_thank_l2,
+            print_end_lines: print_end_lines,
+            print_baud_rate: print_baud_rate,
+            print_enable_print_time: print_enable_print_time
+        };
+        // alert(JSON.stringify(data));
+        xhttp.open("POST", "setDeviceConfigurationsPost", true);
+        xhttp.setRequestHeader('Content-type', 'application/json');
+        xhttp.onreadystatechange = function() {
+            if (this.readyState == 4 && this.status == 200) {
+                alert("OK");
+            }
+        };
+        xhttp.send(JSON.stringify(data));
+    }
+
+    /*
+     * Neet to get the current settings from the device 
+     */
+    function onLoadBody(){
+
+        var xhttp = new XMLHttpRequest();
+        xhttp.onreadystatechange = function() {
+            if (this.readyState == 4 && this.status == 200) {
+
+                var obj = JSON.parse(this.responseText);
+
+                let ssid = obj.ssid;
+                let password = obj.password;
+
+                document.getElementById("id_ssid").value = ssid;
+                document.getElementById("id_password").value = password;
+                document.getElementById("id_name_l1").value = obj.print_name_l1;
+                document.getElementById("id_name_l2").value = obj.print_name_l2;
+                document.getElementById("id_name_l3").value = obj.print_name_l3;
+                document.getElementById("id_add_l1").value = obj.print_add_l1;
+                document.getElementById("id_add_l2").value = obj.print_add_l2;
+                document.getElementById("id_add_l3").value = obj.print_add_l3;
+                document.getElementById("id_tele").value = obj.print_tele;
+                document.getElementById("id_thank_l1").value = obj.print_thank_l1;
+                document.getElementById("id_thank_l2").value = obj.print_thank_l2;
+                document.getElementById("id_end_lines").value = obj.print_end_lines;
+                document.getElementById("id_baud_rate").value = obj.print_baud_rate;
+                document.getElementById("id_is_printtime_enabled").checked = obj.print_enable_print_time;
+            }
+        };
+        xhttp.open("GET", "getDeviceConfigurations", true);
+        xhttp.send();
+    }
+</script>
+
+
+<footer>
+    <p style="font-size: 16px;">SMART AUTOMATION SOLUTIONS (PVT) LTD.<br>
+    <p style="font-size: 13px;">131/11, Dhammananda Mw, Templers Road, Mount Lavinia.<br>
+    <a href="mailto:chathurangadissa@gmail.com">chathurangadissa@gmail.com</a></p>
+</footer>
+
+</body>
+</html>

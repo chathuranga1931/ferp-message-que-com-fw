@@ -84,6 +84,11 @@ public:
     // -----------------------------------------------------------------------
 
     static Payload deserialize(const hsys_msg_t & /*msg*/) { return {}; }
+
+#ifdef FERP_SIMULATOR
+    /** Simulator only — no payload; just creates and returns the message. */
+    static hsys_msg_t *from_json(const char *payload_json, hsys_module_id_t sender_id);
+#endif
 };
 
 #endif // MSG_TICK_1000MS_H

@@ -1,0 +1,22 @@
+{
+  "msg_id": "0x0901",
+  "fields": [
+    {
+      "name":    "button_id",
+      "label":   "Button ID",
+      "type":    "uint8",
+      "min":     1,
+      "max":     2,
+      "default": 1
+    },
+    {
+      "name":  "status",
+      "label": "Status",
+      "type":  "enum",
+      "options": [
+        {"label": "short_press", "value": 0},
+        {"label": "long_press",  "value": 1}
+      ]
+    }
+  ]
+}

@@ -47,6 +47,7 @@
 #include "module_leds.h"
 #include "module_default_btn.h"
 #include "module_print_btn.h"
+#include "module_fuel.h"
 #include "app_msg_table.h"
 #include "app_config.h"
 #include "hsys_config.h"
@@ -111,6 +112,11 @@ config_handle_t *app_config_get_handle(void)
     return &g_config_handle;
 }
 
+const app_config_t *app_config_get(void)
+{
+    return &_app_config;
+}
+
 config_t *app_config_get_table(uint16_t *out_size)
 {
     if (out_size) *out_size = (uint16_t)CONFIG_TABLE_SIZE;
@@ -147,6 +153,7 @@ static HsysModule *k_module_table[] = {
     ModuleLeds::instance(),
     ModuleDefaultBtn::instance(),
     ModulePrintBtn::instance(),
+    ModuleFuel::instance(),
 };
 #define MODULE_TABLE_SIZE  (sizeof(k_module_table) / sizeof(k_module_table[0]))
 
@@ -165,6 +172,7 @@ static const hsys_task_desc_t k_task_table[] = {
     { "leds_task",    1024,  4,  0,  { MODULE_LEDS_ID,           0 } },
     { "defbtn_task",  1024,  5,  0,  { MODULE_DEFAULT_BTN_ID,    0 } },
     { "prnbtn_task",  1024,  5,  0,  { MODULE_PRINT_BTN_ID,      0 } },
+    { "fuel_task",    4096,  5,  0,  { MODULE_FUEL_ID,            0 } },
 };
 #define TASK_TABLE_SIZE  (sizeof(k_task_table) / sizeof(k_task_table[0]))
 

@@ -23,3 +23,10 @@ hsys_msg_t *MsgTick1000ms::create(hsys_module_id_t sender_id,
     }
     return msg;  // nothing to serialize — descriptor payload_size == 0
 }
+
+#ifdef FERP_SIMULATOR
+hsys_msg_t *MsgTick1000ms::from_json(const char * /*payload_json*/, hsys_module_id_t sender_id)
+{
+    return create(sender_id, Payload{});
+}
+#endif

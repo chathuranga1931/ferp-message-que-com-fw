@@ -87,6 +87,14 @@ typedef struct hsys_msg {
 // ---------------------------------------------------------------------------
 
 /**
+ * @brief  Reserved internal message ID used by the wake mechanism.
+ *         Wake tokens bypass the descriptor table and carry no payload.
+ *         Modules must not subscribe to or publish this ID directly;
+ *         use HsysModule::wake() / on_wake() instead.
+ */
+#define HSYS_MSG_ID_WAKE  ((hsys_msg_id_t)0xFFFEu)
+
+/**
  * @brief  Initialise the message bus.
  *         Call once at startup before any modules are registered.
  */
@@ -166,6 +174,23 @@ hsys_status_t hsys_msg_send(hsys_msg_t *msg, uint32_t timeout_ms);
 
 hsys_status_t hsys_msg_publish_from_isr(hsys_msg_t *msg,
                                          bool *higher_priority_woken);
+
+// ---------------------------------------------------------------------------
+// Wake token  (internal — used by HsysModule::wake())
+// ---------------------------------------------------------------------------
+
+/**
+ * @brief  Allocate a minimal wake token for the given module.
+ *         Does NOT require a registered descriptor.
+ *         Call hsys_task_mgr_wake_module() rather than this directly.
+ */
+hsys_msg_t *hsys_msg_create_wake(hsys_module_id_t module_id);
+
+/**
+ * @brief  ISR-safe wake token allocator.
+ *         Uses the same header pool but with ISR-safe critical sections.
+ */
+hsys_msg_t *hsys_msg_create_wake_from_isr(hsys_module_id_t module_id);
 
 // ---------------------------------------------------------------------------
 // Subscription query

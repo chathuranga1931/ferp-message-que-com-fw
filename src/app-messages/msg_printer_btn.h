@@ -102,6 +102,11 @@ public:
 
     static Payload deserialize(const hsys_msg_t &msg);
 
+#ifdef FERP_SIMULATOR
+    /** Simulator only — parse a flat JSON payload and return a ready-to-publish message. */
+    static hsys_msg_t *from_json(const char *payload_json, hsys_module_id_t sender_id);
+#endif
+
 private:
     Payload m_payload;
 };

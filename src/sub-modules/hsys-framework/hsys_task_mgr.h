@@ -108,6 +108,34 @@ hsys_status_t hsys_task_mgr_enqueue_ptr(hsys_msg_t *msg,
 hsys_status_t hsys_task_mgr_enqueue_ptr_from_isr(hsys_msg_t *msg,
                                                    bool *higher_priority_woken);
 
+// ---------------------------------------------------------------------------
+// Wake mechanism
+// ---------------------------------------------------------------------------
+
+/**
+ * @brief  Wake a specific module on its own task thread.
+ *         Enqueues a lightweight wake token into the module's task queue.
+ *         The dispatch loop will call module->on_wake() instead of
+ *         on_msg_received() when it dequeues the token.
+ *
+ *         Safe to call from any thread context (NOT from an ISR —
+ *         use hsys_task_mgr_wake_module_from_isr() for that).
+ *
+ * @param  module_id  Module to wake.
+ * @return HSYS_OK, HSYS_ERR_NOT_FOUND, HSYS_ERR_QUEUE_FULL, or HSYS_ERR_NO_MEM.
+ */
+hsys_status_t hsys_task_mgr_wake_module(hsys_module_id_t module_id);
+
+/**
+ * @brief  ISR-safe variant of hsys_task_mgr_wake_module().
+ *
+ * @param  module_id              Module to wake.
+ * @param  higher_priority_woken  Set if a higher-priority task was unblocked.
+ * @return HSYS_OK or HSYS_ERR_QUEUE_FULL.
+ */
+hsys_status_t hsys_task_mgr_wake_module_from_isr(hsys_module_id_t module_id,
+                                                   bool *higher_priority_woken);
+
 #ifdef __cplusplus
 }
 #endif

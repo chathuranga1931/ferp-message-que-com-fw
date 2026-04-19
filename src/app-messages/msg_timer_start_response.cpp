@@ -36,3 +36,16 @@ MsgTimerStartResponse::Payload MsgTimerStartResponse::deserialize(const hsys_msg
     }
     return p;
 }
+
+#ifdef FERP_SIMULATOR
+#include <ArduinoJson.h>
+hsys_msg_t *MsgTimerStartResponse::from_json(const char *payload_json, hsys_module_id_t sender_id)
+{
+    JsonDocument doc;
+    deserializeJson(doc, payload_json);
+    Payload p{};
+    p.source_module_id = doc["source_module_id"].as<uint16_t>();
+    p.result           = static_cast<timer_result_t>(doc["result"].as<uint8_t>());
+    return create(sender_id, p);
+}
+#endif

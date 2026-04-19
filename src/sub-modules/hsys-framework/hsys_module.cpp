@@ -11,6 +11,7 @@
 // complete phase N before any task starts phase N+1.
 
 #include "hsys_module.h"
+#include "hsys_task_mgr.h"
 #include "hsys_mutex.h"
 #include "pal_logger.h"
 
@@ -43,6 +44,19 @@ HsysModule::HsysModule(hsys_module_id_t module_id, const char *name)
 hsys_status_t HsysModule::subscribe(hsys_msg_id_t msg_id)
 {
     return hsys_msg_subscribe(msg_id, m_id);
+}
+
+void HsysModule::wake()
+{
+    hsys_status_t st = hsys_task_mgr_wake_module(m_id);
+    if (st != HSYS_OK) {
+        log_error("wake() failed for module %u (st=%d)", (unsigned)m_id, (int)st);
+    }
+}
+
+void HsysModule::wake_from_isr(bool *higher_priority_woken)
+{
+    hsys_task_mgr_wake_module_from_isr(m_id, higher_priority_woken);
 }
 
 hsys_msg_t *HsysModule::create_msg(hsys_msg_id_t msg_id)

@@ -52,3 +52,16 @@ MsgSensorData::Payload MsgSensorData::deserialize(const hsys_msg_t &msg)
     }
     return p;
 }
+
+#ifdef FERP_SIMULATOR
+#include <ArduinoJson.h>
+hsys_msg_t *MsgSensorData::from_json(const char *payload_json, hsys_module_id_t sender_id)
+{
+    JsonDocument doc;
+    deserializeJson(doc, payload_json);
+    Payload p{};
+    p.counter     = doc["counter"].as<uint32_t>();
+    p.temperature = doc["temperature"].as<float>();
+    return create(sender_id, p);
+}
+#endif

@@ -87,6 +87,22 @@ public:
      */
     virtual void on_msg_received(const hsys_msg_t &msg) = 0;
 
+    /**
+     * Wake callback — called on the module's own task thread when wake()
+     * (or wake_from_isr()) has been requested.
+     *
+     * Override in subclasses that need an ISR/callback-driven processing
+     * loop (e.g. draining a data queue filled from an interrupt or a
+     * foreign-thread callback).  The default implementation is a no-op.
+     *
+     * Rules:
+     *   • Called exclusively on the module's own task thread — no extra
+     *     locking is needed for module-local state.
+     *   • Must be non-blocking (same constraint as on_msg_received).
+     *   • wake() / wake_from_isr() may be called from any thread or ISR.
+     */
+    virtual void on_wake() {}
+
     // -----------------------------------------------------------------------
     // Internal dispatch bridge (called by the framework, not by subclasses)
     // -----------------------------------------------------------------------
@@ -102,6 +118,24 @@ protected:
      * Typically called from init().
      */
     hsys_status_t subscribe(hsys_msg_id_t msg_id);
+
+    /**
+     * Request that on_wake() be called on this module's task thread.
+     * Safe to call from any thread context (NOT from an ISR — use
+     * wake_from_isr() for that).
+     *
+     * Typical usage: a TCP callback / foreign thread fills a data queue
+     * and then calls wake() so the module drains it on its own thread.
+     */
+    void wake();
+
+    /**
+     * ISR-safe variant of wake().
+     * @param higher_priority_woken  Set to true if a higher-priority task
+     *                               was unblocked; call hsys_yield_from_isr()
+     *                               after the ISR exits if this is true.
+     */
+    void wake_from_isr(bool *higher_priority_woken = nullptr);
 
     /**
      * Create a raw message instance via the framework factory.

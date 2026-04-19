@@ -58,3 +58,49 @@ uint64_t pal_time_get_us_from_isr(void)
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return (uint64_t)ts.tv_sec * 1000000ULL + (uint64_t)(ts.tv_nsec / 1000ULL);
 }
+
+uint64_t pal_time_get_sec(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)ts.tv_sec;
+}
+
+bool pal_time_is_timeout(uint64_t start_ms, uint32_t timeout_ms)
+{
+    return (pal_time_get_ms() - start_ms) >= (uint64_t)timeout_ms;
+}
+
+uint64_t pal_time_elapsed_ms(uint64_t start_ms)
+{
+    return pal_time_get_ms() - start_ms;
+}
+
+int32_t pal_time_get_epoch_time(time_t *epoch_time)
+{
+    if (epoch_time == nullptr) return -1;
+    *epoch_time = time(nullptr);
+    return 0;
+}
+
+int32_t pal_time_set_epoch_time(time_t /*epoch_time*/)
+{
+    // macOS: setting system time requires root — silently ignore in simulator
+    return 0;
+}
+
+void pal_time_delay_ms(uint32_t ms)
+{
+    struct timespec ts;
+    ts.tv_sec  = ms / 1000;
+    ts.tv_nsec = (ms % 1000) * 1000000L;
+    nanosleep(&ts, nullptr);
+}
+
+void pal_time_delay_us(uint32_t us)
+{
+    struct timespec ts;
+    ts.tv_sec  = us / 1000000;
+    ts.tv_nsec = (us % 1000000) * 1000L;
+    nanosleep(&ts, nullptr);
+}

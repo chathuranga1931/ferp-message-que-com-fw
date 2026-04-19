@@ -16,3 +16,10 @@ hsys_msg_t *MsgSpiffsReady::create(hsys_module_id_t sender_id, const Payload &)
     }
     return msg;
 }
+
+#ifdef FERP_SIMULATOR
+hsys_msg_t *MsgSpiffsReady::from_json(const char * /*payload_json*/, hsys_module_id_t sender_id)
+{
+    return create(sender_id);
+}
+#endif

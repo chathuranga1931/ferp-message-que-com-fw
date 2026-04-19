@@ -1,0 +1,18 @@
+{
+  "_comment": "Module registry for the ferp-com Simulator UI.\n\nAdd an entry here whenever a new HsysModule is created.\nThe UI loads this file to populate the Source / Destination dropdowns\nin the Messages tab.\n\n'id' must match the MODULE_ID / #define used in the C++ source.\n\nSpecial entries (always present, do not remove):\n  id=0   BROADCAST  — message is delivered to all subscribed modules\n  id=255 UNKNOWN    — placeholder when the module is not yet assigned an ID",
+
+  "modules": [
+    {"id":   0, "name": "BROADCAST"},
+    {"id":   1, "name": "ModuleA"},
+    {"id":   2, "name": "ModuleB"},
+    {"id":   3, "name": "Ticker"},
+    {"id":   4, "name": "ModuleSysmon"},
+    {"id":   5, "name": "ModuleSpiffs"},
+    {"id":   6, "name": "ModuleConfig"},
+    {"id":   7, "name": "ModuleTimer"},
+    {"id":   8, "name": "ModuleLeds"},
+    {"id":   9, "name": "ModuleDefaultBtn"},
+    {"id":  10, "name": "ModulePrintBtn"},
+    {"id":  20, "name": "ModuleSimBridge"}
+  ]
+}

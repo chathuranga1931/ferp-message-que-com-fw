@@ -97,3 +97,43 @@ MsgConfigSet::Payload MsgConfigSet::deserialize(const hsys_msg_t &msg)
     }
     return p;
 }
+
+#ifdef FERP_SIMULATOR
+#include <ArduinoJson.h>
+hsys_msg_t *MsgConfigSet::from_json(const char *payload_json, hsys_module_id_t sender_id)
+{
+    JsonDocument doc;
+    deserializeJson(doc, payload_json);
+    Payload p{};
+
+    // key
+    const char *key = doc["key"].as<const char *>();
+    if (key) {
+        strncpy(p.key, key, KEY_MAX_LEN - 1);
+        p.key[KEY_MAX_LEN - 1] = '\0';
+    }
+
+    // type: 0=UINT32, 1=STRING, 2=BOOL  (matches hsys_type_t enum)
+    p.type = static_cast<hsys_type_t>(doc["type"].as<uint8_t>());
+
+    // value — always arrives as a string from the UI
+    const char *val = doc["value"].as<const char *>();
+    if (val) {
+        switch (p.type) {
+            case HSYS_TYPE_UINT32:
+                p.value.as_uint32 = static_cast<uint32_t>(strtoul(val, nullptr, 0));
+                break;
+            case HSYS_TYPE_BOOL:
+                p.value.as_bool = (strcmp(val, "true") == 0 || strcmp(val, "1") == 0);
+                break;
+            case HSYS_TYPE_STRING:
+            default:
+                strncpy(p.value.as_str, val, STR_MAX_LEN - 1);
+                p.value.as_str[STR_MAX_LEN - 1] = '\0';
+                break;
+        }
+    }
+
+    return create(sender_id, p);
+}
+#endif

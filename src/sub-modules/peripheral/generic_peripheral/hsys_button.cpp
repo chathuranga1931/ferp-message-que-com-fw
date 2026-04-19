@@ -49,14 +49,18 @@ bool hsys_button_init(hsys_button_t* button,
     button->long_press_duration_ms = long_press_duration_ms;
     button->press_start_time = 0;
     button->is_pressed = PUSH_BUTTON_STATE_UNKNOWN;
-    button->mutex = hsys_mutex_create();  
-    // button->id = button_count;
+    button->mutex = hsys_mutex_create();
+    if (!button->mutex) {
+        LOG_MSG_ERROR(LOG_EN, "hsys_button_init: mutex create failed (addr=%p)", (void*)button);
+        return false;
+    }
     button->timer = hsys_timer_create("Button Timer", 25, true, (void *)button, hsys_button_timer_callback);
+    if (!button->timer) {
+        LOG_MSG_ERROR(LOG_EN, "hsys_button_init: timer create failed (addr=%p)", (void*)button);
+        return false;
+    }
 
-    // hsys_buttons[button_count++] = button;
-    // LOG_MSG_DEBUG(LOG_EN, "Creating button " + std::to_string((uint32_t)button) + " " + std::to_string((uint32_t)button->timer));
-    
-    return button->timer != NULL;
+    return true;
 }
 
 void hsys_button_press_event(void * arg, uint64_t timestamp_us) {

@@ -65,8 +65,11 @@ void ModuleTimer::init()
 
 // ── Soft-timer callback (runs in a background thread) ─────────────────────────
 
-void ModuleTimer::_tick_cb(void *user_data)
+void ModuleTimer::_tick_cb(void *timer_handle)
 {
+    // hsys_soft_timer passes the timer handle (FreeRTOS convention);
+    // retrieve the actual user_data (ModuleTimer*) via the PAL accessor.
+    void *user_data = hsys_timer_get_userdata(timer_handle);
     static_cast<ModuleTimer *>(user_data)->_on_tick();
 }
 

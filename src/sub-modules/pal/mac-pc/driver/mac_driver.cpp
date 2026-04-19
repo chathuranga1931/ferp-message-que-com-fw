@@ -25,6 +25,7 @@
  */
 
 #include "mac_driver.h"
+#include "sim_msg_inject.h"
 #include "pal_time.h"
 #include "pal_logger.h"
 
@@ -41,7 +42,7 @@
 #include <errno.h>
 
 #define __TAG__      "MAC_DRV "
-#define MAC_DRV_LOG  true
+#define MAC_DRV_LOG  false
 
 /* Avoid colliding with cmath log() — use MLOG / MLOGE as local shorthands */
 #define MLOG(fmt, ...)  LOG_MSG_INFO( MAC_DRV_LOG, fmt, ##__VA_ARGS__)
@@ -49,6 +50,15 @@
 
 /* ── Forward declaration — implemented in pal_mac_gpio.cpp ─────────────────── */
 extern "C" void pal_gpio_sim_inject_input(int pin, int level);
+
+/* ── Forward declaration — implemented in mac_com_distap.cpp ──────────────── */
+extern "C" void mac_distap_inject_frame(uint8_t   nozzle_idx,
+                                         int32_t   display_type_int,
+                                         uint32_t  flags_raw,
+                                         uint32_t  error_raw,
+                                         uint32_t  unit_pricex100,
+                                         uint32_t  total_pricex100,
+                                         uint32_t  vol_lx1000);
 
 /* ── Internal state ──────────────────────────────────────────────────────────*/
 static int          s_server_fd = -1;
@@ -128,6 +138,50 @@ static void _read_loop(int client_fd)
             {
                 MLOG("UI cmd: %s", buf);
                 /* TODO sprint 9: parse driver index, call pal_mac_ota inject */
+            }
+            /* ── SIM_MSG_INJECT ──────────────────────────────────────────── */
+            else if (strstr(buf, "\"SIM_MSG_INJECT\""))
+            {
+                sim_msg_inject_handle(buf);
+            }
+            /* ── SIM_NOZZLE_INPUT ────────────────────────────────────────── */
+            else if (strstr(buf, "\"SIM_NOZZLE_INPUT\""))
+            {
+                MLOG("UI cmd: %s", buf);
+                // {"cmd":"SIM_NOZZLE_INPUT","nozzle":N,"active":true/false}
+                // Map nozzle 0→pin 32, nozzle 1→pin 33 (matches k_btn_map)
+                int nozzle = 0;
+                const char *nk = strstr(buf, "\"nozzle\"");
+                if (nk) nozzle = (int)strtol(nk + 8, nullptr, 10);
+                int pin   = (nozzle == 0) ? 32 : 33;
+                int level = strstr(buf, "true") ? 1 : 0;
+                pal_gpio_sim_inject_input(pin, level);
+            }
+            /* ── SIM_DISTAP_FRAME ────────────────────────────────────────── */
+            else if (strstr(buf, "\"SIM_DISTAP_FRAME\""))
+            {
+                MLOG("UI cmd: %s", buf);
+                // {"cmd":"SIM_DISTAP_FRAME","nozzle":N,"display_type":T,
+                //  "flags":F,"error":E,"unit_price":U,"total_price":P,"volume_l":V}
+
+                auto _parse_uint = [](const char *haystack, const char *key) -> uint32_t {
+                    const char *p = strstr(haystack, key);
+                    if (!p) return 0;
+                    p += strlen(key);
+                    while (*p == '"' || *p == ':' || *p == ' ') p++;
+                    return (uint32_t)strtoul(p, nullptr, 10);
+                };
+
+                uint8_t  nozzle      = (uint8_t)_parse_uint(buf, "\"nozzle\"");
+                int32_t  dtype       = (int32_t)_parse_uint(buf, "\"display_type\"");
+                uint32_t flags       = _parse_uint(buf, "\"flags\"");
+                uint32_t error       = _parse_uint(buf, "\"error\"");
+                uint32_t unit_price  = _parse_uint(buf, "\"unit_price\"");
+                uint32_t total_price = _parse_uint(buf, "\"total_price\"");
+                uint32_t volume_l    = _parse_uint(buf, "\"volume_l\"");
+
+                mac_distap_inject_frame(nozzle, dtype, flags, error,
+                                         unit_price, total_price, volume_l);
             }
         }
         else if (pos < sizeof(buf) - 1)

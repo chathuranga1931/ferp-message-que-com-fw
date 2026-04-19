@@ -19,6 +19,8 @@
 #include "pal_time.h"
 #include "msg_default_btn.h"
 #include "msg_printer_btn.h"
+#include "msg_nozzle_state.h"
+#include "msg_fuel_pumped.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -36,6 +38,8 @@ void ModuleSimBridge::init()
     subscribe(MSG_ID_SPIFFS_READY);
     subscribe(MSG_ID_DEFAULT_BTN);
     subscribe(MSG_ID_PRINTER_BTN);
+    subscribe(MSG_ID_NOZZLE_STATE);
+    subscribe(MSG_ID_FUEL_PUMPED);
 
     log("init");
 }
@@ -84,6 +88,29 @@ void ModuleSimBridge::on_msg_received(const hsys_msg_t &msg)
 
         // ── Add cases here as each sprint adds message types ──────────────
         //
+        case MSG_ID_NOZZLE_STATE: {
+            auto p = MsgNozzleState::deserialize(msg);
+            snprintf(data, sizeof(data),
+                     "{\"idx\":%u,\"state\":\"%s\"}",
+                     (unsigned)p.nozzle_idx,
+                     nozzle_state_str(p.state));
+            _send_json("MSG_NOZZLE_STATE", data);
+            break;
+        }
+
+        case MSG_ID_FUEL_PUMPED: {
+            auto p = MsgFuelPumped::deserialize(msg);
+            snprintf(data, sizeof(data),
+                     "{\"idx\":%u,\"vol_lx1000\":%lu,"
+                     "\"unit_pricex100\":%lu,\"total_pricex100\":%lu}",
+                     (unsigned)p.nozzle_idx,
+                     (unsigned long)p.vol_lx1000,
+                     (unsigned long)p.unit_pricex100,
+                     (unsigned long)p.total_pricex100);
+            _send_json("MSG_FUEL_PUMPED", data);
+            break;
+        }
+
         // case MSG_ID_WIFI_EVENT: {
         //     auto *m = hsys_msg_cast<MsgWifiEvent>(msg);
         //     snprintf(data, sizeof(data),

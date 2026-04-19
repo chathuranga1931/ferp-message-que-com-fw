@@ -8,6 +8,13 @@
 //
 // Set a flag to `false` to silence that file's log output at compile time
 // (the compiler will dead-strip the LOG_MSG_* calls entirely).
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Framework tunables (override defaults from hsys_fw_config.h)
+// ─────────────────────────────────────────────────────────────────────────────
+#ifndef HSYS_MAX_TASKS
+#define HSYS_MAX_TASKS      12   ///< enough for all current + near-future tasks
+#endif
 //
 // Log enable flags — one per .cpp file that uses LOG_MSG_*
 // ─────────────────────────────────────────────────────────────────────────────

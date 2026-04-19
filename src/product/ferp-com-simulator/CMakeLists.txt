@@ -18,6 +18,8 @@ set(APP_MODS   "${ROOT}/app-modules")
 set(APP_PHR    "${ROOT}/app-pheripherals")
 set(APP        "${ROOT}/product/app")
 set(ARDUINOJSON "${ROOT}/managed_components/bblanchon__arduinojson")
+# DT board device library (display_types.h, com_distap.h, cmd_distap.h)
+set(DISTAP_LIB "${ROOT}/sub-modules/ferp-device-firmware/ferp_board/main-esp32/lib/device")
 
 # Force-include user_config.h first in every TU
 add_compile_options(-include "${APP}/user_config.h")
@@ -52,10 +54,15 @@ add_library(pal_mac STATIC
     ${PAL_MAC_DRV}/mac_driver.cpp
     # Sim bridge — HSYS module that serialises app messages to the UI
     ${PAL_MAC_DRV}/module_sim_bridge.cpp
+    # Sim message injector — receives SIM_MSG_INJECT and injects into HSYS bus
+    ${PAL_MAC_DRV}/sim_msg_inject.cpp
+    # Simulator implementations of DT board comms APIs
+    ${PAL_MAC_DRV}/mac_com_distap.cpp
+    ${PAL_MAC_DRV}/mac_cmd_distap.cpp
 )
 target_include_directories(pal_mac PUBLIC
     ${PAL}          # pal_*.h interfaces + pal_system.h
-    ${PAL_MAC}      # pal_mac_*.h
+    ${PAL_MAC}      # pal_mac_*.h + esp_err.h stub
     ${PAL_MAC_DRV}  # mac_driver.h, module_sim_bridge.h
     ${MIDDLEWARE}   # hsys_config.h — must come before HSYS_FW to avoid shim collision
     ${HSYS_FW}      # hsys_module.h, hsys_pool.h, hsys_msg.h
@@ -64,10 +71,14 @@ target_include_directories(pal_mac PUBLIC
     ${APP}          # app.h, app_msg_ids.h, user_config.h
     ${APP_MSGS}     # msg_tick_1000ms.h etc.
     ${APP_MODS}/module_config   # app_config.h (needed by app.h transitively)
+    ${APP_MODS}/module_fuel                        # module_fuel.h
+    ${APP_MODS}/module_fuel/pumps                  # nozzle_event.h
+    ${DISTAP_LIB}   # display_types.h, com_distap.h, cmd_distap.h
     ${ARDUINOJSON}      # ArduinoJson.h (root)
     ${ARDUINOJSON}/src  # ArduinoJson internal headers (angle-bracket includes)
 )
 target_link_libraries(pal_mac PRIVATE hsys_os)
+target_compile_definitions(pal_mac PRIVATE FERP_SIMULATOR=1)
 
 # ── 3. hsys-framework ─────────────────────────────────────────────────────────
 add_library(hsys_framework STATIC
@@ -94,14 +105,22 @@ add_library(app_messages STATIC
     ${APP_MSGS}/msg_timer_alarm.cpp
     ${APP_MSGS}/msg_default_btn.cpp
     ${APP_MSGS}/msg_printer_btn.cpp
+    ${APP_MSGS}/msg_fuel_pumped.cpp
+    ${APP_MSGS}/msg_nozzle_state.cpp
 )
 target_include_directories(app_messages PUBLIC
     ${APP_MSGS}
     ${APP}           # app_msg_ids.h
     ${APP_MODS}/module_config
+    ${APP_MODS}/module_fuel/pumps   # nozzle_event.h (needed by msg_nozzle_state.h)
     ${PERIPHERAL}
     ${PAL}
+    ${PAL_MAC}       # esp_err.h stub
+    ${DISTAP_LIB}    # display_types.h (needed transitively)
+    ${ARDUINOJSON}       # ArduinoJson.h — needed by from_json() implementations
+    ${ARDUINOJSON}/src   # ArduinoJson internal headers
 )
+target_compile_definitions(app_messages PRIVATE FERP_SIMULATOR=1)
 target_link_libraries(app_messages PRIVATE hsys_framework)
 
 # ── 5. app-pheripherals ───────────────────────────────────────────────────────
@@ -130,6 +149,10 @@ add_library(app_modules STATIC
     ${APP_MODS}/module_leds/module_leds.cpp
     ${APP_MODS}/module_default_btn/module_default_btn.cpp
     ${APP_MODS}/module_print_btn/module_print_btn.cpp
+    # Fuel module
+    ${APP_MODS}/module_fuel/module_fuel.cpp
+    ${APP_MODS}/module_fuel/fuel_disptap_driver.cpp
+    ${APP_MODS}/module_fuel/pumps/sanki/sanki_6_digit_1.cpp
 )
 target_include_directories(app_modules PUBLIC
     ${APP_MODS}
@@ -143,8 +166,13 @@ target_include_directories(app_modules PUBLIC
     ${APP_MODS}/module_leds
     ${APP_MODS}/module_default_btn
     ${APP_MODS}/module_print_btn
+    ${APP_MODS}/module_fuel
+    ${APP_MODS}/module_fuel/pumps
+    ${APP_MODS}/module_fuel/pumps/sanki
     ${APP_PHR}
     ${APP}
+    ${PAL_MAC}       # esp_err.h stub
+    ${DISTAP_LIB}    # display_types.h, com_distap.h, cmd_distap.h
     ${MIDDLEWARE}
     ${PERIPHERAL}
 )
@@ -168,8 +196,11 @@ target_include_directories(app_product PUBLIC
     ${APP_MODS}/module_leds
     ${APP_MODS}/module_default_btn
     ${APP_MODS}/module_print_btn
+    ${APP_MODS}/module_fuel
     ${APP_MSGS}
     ${HSYS_OS}
+    ${PAL_MAC}       # esp_err.h stub
+    ${DISTAP_LIB}    # display_types.h (transitively needed by module_fuel.h)
     ${MIDDLEWARE}
     ${PERIPHERAL}
     ${PAL}           # pal_system.h

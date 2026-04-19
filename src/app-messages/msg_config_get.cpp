@@ -23,3 +23,10 @@ hsys_msg_t *MsgConfigGet::create(hsys_module_id_t sender_id)
     // No payload to fill — payload_size is 0 in the descriptor
     return msg;
 }
+
+#ifdef FERP_SIMULATOR
+hsys_msg_t *MsgConfigGet::from_json(const char * /*payload_json*/, hsys_module_id_t sender_id)
+{
+    return create(sender_id);
+}
+#endif

@@ -8,6 +8,7 @@
 #include <string>
 #include <new>
 #include <cstdint>
+#include <cstdio>
 
 using timer_cb_t = void (*)(void *);
 
@@ -33,7 +34,10 @@ hsys_timer_handle_t hsys_timer_create(const char *name,
                                        void      (*callback)(void *))
 {
     MacOsTimer *t = new (std::nothrow) MacOsTimer();
-    if (!t) return nullptr;
+    if (!t) {
+        fprintf(stderr, "[hsys_timer_create] new MacOsTimer() returned nullptr for '%s'\n", name ? name : "?");
+        return nullptr;
+    }
     t->name        = name ? name : "";
     t->period_ms   = period_ms;
     t->auto_reload = auto_reload;

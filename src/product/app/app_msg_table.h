@@ -38,6 +38,8 @@
 #include "msg_timer_alarm.h"            // MsgTimerAlarm          (0x0104)
 #include "msg_default_btn.h"            // MsgDefaultBtn          (0x0900)
 #include "msg_printer_btn.h"            // MsgPrinterBtn          (0x0901)
+#include "msg_fuel_pumped.h"            // MsgFuelPumped          (0x0800)
+#include "msg_nozzle_state.h"           // MsgNozzleState         (0x0801)
 
 // ---------------------------------------------------------------------------
 // Descriptor table macro
@@ -59,6 +61,8 @@
         MsgTimerAlarm::DESCRIPTOR,                                                \
         MsgDefaultBtn::DESCRIPTOR,                                                \
         MsgPrinterBtn::DESCRIPTOR,                                                \
+        MsgFuelPumped::DESCRIPTOR,                                                \
+        MsgNozzleState::DESCRIPTOR,                                               \
     };                                                                            \
     static const uint16_t k_msg_table_count =                                    \
         (uint16_t)(sizeof(k_msg_table) / sizeof(k_msg_table[0]))

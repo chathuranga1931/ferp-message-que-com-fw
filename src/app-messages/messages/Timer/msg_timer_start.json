@@ -1,0 +1,28 @@
+{
+  "msg_id": "0x0100",
+  "fields": [
+    {
+      "name":    "source_module_id",
+      "label":   "Source module ID",
+      "type":    "uint8",
+      "default": 0
+    },
+    {
+      "name":    "start_offset_ms",
+      "label":   "Start offset (ms)",
+      "type":    "uint32",
+      "default": 0
+    },
+    {
+      "name":    "duration_ms",
+      "label":   "Duration (ms)",
+      "type":    "uint32",
+      "default": 1000
+    },
+    {
+      "name":  "is_repetitive",
+      "label": "Repetitive",
+      "type":  "bool"
+    }
+  ]
+}

@@ -60,6 +60,12 @@ typedef enum : uint16_t
     MSG_ID_CONFIG_GET           = 0x0302,   ///< Any -> ModuleConfig: request re-publish of current config
 
     // ------------------------------------------------------------------
+    // Fuel / dispenser  (0x0800 – 0x08FF)
+    // ------------------------------------------------------------------
+    MSG_ID_FUEL_PUMPED          = 0x0800,   ///< ModuleFuel -> all: complete fueling transaction
+    MSG_ID_NOZZLE_STATE         = 0x0801,   ///< ModuleFuel -> all: nozzle state transition
+
+    // ------------------------------------------------------------------
     // Buttons  (0x0900 – 0x09FF)
     // ------------------------------------------------------------------
     MSG_ID_DEFAULT_BTN          = 0x0900,   ///< ModuleDefaultBtn -> all: default button pressed
