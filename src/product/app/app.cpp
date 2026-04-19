@@ -45,6 +45,8 @@
 #include "module_config.h"
 #include "module_timer.h"
 #include "module_leds.h"
+#include "module_default_btn.h"
+#include "module_print_btn.h"
 #include "app_msg_table.h"
 #include "app_config.h"
 #include "hsys_config.h"
@@ -136,13 +138,15 @@ static const hsys_pool_class_cfg_t k_pool_table[] = {
 
 static HsysModule *k_module_table[] = {
     ticker_instance(),
-    module_a_instance(),
-    module_b_instance(),
+    // module_a_instance(),   // demo module — disabled (Sprint 12 cleanup)
+    // module_b_instance(),   // demo module — disabled (Sprint 12 cleanup)
     module_sysmon_instance(),
     ModuleSpiffs::instance(),
     ModuleConfig::instance(),
     ModuleTimer::instance(),
     ModuleLeds::instance(),
+    ModuleDefaultBtn::instance(),
+    ModulePrintBtn::instance(),
 };
 #define MODULE_TABLE_SIZE  (sizeof(k_module_table) / sizeof(k_module_table[0]))
 
@@ -151,14 +155,16 @@ static HsysModule *k_module_table[] = {
 // ============================================================================
 
 static const hsys_task_desc_t k_task_table[] = {
-    { "ticker_task",  1024,  6,  0,  { TICKER_MODULE_ID,    0 } },
-    { "sensor_task",  2048,  5,  0,  { MODULE_A_ID,         0 } },
-    { "display_task", 2048,  4,  0,  { MODULE_B_ID,         0 } },
-    { "sysmon_task",  2048,  3,  0,  { SYSMON_MODULE_ID,    0 } },
-    { "spiffs_task",  2048,  5,  0,  { MODULE_SPIFFS_ID,    0 } },
-    { "config_task",  4096,  5,  0,  { MODULE_CONFIG_ID,    0 } },
-    { "timer_task",   2048,  4,  0,  { MODULE_TIMER_ID,     0 } },
-    { "leds_task",    1024,  4,  0,  { MODULE_LEDS_ID,      0 } },
+    { "ticker_task",  1024,  6,  0,  { TICKER_MODULE_ID,         0 } },
+    // { "sensor_task",  2048,  5,  0,  { MODULE_A_ID,         0 } },  // demo — disabled
+    // { "display_task", 2048,  4,  0,  { MODULE_B_ID,         0 } },  // demo — disabled
+    { "sysmon_task",  2048,  3,  0,  { SYSMON_MODULE_ID,         0 } },
+    { "spiffs_task",  2048,  5,  0,  { MODULE_SPIFFS_ID,         0 } },
+    { "config_task",  4096,  5,  0,  { MODULE_CONFIG_ID,         0 } },
+    { "timer_task",   2048,  4,  0,  { MODULE_TIMER_ID,          0 } },
+    { "leds_task",    1024,  4,  0,  { MODULE_LEDS_ID,           0 } },
+    { "defbtn_task",  1024,  5,  0,  { MODULE_DEFAULT_BTN_ID,    0 } },
+    { "prnbtn_task",  1024,  5,  0,  { MODULE_PRINT_BTN_ID,      0 } },
 };
 #define TASK_TABLE_SIZE  (sizeof(k_task_table) / sizeof(k_task_table[0]))
 

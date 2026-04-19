@@ -60,9 +60,15 @@ typedef enum : uint16_t
     MSG_ID_CONFIG_GET           = 0x0302,   ///< Any -> ModuleConfig: request re-publish of current config
 
     // ------------------------------------------------------------------
+    // Buttons  (0x0900 – 0x09FF)
+    // ------------------------------------------------------------------
+    MSG_ID_DEFAULT_BTN          = 0x0900,   ///< ModuleDefaultBtn -> all: default button pressed
+    MSG_ID_PRINTER_BTN          = 0x0901,   ///< ModulePrintBtn   -> all: print button pressed
+
+    // ------------------------------------------------------------------
     // Sentinel — keep one above the highest assigned ID
     // ------------------------------------------------------------------
-    MSG_ID_MAX              = 0x0303,
+    MSG_ID_MAX              = 0x0902,
 
 } app_msg_id_e;
 

@@ -92,6 +92,8 @@ add_library(app_messages STATIC
     ${APP_MSGS}/msg_timer_start_response.cpp
     ${APP_MSGS}/msg_timer_stop_response.cpp
     ${APP_MSGS}/msg_timer_alarm.cpp
+    ${APP_MSGS}/msg_default_btn.cpp
+    ${APP_MSGS}/msg_printer_btn.cpp
 )
 target_include_directories(app_messages PUBLIC
     ${APP_MSGS}
@@ -106,6 +108,7 @@ target_link_libraries(app_messages PRIVATE hsys_framework)
 add_library(app_pheripherals STATIC
     ${APP_PHR}/app_spiffs.cpp
     ${PERIPHERAL}/generic_peripheral/hsys_led.cpp
+    ${PERIPHERAL}/generic_peripheral/hsys_button.cpp
 )
 target_include_directories(app_pheripherals PUBLIC
     ${APP_PHR}
@@ -125,6 +128,8 @@ add_library(app_modules STATIC
     ${APP_MODS}/module_config/module_config.cpp
     ${APP_MODS}/module_timer/module_timer.cpp
     ${APP_MODS}/module_leds/module_leds.cpp
+    ${APP_MODS}/module_default_btn/module_default_btn.cpp
+    ${APP_MODS}/module_print_btn/module_print_btn.cpp
 )
 target_include_directories(app_modules PUBLIC
     ${APP_MODS}
@@ -136,6 +141,8 @@ target_include_directories(app_modules PUBLIC
     ${APP_MODS}/module_config
     ${APP_MODS}/module_timer
     ${APP_MODS}/module_leds
+    ${APP_MODS}/module_default_btn
+    ${APP_MODS}/module_print_btn
     ${APP_PHR}
     ${APP}
     ${MIDDLEWARE}
@@ -159,6 +166,8 @@ target_include_directories(app_product PUBLIC
     ${APP_MODS}/module_config
     ${APP_MODS}/module_timer
     ${APP_MODS}/module_leds
+    ${APP_MODS}/module_default_btn
+    ${APP_MODS}/module_print_btn
     ${APP_MSGS}
     ${HSYS_OS}
     ${MIDDLEWARE}

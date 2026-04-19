@@ -101,10 +101,10 @@ static void _read_loop(int client_fd)
                             memcpy(btn_name, q1, (size_t)(q2 - q1));
                             btn_name[q2 - q1] = '\0';
 
-                            /* Determine press or release */
+                            /* "action":"press" → level 1 · "action":"release" → level 0 */
                             int level = strstr(buf, "\"press\"") ? 1 : 0;
 
-                            /* Look up pin */
+                            /* Look up GPIO pin and inject */
                             for (int i = 0; i < k_btn_map_count; ++i)
                             {
                                 if (strcmp(k_btn_map[i].btn, btn_name) == 0)

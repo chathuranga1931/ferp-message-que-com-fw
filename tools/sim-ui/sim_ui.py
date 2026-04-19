@@ -246,26 +246,32 @@ class App(tk.Tk):
 
     def _build_button_panel(self, parent):
         frame = tk.LabelFrame(
-            parent, text="Inject Buttons", bg="#1e1e2e",
+            parent, text="Buttons", bg="#1e1e2e",
             fg="#cdd6f4", font=("Menlo", 10, "bold"))
         frame.pack(fill=tk.X, padx=4, pady=4)
 
-        buttons = [
-            ("Print 1 Short",   "print1_short"),
-            ("Print 1 Long",    "print1_long"),
-            ("Print 2 Short",   "print2_short"),
-            ("Print 2 Long",    "print2_long"),
-            ("Default Short",   "default_short"),
-            ("Default Long",    "default_long"),
+        tk.Label(frame, text="Hold = long press · Click = short press",
+                 bg="#1e1e2e", fg="#585b70",
+                 font=("Menlo", 8)).pack(padx=6, pady=(2, 4))
+
+        hw_buttons = [
+            ("Default",  "default"),
+            ("Print 1",  "print1"),
+            ("Print 2",  "print2"),
         ]
-        for label, cmd in buttons:
+        for label, btn_name in hw_buttons:
             btn = tk.Button(
                 frame, text=label,
-                command=lambda c=cmd: self._inject_button(c),
                 bg="#313244", fg="#cdd6f4",
-                activebackground="#45475a",
-                font=("Menlo", 10), relief=tk.FLAT, padx=6, pady=2)
-            btn.pack(fill=tk.X, padx=6, pady=1)
+                activebackground="#89b4fa",
+                font=("Menlo", 11, "bold"),
+                relief=tk.FLAT, padx=8, pady=6)
+            btn.pack(fill=tk.X, padx=6, pady=3)
+            # Bind press and release — mirrors real hardware GPIO
+            btn.bind("<ButtonPress-1>",
+                     lambda e, n=btn_name, b=btn: self._btn_press(n, b))
+            btn.bind("<ButtonRelease-1>",
+                     lambda e, n=btn_name, b=btn: self._btn_release(n, b))
 
     # ── Connection ────────────────────────────────────────────────────────────
 
@@ -400,6 +406,15 @@ class App(tk.Tk):
         elif msg_id == "SIM_GPIO_OUT":
             self._handle_sim_gpio_out(data)
 
+        elif msg_id == "MSG_DEFAULT_BTN":
+            status = data.get("status", "")
+            self._log.append_text(f"🔘 DEFAULT BTN — {status}", color="#cba6f7")
+
+        elif msg_id == "MSG_PRINTER_BTN":
+            btn_id = data.get("button_id", "?")
+            status = data.get("status", "")
+            self._log.append_text(f"🖨  PRINT{btn_id} BTN — {status}", color="#89dceb")
+
         elif msg_id == "SIM_BUZZER":
             self._handle_buzzer(data)
 
@@ -478,8 +493,15 @@ class App(tk.Tk):
 
     # ── Outbound commands ─────────────────────────────────────────────────────
 
-    def _inject_button(self, btn: str):
-        self._send_cmd({"id": "SIM_BTN", "data": {"btn": btn}})
+    def _btn_press(self, btn_name: str, widget: tk.Button):
+        """Mouse-down on a hardware button — send press, highlight button."""
+        widget.config(bg="#89b4fa", fg="#1e1e2e")
+        self._send_cmd({"id": "SIM_BTN", "data": {"btn": btn_name, "action": "press"}})
+
+    def _btn_release(self, btn_name: str, widget: tk.Button):
+        """Mouse-up on a hardware button — send release, restore button colour."""
+        widget.config(bg="#313244", fg="#cdd6f4")
+        self._send_cmd({"id": "SIM_BTN", "data": {"btn": btn_name, "action": "release"}})
 
     def _send_cmd(self, obj: dict):
         self._conn.send(obj)

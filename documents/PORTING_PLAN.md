@@ -17,8 +17,9 @@
 - **Test at the task boundary.** The simulator + Python UI is the test bench.
   Real hardware is only needed for things the simulator physically cannot do
   (UART tap, SD card, actual WiFi RF).
-- **No regressions.** The old demo modules (module_a, module_b, ticker,
-  sysmon) stay in the build until explicitly replaced.
+- **No regressions.** `ticker` and `sysmon` stay in the build.
+  `module_a` and `module_b` are now disabled (commented out in `app.cpp` as
+  part of Sprint 12 early cleanup).
 
 ---
 
@@ -46,10 +47,10 @@
 
 ## Step 0 — Infrastructure: SimBridge + Python UI skeleton  ✅ DONE
 
-### 0-A  `ModuleSimBridge` (C++) ✅
-- `src/product/ferp-com-simulator/sim_bridge/module_sim_bridge.h/.cpp`
-- TCP server on port 9000; serialises messages as JSON lines to connected client
-- Registered as a simulator-only extra module via `app_register_extra_module()`
+### 0-A  `ModuleSimBridge` + `MacDriver` (C++) ✅
+- `src/sub-modules/pal/mac-pc/driver/module_sim_bridge.h/.cpp` — HSYS module that owns TCP I/O
+- `src/sub-modules/pal/mac-pc/driver/mac_driver.h/.cpp` — TCP engine (port 9000)
+- Registered in the simulator's `k_module_table` via `pal_mac_system.cpp`
 
 ### 0-B  Python UI (`tools/sim-ui/`) ✅
 ```
@@ -239,20 +240,18 @@ Four clickable buttons in the UI:
 
 ---
 
-## Sprint 6 — LEDs + Buzzer  ⬜ PENDING
+## Sprint 6 — LEDs + Buzzer  🔶 PARTIAL
 
-### Files to create
-```
-src/app-modules/module_leds/
-src/app-modules/module_buzzer/
-```
-No new messages needed — these only subscribe.
+### What is done ✅
+- `src/app-modules/module_leds/module_leds.h/.cpp` — full implementation
+- Uses `hsys_led` peripheral + `hsys_soft_timer`; 250 ms / 2 Hz blink after SPIFFS ready
+- LED1 (GPIO 5) and LED2 (GPIO 4) both blink in sync
+- Python UI: `LED1` and `LED2` circles in System panel track GPIO state via `SIM_GPIO_OUT`
+- `hsys_soft_timer` macOS callback contract fixed (passes handle, not user_data)
 
-### Python UI
-- 3–4 coloured circles for LEDs (Power, WiFi, Cloud, Pump)
-- `SimBridge` intercepts LED PAL calls via a weak stub `pal_led_set()` and
-  publishes a `SimLedState` JSON event
-- Python shows a "🔔 BEEP" toast notification for 300 ms when buzzer fires
+### What remains ⬜
+- `module_buzzer` — not yet started
+- Additional LED patterns for WiFi, Cloud, Pump states (Sprint 12)
 
 ---
 
@@ -338,11 +337,18 @@ Lowest priority — only needed once WiFi AP mode works on hardware.
 
 ---
 
-## Sprint 12 — Cleanup  ⬜ PENDING
+## Sprint 12 — Cleanup  🔶 PARTIAL
 
-- Remove demo modules (module_a, module_b)
-- Remove old `event_table_t` glue from app_common.h
-- Final memory pool sizing based on peak usage from sysmon reports
+### Done ✅
+- `module_a` and `module_b` disabled in `k_module_table` + `k_task_table` in `app.cpp`
+- `hsys_config_mac.cpp` deleted (ArduinoJson used everywhere)
+- `pal_mac_system.h` deleted — PAL layer no longer needs its own config shim
+- `mac_driver` + `module_sim_bridge` moved to `pal/mac-pc/driver/`
+
+### Remaining ⬜
+- Remove `module_a` / `module_b` source files entirely once confirmed unneeded
+- Remove old `event_table_t` glue from `app_common.h` if still present
+- Final memory pool sizing from sysmon peak-usage reports (hardware run)
 
 ---
 
@@ -368,13 +374,19 @@ src/
     ferp-com-simulator/
       sim_<name>/             ← one stub folder per sprint
         sim_<name>_module.cpp
-      sim_bridge/
-        module_sim_bridge.cpp ← JSON serialiser for Python UI
       CMakeLists.txt
 
     ferp-com-esp32-idf/
       main/
         main.cpp              ← app_init() + while(true){app_run()} only
+
+  sub-modules/
+    pal/
+      mac-pc/
+        pal_mac_*.cpp               ← PAL interface implementations (macOS)
+        driver/
+          mac_driver.h/.cpp         ← TCP engine (macOS only)
+          module_sim_bridge.h/.cpp  ← JSON bridge module (macOS only)
 
 tools/
   sim-ui/
@@ -435,11 +447,11 @@ python3 tools/sim-ui/sim_ui.py --port 9000
 | Shared timer service | ✅ fully | ✅ Done |
 | Config load / update | ✅ with SPIFFS stub | ✅ Done |
 | SPIFFS mount + read/write | ✅ POSIX emulation | ✅ Done |
+| LED patterns | ✅ via pal_gpio + SIM_GPIO_OUT | ✅ Done — LED1/LED2 in Python UI |
 | WiFi state machine | ✅ with stub | ⬜ Sprint 2 |
 | Internet detection | ✅ with stub | ⬜ Sprint 3 |
 | Fuel state machine (Sanki) | ✅ with injector | ⬜ Sprint 4 |
 | Button debounce | ✅ with keyboard/TCP | ⬜ Sprint 5 |
-| LED patterns | ✅ via weak PAL stub | ⬜ Sprint 6 |
 | Buzzer patterns | ✅ via weak PAL stub | ⬜ Sprint 6 |
 | MQTT broker | ✅ with stub | ⬜ Sprint 7 |
 | Cloud HTTP | ✅ with stub | ⬜ Sprint 8 |

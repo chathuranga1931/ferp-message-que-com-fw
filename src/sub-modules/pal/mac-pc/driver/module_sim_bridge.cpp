@@ -17,6 +17,8 @@
 #include "hsys_pool.h"
 #include "hsys_msg.h"
 #include "pal_time.h"
+#include "msg_default_btn.h"
+#include "msg_printer_btn.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -32,6 +34,8 @@ void ModuleSimBridge::init()
 {
     subscribe(MSG_ID_TICK_1000MS);
     subscribe(MSG_ID_SPIFFS_READY);
+    subscribe(MSG_ID_DEFAULT_BTN);
+    subscribe(MSG_ID_PRINTER_BTN);
 
     log("init");
 }
@@ -58,6 +62,25 @@ void ModuleSimBridge::on_msg_received(const hsys_msg_t &msg)
             snprintf(data, sizeof(data), "{}");
             _send_json("MSG_SPIFFS_READY", data);
             break;
+
+        case MSG_ID_DEFAULT_BTN: {
+            auto p = MsgDefaultBtn::deserialize(msg);
+            snprintf(data, sizeof(data),
+                     "{\"status\":\"%s\"}",
+                     p.status == BTN_SHORT_PRESS ? "short_press" : "long_press");
+            _send_json("MSG_DEFAULT_BTN", data);
+            break;
+        }
+
+        case MSG_ID_PRINTER_BTN: {
+            auto p = MsgPrinterBtn::deserialize(msg);
+            snprintf(data, sizeof(data),
+                     "{\"button_id\":%u,\"status\":\"%s\"}",
+                     (unsigned)p.button_id,
+                     p.status == BTN_SHORT_PRESS ? "short_press" : "long_press");
+            _send_json("MSG_PRINTER_BTN", data);
+            break;
+        }
 
         // ── Add cases here as each sprint adds message types ──────────────
         //

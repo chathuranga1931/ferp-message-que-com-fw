@@ -47,3 +47,14 @@ uint64_t pal_time_get_us(void)
     if (s_boot_us == 0) { s_boot_us = now; s_boot_ms = now / 1000ULL; }
     return now - s_boot_us;
 }
+
+// On macOS there is no actual ISR context — but this must return absolute
+// CLOCK_MONOTONIC microseconds (NOT relative to program start) so that
+// timestamp_us / 1000 == get_current_time_ms() inside hsys_button.cpp.
+// Both use the same CLOCK_MONOTONIC base → elapsed-time arithmetic is correct.
+uint64_t pal_time_get_us_from_isr(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)ts.tv_sec * 1000000ULL + (uint64_t)(ts.tv_nsec / 1000ULL);
+}

@@ -37,9 +37,9 @@ Legend: `[ ]` = not started · `[~]` = in progress · `[x]` = done
 
 | ID     | Class           | Publisher | Subscribers |
 |--------|-----------------|-----------|-------------|
-| 0x0001 | `MsgSensorData` | ModuleA   | ModuleB     |
+| 0x0001 | `MsgSensorData` | ModuleA *(disabled)* | ModuleB *(disabled)* |
 
-- [x] `MsgSensorData` — demo sensor reading (float value); will be removed in Sprint 12
+- [x] `MsgSensorData` — demo sensor reading (float value); **module_a/b disabled in Sprint 12**
 
 ---
 
@@ -66,12 +66,12 @@ Legend: `[ ]` = not started · `[~]` = in progress · `[x]` = done
 | ID     | Class              | Publisher        | Subscribers                               |
 |--------|--------------------|------------------|-------------------------------------------|
 | 0x0200 | `MsgTick1000ms`    | ModuleTicker     | ModuleSysmon, ModuleCloud (HB), ModuleRetransmit, ModuleOta |
-| 0x0201 | `MsgSpiffsReady`   | ModuleSpiffs     | ModuleConfig, ModuleTime                  |
+| 0x0201 | `MsgSpiffsReady`   | ModuleSpiffs     | ModuleConfig, ModuleLeds, ModuleTime      |
 | 0x0202 | `MsgSystemReboot`  | ModuleOta, ModuleDefaultBtn | ModuleHw, all (graceful shutdown) |
 | 0x0203 | `MsgHwReady`       | ModuleHw         | ModuleWifi, ModuleSpiffs, ModuleSd        |
 
 - [x] `MsgTick1000ms` — no payload; 1 s heartbeat
-- [x] `MsgSpiffsReady` — no payload; SPIFFS mounted and ready
+- [x] `MsgSpiffsReady` — no payload; SPIFFS mounted and ready — **ModuleLeds now subscribed**
 - [ ] `MsgSystemReboot` — `reason` (enum: OTA_COMPLETE, CONFIG_RESET, WATCHDOG)
 - [ ] `MsgHwReady` — no payload
 
