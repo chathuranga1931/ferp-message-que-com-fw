@@ -70,7 +70,7 @@ bool hsys_start_timer(hsys_timer_handle_t timer_handle)
                 std::this_thread::sleep_for(std::chrono::milliseconds(1));
             }
             if (!t->running.load()) break;
-            if (t->callback) t->callback(t->user_data);
+            if (t->callback) t->callback(static_cast<void*>(t));  // pass handle, like FreeRTOS
         } while (t->auto_reload && t->running.load());
 
         t->running.store(false);

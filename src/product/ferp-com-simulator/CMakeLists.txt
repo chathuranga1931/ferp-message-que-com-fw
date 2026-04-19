@@ -10,13 +10,14 @@ set(HSYS_OS    "${ROOT}/sub-modules/hsys-os")
 set(HSYS_FW    "${ROOT}/sub-modules/hsys-framework")
 set(PAL        "${ROOT}/sub-modules/pal")
 set(PAL_MAC    "${PAL}/mac-pc")
+set(PAL_MAC_DRV "${PAL_MAC}/driver")
 set(MIDDLEWARE "${ROOT}/sub-modules/middleware")
 set(PERIPHERAL "${ROOT}/sub-modules/peripheral")
 set(APP_MSGS   "${ROOT}/app-messages")
 set(APP_MODS   "${ROOT}/app-modules")
 set(APP_PHR    "${ROOT}/app-pheripherals")
 set(APP        "${ROOT}/product/app")
-set(SIM_BRIDGE "${CMAKE_CURRENT_SOURCE_DIR}/sim_bridge")
+set(ARDUINOJSON "${ROOT}/managed_components/bblanchon__arduinojson")
 
 # Force-include user_config.h first in every TU
 add_compile_options(-include "${APP}/user_config.h")
@@ -33,21 +34,38 @@ add_library(hsys_os STATIC
 )
 target_include_directories(hsys_os PUBLIC ${HSYS_OS})
 
-# ── 2. PAL — mac-pc implementations ──────────────────────────────────────────
-# All platform-specific implementations live here.
-# pal_spiffs.h interface is in PAL/; the POSIX impl is in mac-pc/.
+# ── 2. PAL mac-pc ─────────────────────────────────────────────────────────────
+# Everything simulator-specific lives here — PAL implementations, the TCP
+# driver, and the sim bridge module.  The ferp-com-simulator executable only
+# needs main.cpp on top of this.
 add_library(pal_mac STATIC
+    # Platform PAL implementations
     ${PAL_MAC}/pal_mac_time.cpp
-    ${PAL_MAC}/pal_mac_logger_uart.cpp
     ${PAL_MAC}/pal_mac_logger.cpp
-    ${PAL_MAC}/pal_mac_spiffs.cpp       # POSIX emulation of SPIFFS
-    ${PAL_MAC}/hsys_config_mac.cpp      # plain-C++ hsys_config (no ArduinoJson)
+    ${PAL_MAC}/pal_mac_logger_uart.cpp
+    ${PAL_MAC}/pal_mac_spiffs.cpp           # POSIX SPIFFS emulation
+    ${PAL_MAC}/pal_mac_gpio.cpp             # GPIO → mac_driver_send_gpio()
+    ${PAL_MAC}/pal_mac_system.cpp           # pal_system_init() → boot everything
+    # Common middleware — uses ArduinoJson (platform-independent)
+    ${MIDDLEWARE}/hsys_config.cpp
+    # Simulator driver — owns the TCP socket and all UI I/O
+    ${PAL_MAC_DRV}/mac_driver.cpp
+    # Sim bridge — HSYS module that serialises app messages to the UI
+    ${PAL_MAC_DRV}/module_sim_bridge.cpp
 )
 target_include_directories(pal_mac PUBLIC
-    ${PAL}          # all pal_*.h interfaces
-    ${MIDDLEWARE}   # hsys_config.h  (needed by hsys_config_mac.cpp)
+    ${PAL}          # pal_*.h interfaces + pal_system.h
+    ${PAL_MAC}      # pal_mac_*.h
+    ${PAL_MAC_DRV}  # mac_driver.h, module_sim_bridge.h
+    ${MIDDLEWARE}   # hsys_config.h — must come before HSYS_FW to avoid shim collision
+    ${HSYS_FW}      # hsys_module.h, hsys_pool.h, hsys_msg.h
+    ${HSYS_OS}      # hsys_task_desc_t
     ${PERIPHERAL}   # hsys_type.h
-    ${APP}          # user_config.h
+    ${APP}          # app.h, app_msg_ids.h, user_config.h
+    ${APP_MSGS}     # msg_tick_1000ms.h etc.
+    ${APP_MODS}/module_config   # app_config.h (needed by app.h transitively)
+    ${ARDUINOJSON}      # ArduinoJson.h (root)
+    ${ARDUINOJSON}/src  # ArduinoJson internal headers (angle-bracket includes)
 )
 target_link_libraries(pal_mac PRIVATE hsys_os)
 
@@ -78,20 +96,22 @@ add_library(app_messages STATIC
 target_include_directories(app_messages PUBLIC
     ${APP_MSGS}
     ${APP}           # app_msg_ids.h
-    ${APP_MODS}/module_config   # app_config.h
-    ${PERIPHERAL}    # hsys_type.h
-    ${PAL}           # pal_logger.h
+    ${APP_MODS}/module_config
+    ${PERIPHERAL}
+    ${PAL}
 )
 target_link_libraries(app_messages PRIVATE hsys_framework)
 
 # ── 5. app-pheripherals ───────────────────────────────────────────────────────
 add_library(app_pheripherals STATIC
     ${APP_PHR}/app_spiffs.cpp
+    ${PERIPHERAL}/generic_peripheral/hsys_led.cpp
 )
 target_include_directories(app_pheripherals PUBLIC
-    ${APP_PHR}   # app_spiffs.h
-    ${PAL}       # pal_spiffs.h, pal_logger.h
-    ${HSYS_OS}   # hsys_mutex.h
+    ${APP_PHR}
+    ${PERIPHERAL}
+    ${PAL}
+    ${HSYS_OS}
 )
 target_link_libraries(app_pheripherals PRIVATE pal_mac hsys_os)
 
@@ -104,6 +124,7 @@ add_library(app_modules STATIC
     ${APP_MODS}/module_spiffs/module_spiffs.cpp
     ${APP_MODS}/module_config/module_config.cpp
     ${APP_MODS}/module_timer/module_timer.cpp
+    ${APP_MODS}/module_leds/module_leds.cpp
 )
 target_include_directories(app_modules PUBLIC
     ${APP_MODS}
@@ -114,21 +135,22 @@ target_include_directories(app_modules PUBLIC
     ${APP_MODS}/module_spiffs
     ${APP_MODS}/module_config
     ${APP_MODS}/module_timer
-    ${APP_PHR}       # app_spiffs.h
-    ${APP}           # app_msg_ids.h, app.h
-    ${MIDDLEWARE}    # hsys_config.h
-    ${PERIPHERAL}    # hsys_type.h
+    ${APP_MODS}/module_leds
+    ${APP_PHR}
+    ${APP}
+    ${MIDDLEWARE}
+    ${PERIPHERAL}
 )
 target_link_libraries(app_modules PRIVATE
     hsys_framework hsys_os app_messages app_pheripherals pal_mac)
 
-# ── 7. app (product-level glue: app.cpp owns _app_config + config handle) ─────
+# ── 7. app product (shared app.cpp) ───────────────────────────────────────────
 add_library(app_product STATIC
     ${APP}/app.cpp
 )
 target_include_directories(app_product PUBLIC
     ${APP}
-    ${APP_MODS}               # app_msg_table.h
+    ${APP_MODS}
     ${APP_MODS}/ticker
     ${APP_MODS}/module_a
     ${APP_MODS}/module_b
@@ -136,40 +158,27 @@ target_include_directories(app_product PUBLIC
     ${APP_MODS}/module_spiffs
     ${APP_MODS}/module_config
     ${APP_MODS}/module_timer
-    ${APP_MSGS}               # timer_types.h + msg_*.h
-    ${HSYS_OS}                # hsys_soft_timer.h (needed by module_timer.h)
+    ${APP_MODS}/module_leds
+    ${APP_MSGS}
+    ${HSYS_OS}
     ${MIDDLEWARE}
     ${PERIPHERAL}
+    ${PAL}           # pal_system.h
 )
 target_link_libraries(app_product PRIVATE hsys_framework app_modules app_messages pal_mac)
 
-# ── 8. sim_bridge (TCP <-> Python UI) — simulator-only ───────────────────────
-add_library(sim_bridge STATIC
-    ${SIM_BRIDGE}/module_sim_bridge.cpp
-)
-target_include_directories(sim_bridge PUBLIC
-    ${SIM_BRIDGE}
-    ${HSYS_FW}
-    ${HSYS_OS}
-    ${APP}
-    ${APP_MSGS}
-    ${PAL}
-)
-target_link_libraries(sim_bridge PRIVATE hsys_framework hsys_os pal_mac app_messages)
-
-# ── 8. Executable ─────────────────────────────────────────────────────────────
+# ── 8. Executable — just main.cpp ────────────────────────────────────────────
 add_executable(ferp-com-simulator
     main/main.cpp
 )
 target_include_directories(ferp-com-simulator PRIVATE
-    ${SIM_BRIDGE}   # module_sim_bridge.h
+    ${MIDDLEWARE}   # hsys_config.h — before PAL to avoid shim collision
     ${PAL}          # pal_logger.h
-    ${MIDDLEWARE}   # hsys_config.h (transitively needed by app.h)
+    ${APP}          # app.h
 )
 target_link_libraries(ferp-com-simulator PRIVATE
     hsys_framework hsys_os pal_mac
     app_messages app_pheripherals app_modules app_product
-    sim_bridge
 )
 
 # Tell the binary where its own source tree lives so it can chdir to it
@@ -178,3 +187,4 @@ target_link_libraries(ferp-com-simulator PRIVATE
 target_compile_definitions(ferp-com-simulator PRIVATE
     SIMULATOR_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
 )
+

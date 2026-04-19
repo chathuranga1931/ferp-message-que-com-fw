@@ -10,9 +10,9 @@ extern "C"
 {
 #endif
 
-#define BOARD_TYPE 2404
+#define BOARD_TYPE 2602
 
-#include "board_2404.h"
+#include "board_2602.h"
 
 // GPIO compatibility defines
 #define GPIO_NUM_NC     PAL_GPIO_NUM_NC

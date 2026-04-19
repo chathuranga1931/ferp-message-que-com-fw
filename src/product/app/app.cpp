@@ -28,6 +28,7 @@
 #include <string.h>
 
 #include "app.h"
+#include "pal_system.h"
 
 /* HSYS architecture */
 #include "hsys_pool.h"
@@ -43,6 +44,7 @@
 #include "module_spiffs.h"
 #include "module_config.h"
 #include "module_timer.h"
+#include "module_leds.h"
 #include "app_msg_table.h"
 #include "app_config.h"
 #include "hsys_config.h"
@@ -140,6 +142,7 @@ static HsysModule *k_module_table[] = {
     ModuleSpiffs::instance(),
     ModuleConfig::instance(),
     ModuleTimer::instance(),
+    ModuleLeds::instance(),
 };
 #define MODULE_TABLE_SIZE  (sizeof(k_module_table) / sizeof(k_module_table[0]))
 
@@ -155,6 +158,7 @@ static const hsys_task_desc_t k_task_table[] = {
     { "spiffs_task",  2048,  5,  0,  { MODULE_SPIFFS_ID,    0 } },
     { "config_task",  4096,  5,  0,  { MODULE_CONFIG_ID,    0 } },
     { "timer_task",   2048,  4,  0,  { MODULE_TIMER_ID,     0 } },
+    { "leds_task",    1024,  4,  0,  { MODULE_LEDS_ID,      0 } },
 };
 #define TASK_TABLE_SIZE  (sizeof(k_task_table) / sizeof(k_task_table[0]))
 
@@ -201,7 +205,11 @@ extern "C" void app_config_init(void)
 
 extern "C" void app_init(void)
 {
-    // 0. Platform-specific setup + extra module registration
+    // 0a. PAL system init — platform-level boot (TCP server on simulator, no-op on ESP-IDF)
+    //     Must run before anything else so the UI port is open from the very first log line.
+    pal_system_init();
+
+    // 0b. Platform-specific setup + extra module registration
     app_platform_pre_init();
 
     // 1. Config — load defaults and initialise the config handle

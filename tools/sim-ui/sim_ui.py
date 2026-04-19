@@ -221,9 +221,12 @@ class App(tk.Tk):
         self._led_internet = LedWidget(frame, label="Internet", color_on="#89b4fa")
         self._led_cloud    = LedWidget(frame, label="Cloud",    color_on="#cba6f7")
         self._led_pump     = LedWidget(frame, label="Pump",     color_on="#f9e2af")
+        self._led_led1     = LedWidget(frame, label="LED1",     color_on="#fab387")
+        self._led_led2     = LedWidget(frame, label="LED2",     color_on="#fab387")
 
         for w in (self._led_power, self._led_wifi,
-                  self._led_internet, self._led_cloud, self._led_pump):
+                  self._led_internet, self._led_cloud, self._led_pump,
+                  self._led_led1, self._led_led2):
             w.pack(anchor=tk.W, padx=6, pady=2)
 
         # Start power LED on immediately
@@ -349,8 +352,8 @@ class App(tk.Tk):
         data   = obj.get("data", {})
         ts     = obj.get("ts", 0)
 
-        # Log everything except bulky pool snapshots (those go to Pool tab only)
-        if msg_id != "SIM_POOL_STATUS":
+        # Log everything except bulky pool snapshots and high-freq GPIO updates
+        if msg_id not in ("SIM_POOL_STATUS", "SIM_GPIO_OUT"):
             self._log.append(obj)
 
         if msg_id == "_SIM_DISCONNECTED":
@@ -393,6 +396,9 @@ class App(tk.Tk):
 
         elif msg_id == "SIM_LED":
             self._handle_sim_led(data)
+
+        elif msg_id == "SIM_GPIO_OUT":
+            self._handle_sim_gpio_out(data)
 
         elif msg_id == "SIM_BUZZER":
             self._handle_buzzer(data)
@@ -458,6 +464,17 @@ class App(tk.Tk):
     def _handle_buzzer(self, data: dict):
         pattern = data.get("pattern", "beep")
         self._log.append_text(f"🔔 BUZZER: {pattern}", color="#f9e2af")
+
+    def _handle_sim_gpio_out(self, data: dict):
+        """Handle SIM_GPIO_OUT — physical GPIO output level changes from pal_mac_gpio."""
+        pin   = data.get("pin", -1)
+        level = data.get("level", 0) != 0
+        name  = data.get("name", "")
+        # Map by name (preferred) or pin number
+        if name == "LED1" or pin == 5:
+            self._led_led1.set_on(level)
+        elif name == "LED2" or pin == 4:
+            self._led_led2.set_on(level)
 
     # ── Outbound commands ─────────────────────────────────────────────────────
 
