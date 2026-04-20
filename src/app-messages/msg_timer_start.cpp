@@ -48,6 +48,7 @@ hsys_msg_t *MsgTimerStart::from_json(const char *payload_json, hsys_module_id_t 
     p.start_offset_ms  = doc["start_offset_ms"].as<uint32_t>();
     p.duration_ms      = doc["duration_ms"].as<uint32_t>();
     p.is_repetitive    = doc["is_repetitive"].as<bool>();
+    p.forced           = doc["forced"].as<bool>();
     return create(sender_id, p);
 }
 #endif

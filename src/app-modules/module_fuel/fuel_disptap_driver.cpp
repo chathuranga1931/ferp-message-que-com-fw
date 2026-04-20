@@ -26,16 +26,16 @@ display_type_t FuelDispTapDriver::_active_type  = DIS_NONE;
 void FuelDispTapDriver::_dis1_event(display_type_t type, uint8_t *data)
 {
     const display_data_t *dis = (const display_data_t *)data;
-    MLOG("DIS1 event: type=%d, Vol=%.03f, Unit=%.02f, Tot=%.02f", 
-        (int)type, dis->volume_l/1000.0, dis->unit_price/100.0, dis->total_price/100.0);
+    // MLOG("DIS1 event: type=%d, Vol=%.03f, Unit=%.02f, Tot=%.02f", 
+    //     (int)type, dis->volume_l/1000.0, dis->unit_price/100.0, dis->total_price/100.0);
     if (_on_frame_cb) _on_frame_cb(0, type, data);
 }
 
 void FuelDispTapDriver::_dis2_event(display_type_t type, uint8_t *data)
 {
     const display_data_t *dis = (const display_data_t *)data;
-    MLOG("DIS2 event: type=%d, Vol=%.03f, Unit=%.02f, Tot=%.02f", 
-        (int)type, dis->volume_l/1000.0, dis->unit_price/100.0, dis->total_price/100.0);
+    // MLOG("DIS2 event: type=%d, Vol=%.03f, Unit=%.02f, Tot=%.02f", 
+    //     (int)type, dis->volume_l/1000.0, dis->unit_price/100.0, dis->total_price/100.0);
     if (_on_frame_cb) _on_frame_cb(1, type, data);
 }
 

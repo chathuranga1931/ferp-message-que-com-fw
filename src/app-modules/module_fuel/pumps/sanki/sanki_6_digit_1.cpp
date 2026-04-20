@@ -21,15 +21,6 @@
 
 #define DISPLAY_SAME_COUNT_FOR_STABILIZE_UNIT_PRICE     (10)
 
-typedef enum {
-    Pumping_State_Unknown = 0,
-    Pumping_State_Pumping,
-    Pumping_State_Stopped,
-    Pumping_State_Pumping_Waiting,
-    Pumping_State_Stopped_Waiting,
-    Pumping_State_Nozzle_Off_Waiting_To_Stable,
-}pumping_state_t;
-
 app_display_data_t display_data_validated[NO_NOZZELS];
 app_display_data_t display_data_commited[NO_NOZZELS];
 app_display_data_t display_value_validated_prev[NO_NOZZELS];
@@ -252,7 +243,7 @@ void sanki6_data_validate(const app_display_data_t * display_data, uint8_t nozzl
     return;
 }
 
-bool sanki6_process_state_machine(const app_display_data_t * display_data, uint8_t nozzle_id){
+bool sanki6_process_state_machine(const app_display_data_t * display_data, uint8_t nozzle_id, pumping_state_t * state){
 
     bool is_pumped_event = false;
     bool is_zeroed = false;
@@ -392,6 +383,8 @@ bool sanki6_process_state_machine(const app_display_data_t * display_data, uint8
             }
         break;  
     }
+
+    *state = pumping_state_nozzle_based[nozzle_id];
 
     return is_pumped_event;
 }

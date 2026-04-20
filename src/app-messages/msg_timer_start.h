@@ -51,7 +51,8 @@ public:
         uint32_t          start_offset_ms;    ///< Additional delay before first fire
         uint32_t          duration_ms;        ///< Timer period / one-shot duration
         bool              is_repetitive;      ///< true = repeat, false = one-shot
-        uint8_t           _pad[3];            ///< Explicit alignment padding
+        bool              forced;             ///< true = stop any existing slot and restart
+        uint8_t           _pad[2];            ///< Explicit alignment padding
     };
 
     // -----------------------------------------------------------------------

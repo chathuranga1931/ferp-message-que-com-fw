@@ -95,7 +95,7 @@ void ModuleTimer::_on_tick()
             // One-shot — release the slot
             memset(&slot, 0, sizeof(slot));
             m_start_uptime_ms[i] = 0;
-            LOG_MSG_INFO(MOD_TIMER_LOG_EN, "slot %d: one-shot fired, released", i);
+            // LOG_MSG_INFO(MOD_TIMER_LOG_EN, "slot %d: one-shot fired, released", i);
         }
     }
 }
@@ -152,10 +152,18 @@ timer_result_t ModuleTimer::_start_timer(const MsgTimerStart::Payload &p)
     }
 
     if (_find_slot(p.source_module_id) >= 0) {
-        LOG_MSG_WARNING(MOD_TIMER_LOG_EN,
-                     "start: slot already running for module %u",
-                     (unsigned)p.source_module_id);
-        return TIMER_RESULT_ERR_ALREADY_RUNNING;
+        if (p.forced) {
+            // forced restart — clear the existing slot and fall through to allocate a new one
+            _stop_timer(p.source_module_id);
+            // LOG_MSG_INFO(MOD_TIMER_LOG_EN,
+            //              "start: forced restart for module %u",
+            //              (unsigned)p.source_module_id);
+        } else {
+            LOG_MSG_WARNING(MOD_TIMER_LOG_EN,
+                         "start: slot already running for module %u",
+                         (unsigned)p.source_module_id);
+            return TIMER_RESULT_ERR_ALREADY_RUNNING;
+        }
     }
 
     int idx = _free_slot();
@@ -173,11 +181,11 @@ timer_result_t ModuleTimer::_start_timer(const MsgTimerStart::Payload &p)
     slot.next_fire_ms      = now_ms + p.start_offset_ms + p.duration_ms;
     m_start_uptime_ms[idx] = now_ms;
 
-    LOG_MSG_INFO(MOD_TIMER_LOG_EN,
-                 "start: slot %d for module %u  dur=%u ms  offset=%u ms  rep=%d",
-                 idx, (unsigned)p.source_module_id,
-                 (unsigned)p.duration_ms, (unsigned)p.start_offset_ms,
-                 (int)p.is_repetitive);
+    // LOG_MSG_INFO(MOD_TIMER_LOG_EN,
+    //              "start: slot %d for module %u  dur=%u ms  offset=%u ms  rep=%d",
+    //              idx, (unsigned)p.source_module_id,
+    //              (unsigned)p.duration_ms, (unsigned)p.start_offset_ms,
+    //              (int)p.is_repetitive);
 
     return TIMER_RESULT_OK;
 }
@@ -193,8 +201,8 @@ timer_result_t ModuleTimer::_stop_timer(hsys_module_id_t source_id)
 
     memset(&m_slots[idx], 0, sizeof(m_slots[idx]));
     m_start_uptime_ms[idx] = 0;
-    LOG_MSG_INFO(MOD_TIMER_LOG_EN, "stop: slot %d released for module %u",
-                 idx, (unsigned)source_id);
+    // LOG_MSG_INFO(MOD_TIMER_LOG_EN, "stop: slot %d released for module %u",
+    //              idx, (unsigned)source_id);
 
     return TIMER_RESULT_OK;
 }
@@ -240,9 +248,9 @@ void ModuleTimer::_send_alarm(int slot_index, uint32_t elapsed_ms)
     hsys_msg_t *msg = MsgTimerAlarm::create(id(), p);
     if (msg) {
         send(msg, slot.source_id);
-        LOG_MSG_INFO(MOD_TIMER_LOG_EN,
-                     "alarm → module %u  elapsed=%u ms",
-                     (unsigned)slot.source_id, (unsigned)elapsed_ms);
+        // LOG_MSG_INFO(MOD_TIMER_LOG_EN,
+        //              "alarm → module %u  elapsed=%u ms",
+        //              (unsigned)slot.source_id, (unsigned)elapsed_ms);
     } else {
         LOG_MSG_ERROR(MOD_TIMER_LOG_EN,
                       "failed to create TimerAlarm for module %u",

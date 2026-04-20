@@ -12,10 +12,14 @@
 #include "msg_config_ready.h"
 #include "msg_nozzle_state.h"
 #include "msg_fuel_pumped.h"
+#include "msg_timer_start.h"
+#include "msg_timer_alarm.h"
 #include "sanki_6_digit_1.h"
 #include "app.h"          // app_config_get()
 #include "hsys_msg.h"
 #include "pal_logger.h"
+#include "pal_gpio.h"
+#include "pal_time.h"
 
 #define __TAG__     "FUEL    "
 #define FUEL_LOG_EN true
@@ -50,6 +54,52 @@ static void _distap_frame_cb(uint8_t nozzle_idx, display_type_t type,
 }
 
 // ---------------------------------------------------------------------------
+// Nozzle toggle-button instances (file-scope — module is a singleton)
+// These live here rather than as class members so that module_fuel.h does not
+// need to expose hsys_tog_button_t to every translation unit that includes it.
+// ---------------------------------------------------------------------------
+#include "hsys_tog_button.h"
+static hsys_tog_button_t s_nozzle_btn[FUEL_MAX_NOZZLES];
+
+// ---------------------------------------------------------------------------
+// Static nozzle GPIO ISRs — read pin level → drive toggle-button state machine
+// ---------------------------------------------------------------------------
+
+static void _nozzle1_gpio_isr(int32_t /*gpio_num*/, void *arg)
+{
+    pal_gpio_level_t lvl = PAL_GPIO_LEVEL_LOW;
+    pal_gpio_get_level(32, &lvl);
+    uint64_t ts = 0;
+    if (lvl == PAL_GPIO_LEVEL_HIGH)
+        hsys_tog_button_press_event(arg, ts);
+    else
+        hsys_tog_button_release_event(arg, ts);
+}
+
+static void _nozzle2_gpio_isr(int32_t /*gpio_num*/, void *arg)
+{
+    pal_gpio_level_t lvl = PAL_GPIO_LEVEL_LOW;
+    pal_gpio_get_level(33, &lvl);
+    uint64_t ts = 0;
+    if (lvl == PAL_GPIO_LEVEL_HIGH)
+        hsys_tog_button_press_event(arg, ts);
+    else
+        hsys_tog_button_release_event(arg, ts);
+}
+
+// ---------------------------------------------------------------------------
+// Static nozzle toggle-button shims — bridge debounced callbacks → module
+// ---------------------------------------------------------------------------
+
+// Nozzle 1 (index 0)
+static void _nozzle1_up_cb()   { ModuleFuel::instance()->_on_nozzle_up(0);   }
+static void _nozzle1_down_cb() { ModuleFuel::instance()->_on_nozzle_down(0); }
+
+// Nozzle 2 (index 1)
+static void _nozzle2_up_cb()   { ModuleFuel::instance()->_on_nozzle_up(1);   }
+static void _nozzle2_down_cb() { ModuleFuel::instance()->_on_nozzle_down(1); }
+
+// ---------------------------------------------------------------------------
 // Lifecycle
 // ---------------------------------------------------------------------------
 
@@ -65,7 +115,33 @@ void ModuleFuel::init()
         }
     }
 
+    // ── Nozzle toggle buttons ────────────────────────────────────────────────
+    // Mirror old app_fuel.cpp: debounce 500 ms press / 500 ms release.
+    // on_press  → nozzle inserted (DOWN), on_release → nozzle lifted (UP).
+    //
+    // GPIO assignments (matches board_2602_wrap.h / mac_driver.cpp SIM_NOZZLE_INPUT):
+    //   Nozzle 1 → GPIO 32 (INPUT3)
+    //   Nozzle 2 → GPIO 33 (INPUT4)
+
+    hsys_tog_button_init(&s_nozzle_btn[0], _nozzle1_down_cb, _nozzle1_up_cb, 500, 500);
+    hsys_tog_button_init(&s_nozzle_btn[1], _nozzle2_down_cb, _nozzle2_up_cb, 500, 500);
+
+    pal_gpio_config_t nozzle_cfg{};
+    nozzle_cfg.dir           = PAL_GPIO_DIR_INPUT;
+    nozzle_cfg.pull          = PAL_GPIO_PULL_NONE;
+    nozzle_cfg.intr_type     = PAL_GPIO_INTR_ANYEDGE;
+    nozzle_cfg.isr_callback  = _nozzle1_gpio_isr;
+    nozzle_cfg.isr_arg       = &s_nozzle_btn[0];
+    pal_gpio_config(32, nozzle_cfg);   // NOZZLE1_GPIO_PIN = INPUT3
+
+    nozzle_cfg.isr_callback  = _nozzle2_gpio_isr;
+    nozzle_cfg.isr_arg       = &s_nozzle_btn[1];
+    pal_gpio_config(33, nozzle_cfg);   // NOZZLE2_GPIO_PIN = INPUT4
+
+    MLOG("init: nozzle GPIOs armed — GPIO32 (nozzle1) GPIO33 (nozzle2)");
+
     subscribe(MsgConfigReady::ID);
+    subscribe(MsgTimerAlarm::ID);
 }
 
 // ---------------------------------------------------------------------------
@@ -82,6 +158,12 @@ void ModuleFuel::on_msg_received(const hsys_msg_t &msg)
             }
             break;
 
+        case MsgTimerAlarm::ID:
+            // 500 ms timeout — run the state machine with the last known data
+            // to allow the sanki6 pipeline to detect a stalled/stopped nozzle.
+            wake();
+            break;
+
         default:
             log_error("unhandled msg_id=0x%04X", msg.msg_id);
             break;
@@ -96,6 +178,27 @@ void ModuleFuel::on_msg_received(const hsys_msg_t &msg)
 void ModuleFuel::on_wake()
 {
     _process_queues();
+}
+
+// ---------------------------------------------------------------------------
+// Nozzle UP / DOWN — called on the debounce timer thread, update cached state
+// and wake the module so _process_queues() can see the latest nozzle_state.
+// ---------------------------------------------------------------------------
+
+void ModuleFuel::_on_nozzle_up(uint8_t nozzle_idx)
+{
+    if (nozzle_idx >= FUEL_MAX_NOZZLES) return;
+    _nozzle_state[nozzle_idx] = true;
+    MLOG("nozzle[%u] UP", (unsigned)nozzle_idx);
+    wake();
+}
+
+void ModuleFuel::_on_nozzle_down(uint8_t nozzle_idx)
+{
+    if (nozzle_idx >= FUEL_MAX_NOZZLES) return;
+    _nozzle_state[nozzle_idx] = false;
+    MLOG("nozzle[%u] DOWN", (unsigned)nozzle_idx);
+    wake();
 }
 
 // ---------------------------------------------------------------------------
@@ -126,10 +229,20 @@ void ModuleFuel::_on_distap_frame(uint8_t nozzle_idx, display_type_t type,
 
     const display_data_t &frame = *reinterpret_cast<const display_data_t *>(raw_data);
 
+    // Nozzle state is encoded in flags.bits.start_stop by the emulator
+    // (same bit that the hardware GPIO toggle buttons set on real hardware).
+    bool nozzle_up = (bool)frame.flags.bits.start_stop;
+    // _nozzle_state[nozzle_idx] = nozzle_up;
+
+    // MLOG("DISP%d event: type=%d nozzle=%s Vol=%.03f Unit=%.02f Tot=%.02f",
+    //      (unsigned)nozzle_idx + 1, (int)type,
+    //      nozzle_up ? "UP" : "DOWN",
+    //      frame.volume_l/1000.0, frame.unit_price/100.0, frame.total_price/100.0);
+
     // Convert to app_display_data_t and push to queue
     fuel_frame_item_t item;
     item.dtype = type;
-    fuel_types_from_frame(&item.data, &frame, type, /*nozzle_up=*/true);
+    fuel_types_from_frame(&item.data, &frame, type, nozzle_up);
 
     if (!hsys_queue_send(&_frame_queue[nozzle_idx], &item, 0)) {
         MLOGE("_on_distap_frame: queue full for nozzle %u, frame dropped",
@@ -144,40 +257,131 @@ void ModuleFuel::_on_distap_frame(uint8_t nozzle_idx, display_type_t type,
 // _process_queues — drain all nozzle queues and run the sanki6 pipeline
 // ---------------------------------------------------------------------------
 
+
+const pump_driver_t pump_drivers[DIS_SIZE] = {
+    [DIS_NONE] = { nullptr, nullptr, nullptr },
+    [DIS_LONGFENG_8_DIGIT] = { nullptr, nullptr, nullptr },
+    [DIS_CENSTAR_6_DIGIT] = { nullptr, nullptr, nullptr },
+    [DIS_CENSTAR_7_DIGIT] = { nullptr, nullptr, nullptr },
+    [DIS_CENSTAR_7_DIGIT_CS] = { nullptr, nullptr, nullptr },
+    [DIS_HONGYANG_8_DIGIT] = { nullptr, nullptr, nullptr },
+    [DIS_WAYNE_6_DIGIT] = { nullptr, nullptr, nullptr },
+    [DIS_SANKI_6_DIGIT] = {
+        .get_event = (fp_pump_get_event_t *)sanki6_get_event,
+        .process_data = (fp_pump_process_data_t *)sanki6_process_data,
+        .process_state_machine = (fp_pump_process_state_machine_t *)sanki6_process_state_machine,
+        .data_validate = (fp_pump_data_validate *)sanki6_data_validate
+    }
+};
+
 void ModuleFuel::_process_queues()
 {
-    for (uint8_t idx = 0; idx < FUEL_MAX_NOZZLES; idx++) {
-        fuel_frame_item_t item;
-        while (hsys_queue_receive(&_frame_queue[idx], &item, 0)) {
+    for (uint8_t idx = 0; idx < FUEL_MAX_NOZZLES; idx++) 
+    {
+        static fuel_frame_item_t item[NO_NOZZELS];
+        static app_display_data_t display_data[NO_NOZZELS] = {0}; 
+        static unsigned long ts_last_data_received[NO_NOZZELS] =  {0};
+        bool is_pumped[NO_NOZZELS] = {0};
+        bool is_received = false;
 
-            app_display_data_t data = item.data;
+        do 
+        {
+            is_received = hsys_queue_receive(&_frame_queue[idx], &item[idx], 0);
+            if(is_received) 
+            { 
+                ts_last_data_received[idx] = pal_time_get_ms(); 
 
-            if (!sanki6_process_data(&data)) {
+                display_data[idx].total_pricex100 = (uint64_t)item[idx].data.total_pricex100;
+                display_data[idx].volume_lx1000 = (uint64_t)item[idx].data.volume_lx1000;
+                display_data[idx].unit_pricex100 = (uint64_t)item[idx].data.unit_pricex100;
+                display_data[idx].fuel_type = item[idx].dtype;
+                display_data[idx].start_stop = item[idx].data.start_stop;  // Ensure latest nozzle state from frame
+            }
+
+            display_type_t dtype = (display_type_t)display_data[idx].fuel_type;
+            switch(dtype)
+            {
+                case DIS_NONE:
+                break;
+                case DIS_LONGFENG_8_DIGIT:
+                break;
+                case DIS_CENSTAR_6_DIGIT:
+                case DIS_CENSTAR_7_DIGIT:
+                case DIS_CENSTAR_7_DIGIT_CS:
+                case DIS_HONGYANG_8_DIGIT:
+                case DIS_WAYNE_6_DIGIT:
+                case DIS_SANKI_6_DIGIT:
+                {
+                    // SANKI does not have nozzle stat in the frame
+                    display_data[idx].start_stop = _nozzle_state[idx];  // Ensure latest nozzle state from toggle-button GPIO    
+                }
+                break;
+                default:
+                break;
+            }
+
+            if(pump_drivers[dtype].process_data == nullptr || 
+               pump_drivers[dtype].process_state_machine == nullptr || 
+               pump_drivers[dtype].get_event == nullptr || 
+               pump_drivers[dtype].data_validate == nullptr )
+            {
+                continue;
+            }
+
+            bool is_valid = pump_drivers[dtype].process_data(&display_data[idx]);
+            if (!is_valid) 
+            {
                 MLOG("nozzle[%u] sanki6_process_data rejected frame", (unsigned)idx);
                 continue;
             }
 
-            sanki6_data_validate(&data, idx);
+            pump_drivers[dtype].data_validate(&display_data[idx], idx);                
 
-            bool pumped = sanki6_process_state_machine(&data, idx);
+            static pumping_state_t state_prev[FUEL_MAX_NOZZLES];
+            pumping_state_t state;
+            bool pumped = pump_drivers[dtype].process_state_machine(&display_data[idx], idx, &state);
 
-            if (pumped) {
+            if (pumped) 
+            {
                 nozzle_event_t ev{};
-                sanki6_get_event(&ev, idx);
+                pump_drivers[dtype].get_event(&ev, idx);
 
                 MLOG("nozzle[%u] PUMPED  vol=%lu  unit=%lu  total=%lu",
-                     (unsigned)idx,
-                     (unsigned long)ev.volume_lx1000,
-                     (unsigned long)ev.unit_pricex100,
-                     (unsigned long)(uint32_t)ev.total_pricex100);
+                    (unsigned)idx,
+                    (unsigned long)ev.volume_lx1000,
+                    (unsigned long)ev.unit_pricex100,
+                    (unsigned long)(uint32_t)ev.total_pricex100);
 
                 _publish_fuel_pumped(idx, ev);
             }
 
-            nozzle_state_t ns = data.start_stop ? NOZZLE_PUMPING : NOZZLE_IDLE;
-            _publish_nozzle_state(idx, ns);
-        }
+            if(state_prev[idx] != state)
+            {
+                state_prev[idx] = state;
+                if(state == Pumping_State_Unknown)
+                {
+                    nozzle_state_t ns = NOZZLE_IDLE;
+                    _publish_nozzle_state(idx, ns);
+                    MLOG("nozzle[%u] state= IDLE", (unsigned)idx);
+                }
+                else if(state == Pumping_State_Stopped)
+                {
+                    nozzle_state_t ns = NOZZLE_PUMPED;
+                    _publish_nozzle_state(idx, ns);
+                    MLOG("nozzle[%u] state= PUMPED", (unsigned)idx);
+                }
+                else 
+                {
+                    nozzle_state_t ns = NOZZLE_PUMPING;
+                    _publish_nozzle_state(idx, ns);
+                    MLOG("nozzle[%u] state= PUMPING", (unsigned)idx);
+                }
+            }
+
+        }while(is_received);
     }
+
+    _publish_wake_message(500); // Re-run state machine every 500 ms to detect stalled nozzle
 }
 
 // ---------------------------------------------------------------------------
@@ -206,4 +410,17 @@ void ModuleFuel::_publish_fuel_pumped(uint8_t nozzle_idx, const nozzle_event_t &
     hsys_msg_t *msg = create_typed<MsgFuelPumped>(p);
     if (!msg) { log_error("create_typed<MsgFuelPumped> failed"); return; }
     publish(msg);
+}
+
+void ModuleFuel::_publish_wake_message(uint32_t duration_ms)
+{
+    MsgTimerStart::Payload tp{};
+    tp.source_module_id = id();
+    tp.start_offset_ms  = 0;
+    tp.duration_ms      = 500;
+    tp.is_repetitive    = false;   // one-shot — re-armed on each on_wake()
+    tp.forced           = true;    // cancel any running slot and restart fresh
+
+    hsys_msg_t *tmsg = create_typed<MsgTimerStart>(tp);
+    if (tmsg) { publish(tmsg); }
 }

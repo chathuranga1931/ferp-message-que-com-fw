@@ -53,7 +53,8 @@ class NozzleWidget(tk.Frame):
         self._nozzle_idx    = nozzle_idx
         self._send_fn       = send_fn or (lambda _: None)
         self._nozzle_active = False   # False = DOWN (inactive), True = UP (active)
-        self._auto_job      = None    # after() handle for periodic sending
+        self._auto_job      = None    # after() handle for pump ticking
+        self._cont_job      = None    # after() handle for continuous resend
         self._pumping       = False
         self._volume_ml     = 0.0     # accumulated volume in mL (internal units)
 
@@ -92,7 +93,7 @@ class NozzleWidget(tk.Frame):
                  font=_MONO_SM).pack(side=tk.LEFT)
 
         self._nozzle_btn = tk.Button(
-            tog, text="↓  DOWN (inactive)",
+            tog, text="▶  Start",
             bg=_NOZZLE_OFF_BG, fg=_NOZZLE_OFF_FG,
             activebackground=_ACCENT, font=_MONO,
             relief=tk.FLAT, padx=8, pady=3,
@@ -171,7 +172,20 @@ class NozzleWidget(tk.Frame):
             font=("Menlo", 11, "bold"), relief=tk.FLAT,
             padx=8, pady=6,
             command=self._toggle_pump)
-        self._pump_btn.pack(fill=tk.X, padx=8, pady=(2, 6))
+        self._pump_btn.pack(fill=tk.X, padx=8, pady=(2, 4))
+
+        # ── Continuous data checkbox ──────────────────────────────────────────
+        cont_row = tk.Frame(self, bg=_BG)
+        cont_row.pack(fill=tk.X, padx=8, pady=(0, 4))
+        self._continuous_var = tk.BooleanVar(value=False)
+        tk.Checkbutton(
+            cont_row, text="Continuous data  (keep sending last frame)",
+            variable=self._continuous_var,
+            bg=_BG, fg=_FG_DIM, selectcolor=_BG_MID,
+            activebackground=_BG, activeforeground=_FG,
+            font=_MONO_SM,
+            command=self._on_continuous_changed,
+        ).pack(side=tk.LEFT)
 
         ttk.Separator(self, orient=tk.HORIZONTAL).pack(fill=tk.X, padx=4, pady=2)
 
@@ -226,20 +240,40 @@ class NozzleWidget(tk.Frame):
     def _toggle_nozzle(self):
         self._nozzle_active = not self._nozzle_active
         if self._nozzle_active:
-            # Nozzle lifted UP → active
-            self._nozzle_btn.config(
-                text="↑  UP   (active)",
-                bg=_NOZZLE_ON_BG, fg=_NOZZLE_ON_FG)
+            # Nozzle START pressed → going UP
+            # Save last transaction values before clearing (if total is non-zero)
+            self._save_last_transaction()
+            # Reset volume accumulator for the new transaction
+            self._volume_ml = 0.0
+            self._live_vol_var.set("0.000 L")
+            # Update button and status circle
+            self._nozzle_btn.config(text="■  Stop", bg=_NOZZLE_ON_BG, fg=_NOZZLE_ON_FG)
+            self._canvas.itemconfig(self._circle, fill=_NOZZLE_ON_BG)
+            self._state_label.config(text="Nozzle UP", fg=_NOZZLE_ON_BG)
         else:
-            # Nozzle back DOWN → inactive
-            self._nozzle_btn.config(
-                text="↓  DOWN (inactive)",
-                bg=_NOZZLE_OFF_BG, fg=_NOZZLE_OFF_FG)
+            # Nozzle STOP pressed → going DOWN
+            self._nozzle_btn.config(text="▶  Start", bg=_NOZZLE_OFF_BG, fg=_NOZZLE_OFF_FG)
+            self._canvas.itemconfig(self._circle, fill=_IDLE_COLOR)
+            self._state_label.config(text="Nozzle Down", fg=_FG_DIM)
+            self._stop_continuous()
         self._send_fn({
             "cmd":    "SIM_NOZZLE_INPUT",
             "nozzle": self._nozzle_idx,
-            "active": self._nozzle_active,
+            "active": not self._nozzle_active,  # inverted: UP=false(low→release), DOWN=true(high→press)
         })
+
+    def _save_last_transaction(self):
+        """Snapshot current volume/unit/total → Last Transaction (skipped if total=0)."""
+        try:
+            unit_price_x100 = int(self._unit_price_var.get())
+            volume_l_x1000  = int(round(self._volume_ml))
+            total_x100      = (unit_price_x100 * volume_l_x1000) // 1000
+            if total_x100 > 0:
+                self._tx_vol_var.set(f"{volume_l_x1000 / 1000.0:.3f} L")
+                self._tx_unit_var.set(f"${unit_price_x100 / 100:.2f}/L")
+                self._tx_total_var.set(f"${total_x100 / 100:.2f}")
+        except (ValueError, ZeroDivisionError):
+            pass
 
     def _send_frame(self, flags: int = 1) -> bool:
         """Build and send one SIM_DISTAP_FRAME using current volume accumulator."""
@@ -279,9 +313,8 @@ class NozzleWidget(tk.Frame):
         except ValueError:
             interval = 100
         self._rate_var.set(str(interval))
-        # Reset volume accumulator for new transaction
-        self._volume_ml = 0.0
-        self._live_vol_var.set("0.000 L")
+        # Stop continuous resend — pump loop takes over
+        self._stop_continuous()
         self._pumping = True
         self._pump_btn.config(text="■  Stop", bg="#f38ba8", fg="#1e1e2e")
         self._pump_tick(interval)
@@ -294,6 +327,40 @@ class NozzleWidget(tk.Frame):
         self._pump_btn.config(text="▶  Pump", bg=_BTN_SEND_BG, fg=_BTN_SEND_FG)
         # Send final frame with flags=0 (stop signal to state machine)
         self._send_frame(flags=0)
+        # If continuous mode is on, keep resending the last frame value
+        if self._continuous_var.get():
+            self._start_continuous()
+
+    def _on_continuous_changed(self):
+        """Called when the Continuous checkbox is toggled."""
+        if self._continuous_var.get():
+            # Start only if not currently pumping
+            if not self._pumping:
+                self._start_continuous()
+        else:
+            self._stop_continuous()
+
+    def _start_continuous(self):
+        """Start a repeating job that resends the last frame at the set interval."""
+        self._stop_continuous()   # cancel any existing job first
+        try:
+            interval = max(10, int(self._rate_var.get()))
+        except ValueError:
+            interval = 100
+        self._cont_tick(interval)
+
+    def _stop_continuous(self):
+        if self._cont_job is not None:
+            self.after_cancel(self._cont_job)
+            self._cont_job = None
+
+    def _cont_tick(self, interval: int):
+        """Resend the last accumulated frame value (flags=1) continuously."""
+        if not self._continuous_var.get():
+            self._cont_job = None
+            return
+        self._send_frame(flags=1)
+        self._cont_job = self.after(interval, lambda: self._cont_tick(interval))
 
     def _pump_tick(self, interval: int):
         if not self._pumping:

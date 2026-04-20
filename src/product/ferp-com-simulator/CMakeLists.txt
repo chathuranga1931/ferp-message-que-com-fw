@@ -128,6 +128,7 @@ add_library(app_pheripherals STATIC
     ${APP_PHR}/app_spiffs.cpp
     ${PERIPHERAL}/generic_peripheral/hsys_led.cpp
     ${PERIPHERAL}/generic_peripheral/hsys_button.cpp
+    ${PERIPHERAL}/generic_peripheral/hsys_tog_button.cpp
 )
 target_include_directories(app_pheripherals PUBLIC
     ${APP_PHR}
