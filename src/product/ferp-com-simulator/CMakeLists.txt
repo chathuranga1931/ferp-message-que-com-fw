@@ -127,6 +127,7 @@ target_link_libraries(app_messages PRIVATE hsys_framework)
 add_library(app_pheripherals STATIC
     ${APP_PHR}/app_spiffs.cpp
     ${PERIPHERAL}/generic_peripheral/hsys_led.cpp
+    ${PERIPHERAL}/generic_peripheral/hsys_buzzer.cpp
     ${PERIPHERAL}/generic_peripheral/hsys_button.cpp
     ${PERIPHERAL}/generic_peripheral/hsys_tog_button.cpp
 )
@@ -154,6 +155,8 @@ add_library(app_modules STATIC
     ${APP_MODS}/module_fuel/module_fuel.cpp
     ${APP_MODS}/module_fuel/fuel_disptap_driver.cpp
     ${APP_MODS}/module_fuel/pumps/sanki/sanki_6_digit_1.cpp
+    # Buzzer module
+    ${APP_MODS}/module_buzzer/module_buzzer.cpp
 )
 target_include_directories(app_modules PUBLIC
     ${APP_MODS}
@@ -170,6 +173,7 @@ target_include_directories(app_modules PUBLIC
     ${APP_MODS}/module_fuel
     ${APP_MODS}/module_fuel/pumps
     ${APP_MODS}/module_fuel/pumps/sanki
+    ${APP_MODS}/module_buzzer
     ${APP_PHR}
     ${APP}
     ${PAL_MAC}       # esp_err.h stub
@@ -198,6 +202,7 @@ target_include_directories(app_product PUBLIC
     ${APP_MODS}/module_default_btn
     ${APP_MODS}/module_print_btn
     ${APP_MODS}/module_fuel
+    ${APP_MODS}/module_buzzer
     ${APP_MSGS}
     ${HSYS_OS}
     ${PAL_MAC}       # esp_err.h stub

@@ -28,6 +28,7 @@ import json
 import queue
 import random
 import socket
+import subprocess
 import sys
 import threading
 import tkinter as tk
@@ -238,10 +239,11 @@ class App(tk.Tk):
         self._led_pump     = LedWidget(frame, label="Pump",     color_on="#f9e2af")
         self._led_led1     = LedWidget(frame, label="LED1",     color_on="#fab387")
         self._led_led2     = LedWidget(frame, label="LED2",     color_on="#fab387")
+        self._led_buzzer   = LedWidget(frame, label="Buzzer",   color_on="#f9e2af")
 
         for w in (self._led_power, self._led_wifi,
                   self._led_internet, self._led_cloud, self._led_pump,
-                  self._led_led1, self._led_led2):
+                  self._led_led1, self._led_led2, self._led_buzzer):
             w.pack(anchor=tk.W, padx=6, pady=2)
 
         # Start power LED on immediately
@@ -505,6 +507,16 @@ class App(tk.Tk):
             self._led_led1.set_on(level)
         elif name == "LED2" or pin == 4:
             self._led_led2.set_on(level)
+        elif name == "BUZZER" or pin == 26:
+            self._led_buzzer.set_on(level)
+            if level:
+                # Play a short system beep — non-blocking, macOS afplay
+                subprocess.Popen(
+                    ["afplay", "-v", "0.4",
+                     "/System/Library/Sounds/Tink.aiff"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
 
     # ── Outbound commands ─────────────────────────────────────────────────────
 

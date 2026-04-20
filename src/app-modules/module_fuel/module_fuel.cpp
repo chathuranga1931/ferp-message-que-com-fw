@@ -331,7 +331,7 @@ void ModuleFuel::_process_queues()
             bool is_valid = pump_drivers[dtype].process_data(&display_data[idx]);
             if (!is_valid) 
             {
-                MLOG("nozzle[%u] sanki6_process_data rejected frame", (unsigned)idx);
+                // MLOG("nozzle[%u] sanki6_process_data rejected frame", (unsigned)idx);
                 continue;
             }
 

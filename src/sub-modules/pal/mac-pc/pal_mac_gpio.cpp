@@ -29,6 +29,7 @@ static isr_entry_t      s_isr_table[PAL_GPIO_MAX]    = {};
 static const struct { int pin; const char *name; } k_pin_names[] = {
     {  5, "LED1"   },
     {  4, "LED2"   },
+    { 26, "BUZZER" },
     { 36, "BTN_DEF"},
     { 34, "BTN_P1" },
     { 35, "BTN_P2" },
