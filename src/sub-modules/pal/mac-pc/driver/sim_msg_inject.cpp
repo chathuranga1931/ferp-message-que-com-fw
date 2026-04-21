@@ -31,6 +31,10 @@
 #include "msg_config_ready.h"
 #include "msg_config_get.h"
 #include "msg_config_set.h"
+#include "msg_config_get_wifi.h"
+#include "msg_config_get_cloud.h"
+#include "msg_config_get_mqtt.h"
+#include "msg_config_get_dt.h"
 #include "msg_timer_start.h"
 #include "msg_timer_stop.h"
 #include "msg_timer_start_response.h"
@@ -145,6 +149,22 @@ void sim_msg_inject_handle(const char *cmd_json)
 
         case MSG_ID_CONFIG_SET:
             _publish(MsgConfigSet::from_json(payload_buf, src), msg_id);
+            break;
+
+        case MSG_ID_CONFIG_GET_WIFI:
+            _publish(MsgConfigGetWifi::from_json(payload_buf, src), msg_id);
+            break;
+
+        case MSG_ID_CONFIG_GET_CLOUD:
+            _publish(MsgConfigGetCloud::from_json(payload_buf, src), msg_id);
+            break;
+
+        case MSG_ID_CONFIG_GET_MQTT:
+            _publish(MsgConfigGetMqtt::from_json(payload_buf, src), msg_id);
+            break;
+
+        case MSG_ID_CONFIG_GET_DT:
+            _publish(MsgConfigGetDT::from_json(payload_buf, src), msg_id);
             break;
 
         // ── Timer ────────────────────────────────────────────────────────────

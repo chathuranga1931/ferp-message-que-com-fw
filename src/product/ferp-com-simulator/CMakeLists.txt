@@ -48,6 +48,7 @@ add_library(pal_mac STATIC
     ${PAL_MAC}/pal_mac_spiffs.cpp           # POSIX SPIFFS emulation
     ${PAL_MAC}/pal_mac_gpio.cpp             # GPIO → mac_driver_send_gpio()
     ${PAL_MAC}/pal_mac_system.cpp           # pal_system_init() → boot everything
+    ${PAL_MAC}/pal_mac_network.cpp          # pal_network_ping() via TCP connect
     # Common middleware — uses ArduinoJson (platform-independent)
     ${MIDDLEWARE}/hsys_config.cpp
     # Simulator driver — owns the TCP socket and all UI I/O
@@ -98,6 +99,14 @@ add_library(app_messages STATIC
     ${APP_MSGS}/msg_config_ready.cpp
     ${APP_MSGS}/msg_config_set.cpp
     ${APP_MSGS}/msg_config_get.cpp
+    ${APP_MSGS}/msg_config_get_wifi.cpp
+    ${APP_MSGS}/msg_config_get_cloud.cpp
+    ${APP_MSGS}/msg_config_get_mqtt.cpp
+    ${APP_MSGS}/msg_config_get_dt.cpp
+    ${APP_MSGS}/msg_config_wifi.cpp
+    ${APP_MSGS}/msg_config_cloud.cpp
+    ${APP_MSGS}/msg_config_mqtt.cpp
+    ${APP_MSGS}/msg_config_dt.cpp
     ${APP_MSGS}/msg_timer_start.cpp
     ${APP_MSGS}/msg_timer_stop.cpp
     ${APP_MSGS}/msg_timer_start_response.cpp
@@ -162,6 +171,8 @@ add_library(app_modules STATIC
     ${APP_MODS}/module_buzzer/module_buzzer.cpp
     # Cloud module (driver-agnostic — no cube_sphere in simulator)
     ${APP_MODS}/module_cloud/module_cloud.cpp
+    # Internet monitor module
+    ${APP_MODS}/module_internet/module_internet.cpp
 )
 target_include_directories(app_modules PUBLIC
     ${APP_MODS}
@@ -180,6 +191,7 @@ target_include_directories(app_modules PUBLIC
     ${APP_MODS}/module_fuel/pumps/sanki
     ${APP_MODS}/module_buzzer
     ${APP_MODS}/module_cloud
+    ${APP_MODS}/module_internet
     ${APP_PHR}
     ${APP}
     ${PAL_MAC}       # esp_err.h stub
@@ -210,6 +222,7 @@ target_include_directories(app_product PUBLIC
     ${APP_MODS}/module_fuel
     ${APP_MODS}/module_buzzer
     ${APP_MODS}/module_cloud
+    ${APP_MODS}/module_internet
     ${APP_MSGS}
     ${HSYS_OS}
     ${PAL_MAC}       # esp_err.h stub

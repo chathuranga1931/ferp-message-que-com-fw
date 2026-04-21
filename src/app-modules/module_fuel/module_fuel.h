@@ -83,7 +83,7 @@ private:
     display_type_t        _display_type = (display_type_t)0;
     bool                  _started = false;
 
-    void _start();
+    void _start(const hsys_msg_t &cfg_msg);
     void _process_queues();
 
     void _publish_nozzle_state(uint8_t nozzle_idx, nozzle_state_t state);

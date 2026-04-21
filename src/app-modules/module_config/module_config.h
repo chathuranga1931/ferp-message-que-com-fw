@@ -51,4 +51,8 @@ private:
 
     // ── Internal helpers ─────────────────────────────────────────────────────
     void _load_and_save();
+    void _send_config_wifi (hsys_module_id_t requester);
+    void _send_config_cloud(hsys_module_id_t requester);
+    void _send_config_mqtt (hsys_module_id_t requester);
+    void _send_config_dt   (hsys_module_id_t requester);
 };

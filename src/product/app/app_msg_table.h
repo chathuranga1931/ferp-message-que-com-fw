@@ -31,6 +31,14 @@
 #include "msg_config_ready.h"           // MsgConfigReady         (0x0300)
 #include "msg_config_set.h"             // MsgConfigSet           (0x0301)
 #include "msg_config_get.h"             // MsgConfigGet           (0x0302)
+#include "msg_config_get_wifi.h"        // MsgConfigGetWifi       (0x0303)
+#include "msg_config_get_cloud.h"       // MsgConfigGetCloud      (0x0304)
+#include "msg_config_get_mqtt.h"        // MsgConfigGetMqtt       (0x0305)
+#include "msg_config_get_dt.h"          // MsgConfigGetDT         (0x0306)
+#include "msg_config_wifi.h"            // MsgConfigWifi          (0x0307)
+#include "msg_config_cloud.h"           // MsgConfigCloud         (0x0308)
+#include "msg_config_mqtt.h"            // MsgConfigMqtt          (0x0309)
+#include "msg_config_dt.h"              // MsgConfigDT            (0x030A)
 #include "msg_timer_start.h"            // MsgTimerStart          (0x0100)
 #include "msg_timer_stop.h"             // MsgTimerStop           (0x0101)
 #include "msg_timer_start_response.h"   // MsgTimerStartResponse  (0x0102)
@@ -54,6 +62,14 @@
         MsgConfigReady::DESCRIPTOR,                                               \
         MsgConfigSet::DESCRIPTOR,                                                 \
         MsgConfigGet::DESCRIPTOR,                                                 \
+        MsgConfigGetWifi::DESCRIPTOR,                                             \
+        MsgConfigGetCloud::DESCRIPTOR,                                            \
+        MsgConfigGetMqtt::DESCRIPTOR,                                             \
+        MsgConfigGetDT::DESCRIPTOR,                                               \
+        MsgConfigWifi::DESCRIPTOR,                                                \
+        MsgConfigCloud::DESCRIPTOR,                                               \
+        MsgConfigMqtt::DESCRIPTOR,                                                \
+        MsgConfigDT::DESCRIPTOR,                                                  \
         MsgTimerStart::DESCRIPTOR,                                                \
         MsgTimerStop::DESCRIPTOR,                                                 \
         MsgTimerStartResponse::DESCRIPTOR,                                        \

@@ -15,7 +15,10 @@
 #include "msg_timer_start.h"
 #include "msg_timer_alarm.h"
 #include "sanki_6_digit_1.h"
-#include "app.h"          // app_config_get()
+#include "app.h"          // app_config_get() — kept for other potential uses
+#include "msg_config_ready.h"
+#include "msg_config_get_dt.h"
+#include "msg_config_dt.h"
 #include "hsys_msg.h"
 #include "pal_logger.h"
 #include "pal_gpio.h"
@@ -141,6 +144,7 @@ void ModuleFuel::init()
     MLOG("init: nozzle GPIOs armed — GPIO32 (nozzle1) GPIO33 (nozzle2)");
 
     subscribe(MsgConfigReady::ID);
+    subscribe(MsgConfigDT::ID);      // DIRECT response from ModuleConfig
     subscribe(MsgTimerAlarm::ID);
 }
 
@@ -154,7 +158,17 @@ void ModuleFuel::on_msg_received(const hsys_msg_t &msg)
     {
         case MsgConfigReady::ID:
             if (!_started) {
-                _start();
+                // Request device/hardware config from ModuleConfig
+                MsgConfigGetDT::Payload req{};
+                req.source_module_id = id();
+                hsys_msg_t *req_msg = MsgConfigGetDT::create(id(), req);
+                if (req_msg) publish(req_msg);
+            }
+            break;
+
+        case MsgConfigDT::ID:
+            if (!_started) {
+                _start(msg);
             }
             break;
 
@@ -205,10 +219,10 @@ void ModuleFuel::_on_nozzle_down(uint8_t nozzle_idx)
 // _start — read config and kick off the driver
 // ---------------------------------------------------------------------------
 
-void ModuleFuel::_start()
+void ModuleFuel::_start(const hsys_msg_t &cfg_msg)
 {
-    const app_config_t *cfg = app_config_get();
-    _display_type = (display_type_t)cfg->display_type;
+    auto p = MsgConfigDT::deserialize(cfg_msg);
+    _display_type = (display_type_t)p.display_type;
 
     MLOG("starting  display_type=%d  nozzles=%d",
          (int)_display_type, (int)FUEL_MAX_NOZZLES);

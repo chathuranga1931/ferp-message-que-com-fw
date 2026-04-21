@@ -1,0 +1,11 @@
+{
+  "msg_id": "0x0A01",
+  "fields": [
+    {
+      "name":    "connected",
+      "label":   "Connected",
+      "type":    "bool",
+      "default": 1
+    }
+  ]
+}

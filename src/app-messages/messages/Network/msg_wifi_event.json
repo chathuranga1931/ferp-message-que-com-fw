@@ -1,0 +1,43 @@
+{
+  "msg_id": "0x0A00",
+  "fields": [
+    {
+      "name":  "event",
+      "label": "Event",
+      "type":  "enum",
+      "options": [
+        {"label": "STA_CONNECTED",    "value": "STA_CONNECTED"},
+        {"label": "STA_DISCONNECTED", "value": "STA_DISCONNECTED"},
+        {"label": "GOT_IP",           "value": "GOT_IP"},
+        {"label": "STA_RSSI_CHANGED", "value": "STA_RSSI_CHANGED"},
+        {"label": "AP_START",         "value": "AP_START"},
+        {"label": "AP_STOP",          "value": "AP_STOP"}
+      ],
+      "default": "STA_CONNECTED"
+    },
+    {
+      "name":    "rssi",
+      "label":   "RSSI (dBm)",
+      "type":    "int8",
+      "default": -60
+    },
+    {
+      "name":    "ip",
+      "label":   "IP Address",
+      "type":    "string",
+      "default": "192.168.1.100"
+    },
+    {
+      "name":    "ssid",
+      "label":   "SSID",
+      "type":    "string",
+      "default": "MyNetwork"
+    },
+    {
+      "name":    "mac",
+      "label":   "MAC Address",
+      "type":    "string",
+      "default": "AA:BB:CC:DD:EE:FF"
+    }
+  ]
+}

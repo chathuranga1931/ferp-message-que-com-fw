@@ -1,0 +1,25 @@
+{
+  "msg_id": "0x0A02",
+  "fields": [
+    {
+      "name":  "event",
+      "label": "Event",
+      "type":  "enum",
+      "options": [
+        {"label": "REGISTERED",      "value": "REGISTERED"},
+        {"label": "REGISTER_FAILED", "value": "REGISTER_FAILED"},
+        {"label": "PUMPED_SUCCESS",  "value": "PUMPED_SUCCESS"},
+        {"label": "PUMPED_FAILED",   "value": "PUMPED_FAILED"},
+        {"label": "HB_SENT",         "value": "HB_SENT"},
+        {"label": "HB_FAILED",       "value": "HB_FAILED"}
+      ],
+      "default": "REGISTERED"
+    },
+    {
+      "name":    "nozzle_idx",
+      "label":   "Nozzle Index",
+      "type":    "uint8",
+      "default": 0
+    }
+  ]
+}

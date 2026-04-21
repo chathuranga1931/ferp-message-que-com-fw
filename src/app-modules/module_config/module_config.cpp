@@ -14,9 +14,17 @@
 
 #include "module_config.h"
 #include "app_spiffs.h"
-#include "app.h"                  // app_config_get_handle()
+#include "app.h"                  // app_config_get_handle(), app_config_get()
 #include "msg_spiffs_ready.h"
 #include "msg_config_ready.h"
+#include "msg_config_get_wifi.h"
+#include "msg_config_get_cloud.h"
+#include "msg_config_get_mqtt.h"
+#include "msg_config_get_dt.h"
+#include "msg_config_wifi.h"
+#include "msg_config_cloud.h"
+#include "msg_config_mqtt.h"
+#include "msg_config_dt.h"
 #include "pal_logger.h"
 #include <cstring>
 
@@ -39,7 +47,11 @@ char ModuleConfig::s_json_buf[ModuleConfig::k_json_buf_size];
 void ModuleConfig::init()
 {
     subscribe(MSG_ID_SPIFFS_READY);
-    LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "subscribed to MSG_ID_SPIFFS_READY");
+    subscribe(MSG_ID_CONFIG_GET_WIFI);
+    subscribe(MSG_ID_CONFIG_GET_CLOUD);
+    subscribe(MSG_ID_CONFIG_GET_MQTT);
+    subscribe(MSG_ID_CONFIG_GET_DT);
+    LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "subscribed to SPIFFS_READY + typed config gets");
 }
 
 // ── Message handler ───────────────────────────────────────────────────────────
@@ -51,6 +63,22 @@ void ModuleConfig::on_msg_received(const hsys_msg_t &msg)
         case MSG_ID_SPIFFS_READY:
             LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "SPIFFS ready — loading config");
             _load_and_save();
+            break;
+
+        case MSG_ID_CONFIG_GET_WIFI:
+            _send_config_wifi(MsgConfigGetWifi::deserialize(msg).source_module_id);
+            break;
+
+        case MSG_ID_CONFIG_GET_CLOUD:
+            _send_config_cloud(MsgConfigGetCloud::deserialize(msg).source_module_id);
+            break;
+
+        case MSG_ID_CONFIG_GET_MQTT:
+            _send_config_mqtt(MsgConfigGetMqtt::deserialize(msg).source_module_id);
+            break;
+
+        case MSG_ID_CONFIG_GET_DT:
+            _send_config_dt(MsgConfigGetDT::deserialize(msg).source_module_id);
             break;
 
         default:
@@ -130,5 +158,84 @@ publish:
         LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "MsgConfigReady published");
     } else {
         LOG_MSG_ERROR(MOD_CONFIG_LOG_EN, "failed to create MsgConfigReady");
+    }
+}
+
+// ── Typed domain config response senders ─────────────────────────────────────
+
+void ModuleConfig::_send_config_wifi(hsys_module_id_t requester)
+{
+    const app_config_t *cfg = app_config_get();
+    if (!cfg) return;
+
+    MsgConfigWifi::Payload p{};
+    strncpy(p.ssid,     cfg->wifi_ssid,     sizeof(p.ssid)     - 1);
+    strncpy(p.password, cfg->wifi_password, sizeof(p.password) - 1);
+
+    hsys_msg_t *out = MsgConfigWifi::create(id(), p);
+    if (out) {
+        out->receiver_id = requester;
+        send(out, requester);
+        LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "MsgConfigWifi -> module %u", (unsigned)requester);
+    }
+}
+
+void ModuleConfig::_send_config_cloud(hsys_module_id_t requester)
+{
+    const app_config_t *cfg = app_config_get();
+    if (!cfg) return;
+
+    MsgConfigCloud::Payload p{};
+    strncpy(p.url,           cfg->cloud_url,       sizeof(p.url)           - 1);
+    strncpy(p.secret,        cfg->cloud_secret,    sizeof(p.secret)        - 1);
+    strncpy(p.uuid,          cfg->device_uuid,     sizeof(p.uuid)          - 1);
+    strncpy(p.wifi_ssid,     cfg->wifi_ssid,       sizeof(p.wifi_ssid)     - 1);
+    strncpy(p.wifi_password, cfg->wifi_password,   sizeof(p.wifi_password) - 1);
+    p.hb_enabled    = cfg->cloud_hb_enabled;
+    p.hb_interval_s = cfg->cloud_hb_interval_s;
+
+    hsys_msg_t *out = MsgConfigCloud::create(id(), p);
+    if (out) {
+        out->receiver_id = requester;
+        send(out, requester);
+        LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "MsgConfigCloud -> module %u", (unsigned)requester);
+    }
+}
+
+void ModuleConfig::_send_config_mqtt(hsys_module_id_t requester)
+{
+    const app_config_t *cfg = app_config_get();
+    if (!cfg) return;
+
+    MsgConfigMqtt::Payload p{};
+    strncpy(p.host,     cfg->mqtt_host,     sizeof(p.host)     - 1);
+    strncpy(p.user,     cfg->mqtt_user,     sizeof(p.user)     - 1);
+    strncpy(p.password, cfg->mqtt_password, sizeof(p.password) - 1);
+    p.port = cfg->mqtt_port;
+
+    hsys_msg_t *out = MsgConfigMqtt::create(id(), p);
+    if (out) {
+        out->receiver_id = requester;
+        send(out, requester);
+        LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "MsgConfigMqtt -> module %u", (unsigned)requester);
+    }
+}
+
+void ModuleConfig::_send_config_dt(hsys_module_id_t requester)
+{
+    const app_config_t *cfg = app_config_get();
+    if (!cfg) return;
+
+    MsgConfigDT::Payload p{};
+    p.display_type        = cfg->display_type;
+    p.stabilize_delay_ms  = cfg->stabilize_delay_ms;
+    p.printer_copy_count  = cfg->printer_copy_count;
+    strncpy(p.printer_url, cfg->printer_url, sizeof(p.printer_url) - 1);
+
+    hsys_msg_t *out = MsgConfigDT::create(id(), p);
+    if (out) {
+        out->receiver_id = requester;
+        send(out, requester);
+        LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "MsgConfigDT -> module %u", (unsigned)requester);
     }
 }

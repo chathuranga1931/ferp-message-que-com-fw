@@ -50,6 +50,7 @@
 #include "module_fuel.h"
 #include "module_buzzer.h"
 #include "module_cloud.h"
+#include "module_internet.h"
 #include "app_msg_table.h"
 #include "app_config.h"
 #include "hsys_config.h"
@@ -158,6 +159,7 @@ static HsysModule *k_module_table[] = {
     ModuleFuel::instance(),
     ModuleBuzzer::instance(),
     ModuleCloud::instance(),
+    ModuleInternet::instance(),
 };
 #define MODULE_TABLE_SIZE  (sizeof(k_module_table) / sizeof(k_module_table[0]))
 
@@ -177,8 +179,9 @@ static const hsys_task_desc_t k_task_table[] = {
     { "defbtn_task",  1024,  5,  0,  { MODULE_DEFAULT_BTN_ID,    0 } },
     { "prnbtn_task",  1024,  5,  0,  { MODULE_PRINT_BTN_ID,      0 } },
     { "fuel_task",    4096,  5,  0,  { MODULE_FUEL_ID,            0 } },
-    { "buzzer_task",  1024,  4,  0,  { MODULE_BUZZER_ID,          0 } },
-    { "cloud_task",   4096,  4,  0,  { MODULE_CLOUD_ID,           0 } },
+    { "buzzer_task",   1024,  4,  0,  { MODULE_BUZZER_ID,          0 } },
+    { "cloud_task",    4096,  4,  0,  { MODULE_CLOUD_ID,           0 } },
+    { "internet_task", 2048,  4,  0,  { MODULE_INTERNET_ID,        0 } },
 };
 #define TASK_TABLE_SIZE  (sizeof(k_task_table) / sizeof(k_task_table[0]))
 
