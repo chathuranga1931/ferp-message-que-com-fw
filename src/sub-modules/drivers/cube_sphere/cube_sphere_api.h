@@ -3,7 +3,7 @@
 #ifndef CUBE_SPHERE_API_H
 #define CUBE_SPHERE_API_H
 
-#include "app.h"
+#include "cube_sphere_config.h"
 
 typedef struct {
 	char  url[SIZE_OF_NTWK_BASE_URL]; // = "https://http-ingress-alw5epn3aq-el.a.run.app/api/v1/device/data";

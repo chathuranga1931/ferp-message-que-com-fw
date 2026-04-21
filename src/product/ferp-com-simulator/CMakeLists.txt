@@ -107,6 +107,9 @@ add_library(app_messages STATIC
     ${APP_MSGS}/msg_printer_btn.cpp
     ${APP_MSGS}/msg_fuel_pumped.cpp
     ${APP_MSGS}/msg_nozzle_state.cpp
+    ${APP_MSGS}/msg_wifi_event.cpp
+    ${APP_MSGS}/msg_internet_status.cpp
+    ${APP_MSGS}/msg_cloud_status.cpp
 )
 target_include_directories(app_messages PUBLIC
     ${APP_MSGS}
@@ -157,6 +160,8 @@ add_library(app_modules STATIC
     ${APP_MODS}/module_fuel/pumps/sanki/sanki_6_digit_1.cpp
     # Buzzer module
     ${APP_MODS}/module_buzzer/module_buzzer.cpp
+    # Cloud module (driver-agnostic — no cube_sphere in simulator)
+    ${APP_MODS}/module_cloud/module_cloud.cpp
 )
 target_include_directories(app_modules PUBLIC
     ${APP_MODS}
@@ -174,6 +179,7 @@ target_include_directories(app_modules PUBLIC
     ${APP_MODS}/module_fuel/pumps
     ${APP_MODS}/module_fuel/pumps/sanki
     ${APP_MODS}/module_buzzer
+    ${APP_MODS}/module_cloud
     ${APP_PHR}
     ${APP}
     ${PAL_MAC}       # esp_err.h stub
@@ -203,6 +209,7 @@ target_include_directories(app_product PUBLIC
     ${APP_MODS}/module_print_btn
     ${APP_MODS}/module_fuel
     ${APP_MODS}/module_buzzer
+    ${APP_MODS}/module_cloud
     ${APP_MSGS}
     ${HSYS_OS}
     ${PAL_MAC}       # esp_err.h stub

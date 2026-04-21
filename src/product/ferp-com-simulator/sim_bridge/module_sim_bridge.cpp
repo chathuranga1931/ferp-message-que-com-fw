@@ -17,6 +17,9 @@
 #include "hsys_pool.h"
 #include "hsys_msg.h"
 #include "pal_time.h"
+#include "msg_wifi_event.h"
+#include "msg_internet_status.h"
+#include "msg_cloud_status.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -32,6 +35,9 @@ void ModuleSimBridge::init()
 {
     subscribe(MSG_ID_TICK_1000MS);
     subscribe(MSG_ID_SPIFFS_READY);
+    subscribe(MSG_ID_WIFI_EVENT);
+    subscribe(MSG_ID_INTERNET_STATUS);
+    subscribe(MSG_ID_CLOUD_STATUS);
 
     log("init");
 }
@@ -60,15 +66,34 @@ void ModuleSimBridge::on_msg_received(const hsys_msg_t &msg)
             break;
 
         // ── Add cases here as each sprint adds message types ──────────────
-        //
-        // case MSG_ID_WIFI_EVENT: {
-        //     auto *m = hsys_msg_cast<MsgWifiEvent>(msg);
-        //     snprintf(data, sizeof(data),
-        //              "{\"event\":\"%s\",\"rssi\":%d}",
-        //              wifi_event_to_str(m->event_id), m->rssi);
-        //     _send_json("MSG_WIFI_EVENT", data);
-        //     break;
-        // }
+
+        case MSG_ID_WIFI_EVENT: {
+            auto p = MsgWifiEvent::deserialize(msg);
+            snprintf(data, sizeof(data),
+                     "{\"event\":\"%s\",\"rssi\":%d,\"ip\":\"%s\","
+                     "\"ssid\":\"%s\",\"mac\":\"%s\"}",
+                     _wifi_event_str(p.event), (int)p.rssi,
+                     p.ip_address, p.ssid, p.mac_address);
+            _send_json("MSG_WIFI_EVENT", data);
+            break;
+        }
+
+        case MSG_ID_INTERNET_STATUS: {
+            auto p = MsgInternetStatus::deserialize(msg);
+            snprintf(data, sizeof(data),
+                     "{\"connected\":%s}", p.connected ? "true" : "false");
+            _send_json("MSG_INTERNET_STATUS", data);
+            break;
+        }
+
+        case MSG_ID_CLOUD_STATUS: {
+            auto p = MsgCloudStatus::deserialize(msg);
+            snprintf(data, sizeof(data),
+                     "{\"event\":\"%s\",\"nozzle_idx\":%u}",
+                     _cloud_status_str(p.event), (unsigned)p.nozzle_idx);
+            _send_json("MSG_CLOUD_STATUS", data);
+            break;
+        }
 
         default:
             break;
@@ -76,6 +101,32 @@ void ModuleSimBridge::on_msg_received(const hsys_msg_t &msg)
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+static const char *_wifi_event_str(wifi_event_id_t e)
+{
+    switch (e) {
+        case WIFI_EVENT_STA_CONNECTED:    return "STA_CONNECTED";
+        case WIFI_EVENT_STA_DISCONNECTED: return "STA_DISCONNECTED";
+        case WIFI_EVENT_STA_GOT_IP:       return "GOT_IP";
+        case WIFI_EVENT_STA_RSSI_CHANGED: return "STA_RSSI_CHANGED";
+        case WIFI_EVENT_AP_START:         return "AP_START";
+        case WIFI_EVENT_AP_STOP:          return "AP_STOP";
+        default:                          return "UNKNOWN";
+    }
+}
+
+static const char *_cloud_status_str(cloud_status_event_t e)
+{
+    switch (e) {
+        case CLOUD_STATUS_REGISTERED:      return "REGISTERED";
+        case CLOUD_STATUS_REGISTER_FAILED: return "REGISTER_FAILED";
+        case CLOUD_STATUS_PUMPED_SUCCESS:  return "PUMPED_SUCCESS";
+        case CLOUD_STATUS_PUMPED_FAILED:   return "PUMPED_FAILED";
+        case CLOUD_STATUS_HB_SENT:         return "HB_SENT";
+        case CLOUD_STATUS_HB_FAILED:       return "HB_FAILED";
+        default:                           return "UNKNOWN";
+    }
+}
 
 void ModuleSimBridge::_send_json(const char *id, const char *data_json)
 {

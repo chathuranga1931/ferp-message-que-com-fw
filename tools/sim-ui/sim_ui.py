@@ -224,7 +224,19 @@ class App(tk.Tk):
         # Tab: Message Injector
         msg_frame = tk.Frame(notebook, bg="#1e1e2e")
         notebook.add(msg_frame, text="Messages")
-        self._msg_inject = MessageInjectWidget(msg_frame, send_fn=self._send_cmd)
+
+        # Resolve canonical paths from the repo root (two levels up from sim_ui.py)
+        _sim_ui_dir = os.path.dirname(os.path.abspath(__file__))
+        _src_dir    = os.path.join(_sim_ui_dir, "..", "..", "src")
+        _msgs_dir   = os.path.join(_src_dir, "app-messages", "messages")
+        _mods_json  = os.path.join(_src_dir, "app-modules", "modules.json")
+
+        self._msg_inject = MessageInjectWidget(
+            msg_frame,
+            send_fn=self._send_cmd,
+            messages_dir=_msgs_dir,
+            modules_json=_mods_json,
+        )
         self._msg_inject.pack(fill=tk.BOTH, expand=True)
     def _build_system_panel(self, parent):
         frame = tk.LabelFrame(
@@ -477,7 +489,7 @@ class App(tk.Tk):
 
     def _handle_cloud_status(self, data: dict):
         event = data.get("event", "")
-        ok = event in ("CONFIG_READY", "PUMPED_SUCCESS")
+        ok = event in ("REGISTERED", "PUMPED_SUCCESS", "HB_SENT")
         self._led_cloud.set_on(ok)
 
     def _handle_sim_led(self, data: dict):

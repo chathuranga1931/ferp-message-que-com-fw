@@ -6,7 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "app.h"
+#include "cube_sphere_config.h"
 
 #include "cube_sphere_api.h"
 

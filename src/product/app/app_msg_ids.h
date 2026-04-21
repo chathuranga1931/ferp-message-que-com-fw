@@ -72,9 +72,16 @@ typedef enum : uint16_t
     MSG_ID_PRINTER_BTN          = 0x0901,   ///< ModulePrintBtn   -> all: print button pressed
 
     // ------------------------------------------------------------------
+    // Connectivity  (0x0A00 – 0x0AFF)
+    // ------------------------------------------------------------------
+    MSG_ID_WIFI_EVENT           = 0x0A00,   ///< ModuleWifi     -> all: WiFi state change
+    MSG_ID_INTERNET_STATUS      = 0x0A01,   ///< ModuleInternet -> all: internet reachability
+    MSG_ID_CLOUD_STATUS         = 0x0A02,   ///< ModuleCloud    -> all: cloud event result
+
+    // ------------------------------------------------------------------
     // Sentinel — keep one above the highest assigned ID
     // ------------------------------------------------------------------
-    MSG_ID_MAX              = 0x0902,
+    MSG_ID_MAX              = 0x0A03,
 
 } app_msg_id_e;
 

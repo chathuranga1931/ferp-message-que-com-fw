@@ -13,6 +13,9 @@
     {"id":   8, "name": "ModuleLeds"},
     {"id":   9, "name": "ModuleDefaultBtn"},
     {"id":  10, "name": "ModulePrintBtn"},
+    {"id":  11, "name": "ModuleBuzzer"},
+    {"id":  12, "name": "ModuleNozzle"},
+    {"id":  13, "name": "ModuleCloud"},
     {"id":  20, "name": "ModuleSimBridge"}
   ]
 }
