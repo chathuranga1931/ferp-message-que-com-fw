@@ -224,6 +224,12 @@ void ModuleFuel::_start(const hsys_msg_t &cfg_msg)
     auto p = MsgConfigDT::deserialize(cfg_msg);
     _display_type = (display_type_t)p.display_type;
 
+    MLOG("DT config received:");
+    MLOG("  display_type       = %u", (unsigned)p.display_type);
+    MLOG("  stabilize_delay_ms = %u", (unsigned)p.stabilize_delay_ms);
+    MLOG("  printer_url        = \"%s\"", p.printer_url);
+    MLOG("  printer_copy_count = %u", (unsigned)p.printer_copy_count);
+
     MLOG("starting  display_type=%d  nozzles=%d",
          (int)_display_type, (int)FUEL_MAX_NOZZLES);
 

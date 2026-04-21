@@ -28,6 +28,8 @@
 #include "msg_sensor_data.h"            // MsgSensorData
 #include "msg_tick_1000ms.h"            // MsgTick1000ms
 #include "msg_spiffs_ready.h"           // MsgSpiffsReady         (0x0201)
+#include "msg_sd_ready.h"               // MsgSdReady             (0x0202)
+#include "msg_sd_status.h"              // MsgSdStatus            (0x0203)
 #include "msg_config_ready.h"           // MsgConfigReady         (0x0300)
 #include "msg_config_set.h"             // MsgConfigSet           (0x0301)
 #include "msg_config_get.h"             // MsgConfigGet           (0x0302)
@@ -59,6 +61,8 @@
         MsgSensorData::DESCRIPTOR,                                                \
         MsgTick1000ms::DESCRIPTOR,                                                \
         MsgSpiffsReady::DESCRIPTOR,                                               \
+        MsgSdReady::DESCRIPTOR,                                                   \
+        MsgSdStatus::DESCRIPTOR,                                                  \
         MsgConfigReady::DESCRIPTOR,                                               \
         MsgConfigSet::DESCRIPTOR,                                                 \
         MsgConfigGet::DESCRIPTOR,                                                 \

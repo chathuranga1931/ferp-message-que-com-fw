@@ -45,6 +45,8 @@ typedef enum : uint16_t
     // ------------------------------------------------------------------
     MSG_ID_TICK_1000MS      = 0x0200,   ///< Ticker -> all: 1 s heartbeat
     MSG_ID_SPIFFS_READY     = 0x0201,   ///< ModuleSpiffs -> all: SPIFFS mounted and ready
+    MSG_ID_SD_READY         = 0x0202,   ///< ModuleSD    -> all: SD card mounted and ready
+    MSG_ID_SD_STATUS        = 0x0203,   ///< ModuleSD    -> all: SD card info (type, size, free)
 
     // ------------------------------------------------------------------
     // Config  (0x0300 – 0x03FF)

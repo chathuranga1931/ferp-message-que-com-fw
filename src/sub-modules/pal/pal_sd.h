@@ -196,4 +196,15 @@ int32_t pal_sd_dir_remove(const char* path);
  */
 int32_t pal_sd_dir_create(const char* path);
 
+/**
+ * @brief Get free space on the SD card (in megabytes).
+ *
+ * On embedded targets this queries the FAT filesystem.
+ * On the macOS simulator this queries the host filesystem that holds SDCARD/.
+ *
+ * @param free_mb  Pointer to receive free megabytes; set to 0 on failure.
+ * @return PAL_OK on success, negative error code otherwise.
+ */
+int32_t pal_sd_get_free_mb(uint64_t *free_mb);
+
 #endif // PAL_SD_H

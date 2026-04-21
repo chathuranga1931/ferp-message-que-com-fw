@@ -107,8 +107,13 @@ void ModuleCloud::_on_config_cloud(const hsys_msg_t &msg)
     }
     _hb_enabled = p.hb_enabled;
 
-    LOG_MSG_INFO(CLOUD_LOG_EN, "cloud config received — hb=%us enabled=%d",
-                 (unsigned)p.hb_interval_s, (int)p.hb_enabled);
+    LOG_MSG_INFO(CLOUD_LOG_EN, "cloud config received:");
+    LOG_MSG_INFO(CLOUD_LOG_EN, "  url          = \"%s\"", p.url);
+    LOG_MSG_INFO(CLOUD_LOG_EN, "  uuid         = \"%s\"", p.uuid);
+    LOG_MSG_INFO(CLOUD_LOG_EN, "  secret       = %s", (p.secret[0] != '\0') ? "***" : "(empty)");
+    LOG_MSG_INFO(CLOUD_LOG_EN, "  wifi_ssid    = \"%s\"", p.wifi_ssid);
+    LOG_MSG_INFO(CLOUD_LOG_EN, "  hb_enabled   = %d", (int)p.hb_enabled);
+    LOG_MSG_INFO(CLOUD_LOG_EN, "  hb_interval  = %us", (unsigned)p.hb_interval_s);
 }
 
 void ModuleCloud::_on_wifi_event(const hsys_msg_t &msg)

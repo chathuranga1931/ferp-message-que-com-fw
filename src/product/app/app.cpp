@@ -51,6 +51,8 @@
 #include "module_buzzer.h"
 #include "module_cloud.h"
 #include "module_internet.h"
+#include "module_wifi.h"
+#include "module_sd.h"
 #include "app_msg_table.h"
 #include "app_config.h"
 #include "hsys_config.h"
@@ -160,6 +162,8 @@ static HsysModule *k_module_table[] = {
     ModuleBuzzer::instance(),
     ModuleCloud::instance(),
     ModuleInternet::instance(),
+    ModuleWifi::instance(),
+    ModuleSD::instance(),
 };
 #define MODULE_TABLE_SIZE  (sizeof(k_module_table) / sizeof(k_module_table[0]))
 
@@ -182,6 +186,8 @@ static const hsys_task_desc_t k_task_table[] = {
     { "buzzer_task",   1024,  4,  0,  { MODULE_BUZZER_ID,          0 } },
     { "cloud_task",    4096,  4,  0,  { MODULE_CLOUD_ID,           0 } },
     { "internet_task", 2048,  4,  0,  { MODULE_INTERNET_ID,        0 } },
+    { "wifi_task",     2048,  5,  0,  { MODULE_WIFI_ID,            0 } },
+    { "sd_task",       2048,  5,  0,  { MODULE_SD_ID,              0 } },
 };
 #define TASK_TABLE_SIZE  (sizeof(k_task_table) / sizeof(k_task_table[0]))
 

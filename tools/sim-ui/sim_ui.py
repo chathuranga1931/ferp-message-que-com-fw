@@ -43,7 +43,9 @@ from widgets.ota_widget            import OtaWidget
 from widgets.pool_widget           import PoolWidget
 from widgets.config_widget         import ConfigWidget
 from widgets.spiffs_widget         import SpiffsWidget
+from widgets.sdcard_widget         import SdCardWidget
 from widgets.message_inject_widget import MessageInjectWidget
+from widgets.wifi_widget           import WifiWidget
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -197,6 +199,12 @@ class App(tk.Tk):
         self._mqtt = MqttWidget(mqtt_frame, send_fn=self._send_cmd)
         self._mqtt.pack(fill=tk.BOTH, expand=True)
 
+        # Tab: WiFi
+        wifi_frame = tk.Frame(notebook, bg="#1e1e2e")
+        notebook.add(wifi_frame, text="WiFi")
+        self._wifi_widget = WifiWidget(wifi_frame, send_fn=self._send_cmd)
+        self._wifi_widget.pack(fill=tk.BOTH, expand=True)
+
         # Tab: OTA
         ota_frame = tk.Frame(notebook, bg="#1e1e2e")
         notebook.add(ota_frame, text="OTA")
@@ -220,6 +228,12 @@ class App(tk.Tk):
         notebook.add(spiffs_frame, text="SPIFFS")
         self._spiffs = SpiffsWidget(spiffs_frame)
         self._spiffs.pack(fill=tk.BOTH, expand=True)
+
+        # Tab: SD Card Explorer
+        sdcard_frame = tk.Frame(notebook, bg="#1e1e2e")
+        notebook.add(sdcard_frame, text="SDCard")
+        self._sdcard = SdCardWidget(sdcard_frame)
+        self._sdcard.pack(fill=tk.BOTH, expand=True)
 
         # Tab: Message Injector
         msg_frame = tk.Frame(notebook, bg="#1e1e2e")
@@ -468,6 +482,9 @@ class App(tk.Tk):
             pct  = max(0, min(100, rssi + 100))
             self._rssi_bar["value"] = pct
             self._rssi_label.config(text=f"{rssi} dBm")
+
+        # Forward to the dedicated WiFi tab widget
+        self._wifi_widget.on_wifi_event(data)
 
     def _handle_nozzle_state(self, data: dict):
         idx   = data.get("idx", 0)

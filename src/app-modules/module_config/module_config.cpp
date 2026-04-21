@@ -176,7 +176,9 @@ void ModuleConfig::_send_config_wifi(hsys_module_id_t requester)
     if (out) {
         out->receiver_id = requester;
         send(out, requester);
-        LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "MsgConfigWifi -> module %u", (unsigned)requester);
+        LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "MsgConfigWifi -> module %u:", (unsigned)requester);
+        LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "  ssid     = \"%s\"", p.ssid);
+        LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "  password = %s", (p.password[0] != '\0') ? "***" : "(empty)");
     }
 }
 
@@ -198,7 +200,13 @@ void ModuleConfig::_send_config_cloud(hsys_module_id_t requester)
     if (out) {
         out->receiver_id = requester;
         send(out, requester);
-        LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "MsgConfigCloud -> module %u", (unsigned)requester);
+        LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "MsgConfigCloud -> module %u:", (unsigned)requester);
+        LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "  url          = \"%s\"", p.url);
+        LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "  uuid         = \"%s\"", p.uuid);
+        LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "  secret       = %s", (p.secret[0] != '\0') ? "***" : "(empty)");
+        LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "  wifi_ssid    = \"%s\"", p.wifi_ssid);
+        LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "  hb_enabled   = %d", (int)p.hb_enabled);
+        LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "  hb_interval  = %us", (unsigned)p.hb_interval_s);
     }
 }
 
@@ -217,7 +225,11 @@ void ModuleConfig::_send_config_mqtt(hsys_module_id_t requester)
     if (out) {
         out->receiver_id = requester;
         send(out, requester);
-        LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "MsgConfigMqtt -> module %u", (unsigned)requester);
+        LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "MsgConfigMqtt -> module %u:", (unsigned)requester);
+        LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "  host     = \"%s\"", p.host);
+        LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "  port     = %u", (unsigned)p.port);
+        LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "  user     = \"%s\"", p.user);
+        LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "  password = %s", (p.password[0] != '\0') ? "***" : "(empty)");
     }
 }
 
@@ -236,6 +248,10 @@ void ModuleConfig::_send_config_dt(hsys_module_id_t requester)
     if (out) {
         out->receiver_id = requester;
         send(out, requester);
-        LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "MsgConfigDT -> module %u", (unsigned)requester);
+        LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "MsgConfigDT -> module %u:", (unsigned)requester);
+        LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "  display_type       = %u", (unsigned)p.display_type);
+        LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "  stabilize_delay_ms = %u", (unsigned)p.stabilize_delay_ms);
+        LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "  printer_url        = \"%s\"", p.printer_url);
+        LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "  printer_copy_count = %u", (unsigned)p.printer_copy_count);
     }
 }

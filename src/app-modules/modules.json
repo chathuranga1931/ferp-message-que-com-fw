@@ -17,6 +17,8 @@
     {"id":  12, "name": "ModuleNozzle"},
     {"id":  13, "name": "ModuleCloud"},
     {"id":  14, "name": "ModuleInternet"},
+    {"id":  15, "name": "ModuleWifi"},
+    {"id":  16, "name": "ModuleSD"},
     {"id":  20, "name": "ModuleSimBridge"}
   ]
 }
