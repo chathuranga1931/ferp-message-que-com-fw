@@ -12,8 +12,7 @@
 #define TICKER_H
 
 #include "hsys_module.h"
-
-#define TICKER_MODULE_ID    ((hsys_module_id_t)3)
+#include "app_module_ids.h"
 #define TICKER_MODULE_NAME  "ticker"
 #define TICKER_PERIOD_MS    1000U
 

@@ -30,7 +30,7 @@
 // Module identity
 // ---------------------------------------------------------------------------
 
-#define MODULE_WIFI_ID    ((hsys_module_id_t)15)
+#include "app_module_ids.h"
 #define MODULE_WIFI_NAME  "wifi"
 
 // Retry interval on disconnect (ms)

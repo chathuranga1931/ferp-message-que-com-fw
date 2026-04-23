@@ -14,11 +14,12 @@
  */
 
 #include "hsys_module.h"
+#include "app_module_ids.h"
 
 class ModuleSimBridge : public HsysModule
 {
 public:
-    static constexpr uint8_t MODULE_ID = 20;
+    static constexpr hsys_module_id_t MODULE_ID = MODULE_SIM_BRIDGE_ID;
 
     ModuleSimBridge() : HsysModule(MODULE_ID, "sim_bridge") {}
 

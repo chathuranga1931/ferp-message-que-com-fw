@@ -134,10 +134,10 @@ config_t *app_config_get_table(uint16_t *out_size)
 
 static const hsys_pool_class_cfg_t k_pool_table[] = {
     {   4,   8 },
-    {  32,  16 },
-    {  64,  16 },
-    { 256,   8 },
-    { 512,   4 },
+    {  32,  32 },
+    {  64,  32 },
+    { 256,  24 },
+    { 512,   8 },
 };
 #define POOL_TABLE_SIZE  (sizeof(k_pool_table) / sizeof(k_pool_table[0]))
 
@@ -172,24 +172,29 @@ static HsysModule *k_module_table[] = {
 // ============================================================================
 
 static const hsys_task_desc_t k_task_table[] = {
-    { "ticker_task",  1024,  6,  0,  { TICKER_MODULE_ID,         0 } },
-    // { "sensor_task",  2048,  5,  0,  { MODULE_A_ID,         0 } },  // demo — disabled
-    // { "display_task", 2048,  4,  0,  { MODULE_B_ID,         0 } },  // demo — disabled
-    { "sysmon_task",  2048,  3,  0,  { SYSMON_MODULE_ID,         0 } },
-    { "spiffs_task",  2048,  5,  0,  { MODULE_SPIFFS_ID,         0 } },
-    { "config_task",  4096,  5,  0,  { MODULE_CONFIG_ID,         0 } },
-    { "timer_task",   2048,  4,  0,  { MODULE_TIMER_ID,          0 } },
-    { "leds_task",    1024,  4,  0,  { MODULE_LEDS_ID,           0 } },
-    { "defbtn_task",  1024,  5,  0,  { MODULE_DEFAULT_BTN_ID,    0 } },
-    { "prnbtn_task",  1024,  5,  0,  { MODULE_PRINT_BTN_ID,      0 } },
-    { "fuel_task",    4096,  5,  0,  { MODULE_FUEL_ID,            0 } },
-    { "buzzer_task",   1024,  4,  0,  { MODULE_BUZZER_ID,          0 } },
-    { "cloud_task",    4096,  4,  0,  { MODULE_CLOUD_ID,           0 } },
-    { "internet_task", 2048,  4,  0,  { MODULE_INTERNET_ID,        0 } },
-    { "wifi_task",     2048,  5,  0,  { MODULE_WIFI_ID,            0 } },
-    { "sd_task",       2048,  5,  0,  { MODULE_SD_ID,              0 } },
+    // stack notes (ESP32 Xtensa, FreeRTOS):
+    //   storage_task  : SPIFFS/SD mount + JSON config. JSON buf is static → 4096 is fine.
+    //   timing_task   : tick counters + timer slot management. Very lightweight.
+    //   indicator_task: Sysmon report (vprintf loop) + GPIO LEDs/buzzer.
+    //                   ESP-IDF vprintf needs ~512 B; Xtensa FreeRTOS frame ~320 B → min 2048.
+    //   btn_task      : debounce state machine + message publish.
+    //                   Same logging headroom rule → min 2048.
+    //   fuel_task     : sanki6 queue drain + nested state-machine calls.
+    //                   Large locals in _process_queues() are static → 4096 is fine.
+    //   network_task  : WiFi connect + ICMP ping + HTTPS via esp_http_client + mbedTLS.
+    //                   mbedTLS TLS handshake alone ~4-6 KB; ESP-IDF recommends ≥8192 for HTTPS.
+    { "storage_task",       4096,  5,  0,   { MODULE_SPIFFS_ID,      MODULE_SD_ID,           MODULE_CONFIG_ID,   0 } },
+    { "timing_task",        2048,  4,  0,   { TICKER_MODULE_ID,      MODULE_TIMER_ID,                            0 } },
+    { "indicator_task",     2048,  4,  0,   { MODULE_SYSMON_ID,      MODULE_LEDS_ID,         MODULE_BUZZER_ID,   0 } },
+    { "btn_task",           2048,  5,  0,   { MODULE_PRINT_BTN_ID,   MODULE_DEFAULT_BTN_ID,                      0 } },
+    { "fuel_task",          4096,  5,  0,   { MODULE_FUEL_ID,                                                    0 } },
+    { "network_task",       8192,  5,  0,   { MODULE_WIFI_ID,        MODULE_INTERNET_ID,     MODULE_CLOUD_ID,    0 } },
 };
 #define TASK_TABLE_SIZE  (sizeof(k_task_table) / sizeof(k_task_table[0]))
+
+// sizeof() is unavailable to the C preprocessor, so use static_assert instead.
+static_assert(TASK_TABLE_SIZE <= HSYS_MAX_TASKS,
+              "TASK_TABLE_SIZE exceeds HSYS_MAX_TASKS; increase HSYS_MAX_TASKS in user_config.h");
 
 // ============================================================================
 // Extra module injection (called by app_platform_pre_init)

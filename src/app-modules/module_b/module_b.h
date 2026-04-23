@@ -12,8 +12,7 @@
 #define MODULE_B_H
 
 #include "hsys_module.h"
-
-#define MODULE_B_ID   ((hsys_module_id_t)2)
+#include "app_module_ids.h"
 #define MODULE_B_NAME "module_b"
 
 class ModuleB : public HsysModule

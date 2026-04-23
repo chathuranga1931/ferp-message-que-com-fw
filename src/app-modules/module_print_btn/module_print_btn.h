@@ -27,7 +27,7 @@
 // Module identity
 // ---------------------------------------------------------------------------
 
-#define MODULE_PRINT_BTN_ID    ((hsys_module_id_t)10)
+#include "app_module_ids.h"
 #define MODULE_PRINT_BTN_NAME  "print_btn"
 
 // GPIO pin assignments (board_2602: INPUT1 / PRINT1, INPUT2 / PRINT2)

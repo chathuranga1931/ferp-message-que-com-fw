@@ -1,6 +1,6 @@
 # ModuleSysmon
 
-**Module ID:** `SYSMON_MODULE_ID` (4)  
+**Module ID:** `MODULE_SYSMON_ID` (4)  
 **Task:** `sysmon_task` — priority 3, 2 KB stack  
 **Status:** ✅ Implemented
 

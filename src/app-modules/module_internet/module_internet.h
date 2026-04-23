@@ -28,7 +28,7 @@
 // Module identity
 // ---------------------------------------------------------------------------
 
-#define MODULE_INTERNET_ID    ((hsys_module_id_t)14)
+#include "app_module_ids.h"
 #define MODULE_INTERNET_NAME  "internet"
 
 // Interval between ping checks while WiFi is up

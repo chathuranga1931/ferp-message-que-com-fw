@@ -18,7 +18,7 @@
 // Module identity
 // ---------------------------------------------------------------------------
 
-#define MODULE_LEDS_ID    ((hsys_module_id_t)8)
+#include "app_module_ids.h"
 #define MODULE_LEDS_NAME  "leds"
 
 // GPIO pin assignments (matches board_2602 aliases / pal_mac_gpio pin table)

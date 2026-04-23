@@ -25,7 +25,7 @@
 // Module identity
 // ---------------------------------------------------------------------------
 
-#define MODULE_DEFAULT_BTN_ID    ((hsys_module_id_t)9)
+#include "app_module_ids.h"
 #define MODULE_DEFAULT_BTN_NAME  "default_btn"
 
 // GPIO pin assignment (board_2602: INPUT5 / DEFAULT_BUTTON_GPIO_PIN)

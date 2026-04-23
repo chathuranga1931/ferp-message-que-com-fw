@@ -12,8 +12,7 @@
 #define MODULE_A_H
 
 #include "hsys_module.h"
-
-#define MODULE_A_ID   ((hsys_module_id_t)1)
+#include "app_module_ids.h"
 #define MODULE_A_NAME "module_a"
 
 // ---------------------------------------------------------------------------

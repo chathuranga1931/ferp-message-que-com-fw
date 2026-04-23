@@ -17,7 +17,7 @@
 // Module identity
 // ---------------------------------------------------------------------------
 
-#define MODULE_SPIFFS_ID    ((hsys_module_id_t)5)
+#include "app_module_ids.h"
 #define MODULE_SPIFFS_NAME  "spiffs"
 
 // ---------------------------------------------------------------------------

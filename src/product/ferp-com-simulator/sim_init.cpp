@@ -69,7 +69,7 @@ static HsysModule *k_module_table[] = {
 
 static const hsys_task_desc_t k_task_table[] = {
     { "ticker_task",     1024,  6,  0,  { TICKER_MODULE_ID,          0 } },
-    { "sysmon_task",     2048,  3,  0,  { SYSMON_MODULE_ID,          0 } },
+    { "sysmon_task",     2048,  3,  0,  { MODULE_SYSMON_ID,          0 } },
     { "spiffs_task",     2048,  5,  0,  { MODULE_SPIFFS_ID,          0 } },
     { "config_task",     4096,  5,  0,  { MODULE_CONFIG_ID,          0 } },
     { "sim_bridge_task", 4096,  2,  0,  { SIM_BRIDGE_MODULE_ID,      0 } },

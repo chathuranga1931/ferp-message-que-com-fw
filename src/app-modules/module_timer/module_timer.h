@@ -40,7 +40,7 @@
 // Module identity
 // ---------------------------------------------------------------------------
 
-#define MODULE_TIMER_ID    ((hsys_module_id_t)7)
+#include "app_module_ids.h"
 #define MODULE_TIMER_NAME  "mod_tmr"   // exactly 7 chars — within 8-char PAL limit
 
 // ---------------------------------------------------------------------------

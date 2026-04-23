@@ -30,7 +30,7 @@
 // Module identity
 // ---------------------------------------------------------------------------
 
-#define SYSMON_MODULE_ID    ((hsys_module_id_t)4)
+#include "app_module_ids.h"
 #define SYSMON_MODULE_NAME  "sysmon"
 
 // ---------------------------------------------------------------------------
@@ -49,7 +49,7 @@
 class ModuleSysmon : public HsysModule
 {
 public:
-    ModuleSysmon() : HsysModule(SYSMON_MODULE_ID, SYSMON_MODULE_NAME) {}
+    ModuleSysmon() : HsysModule(MODULE_SYSMON_ID, SYSMON_MODULE_NAME) {}
 
 protected:
     // Phase 2 — subscribe to the 1 s tick

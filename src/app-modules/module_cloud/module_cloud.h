@@ -28,7 +28,7 @@
 // Module identity
 // ---------------------------------------------------------------------------
 
-#define MODULE_CLOUD_ID    ((hsys_module_id_t)13)
+#include "app_module_ids.h"
 #define MODULE_CLOUD_NAME  "cloud"
 
 // Default heartbeat interval — can be overridden via config

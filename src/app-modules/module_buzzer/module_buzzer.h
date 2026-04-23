@@ -19,7 +19,7 @@
 // Module identity
 // ---------------------------------------------------------------------------
 
-#define MODULE_BUZZER_ID    ((hsys_module_id_t)12)
+#include "app_module_ids.h"
 #define MODULE_BUZZER_NAME  "buzzer"
 
 // GPIO pin assignment — OUTPUT2 on board_2602

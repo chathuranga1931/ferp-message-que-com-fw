@@ -50,6 +50,9 @@
 #include "msg_printer_btn.h"            // MsgPrinterBtn          (0x0901)
 #include "msg_fuel_pumped.h"            // MsgFuelPumped          (0x0800)
 #include "msg_nozzle_state.h"           // MsgNozzleState         (0x0801)
+#include "msg_wifi_event.h"             // MsgWifiEvent           (0x0A00)
+#include "msg_internet_status.h"        // MsgInternetStatus      (0x0A01)
+#include "msg_cloud_status.h"           // MsgCloudStatus         (0x0A02)
 
 // ---------------------------------------------------------------------------
 // Descriptor table macro
@@ -83,6 +86,9 @@
         MsgPrinterBtn::DESCRIPTOR,                                                \
         MsgFuelPumped::DESCRIPTOR,                                                \
         MsgNozzleState::DESCRIPTOR,                                               \
+        MsgWifiEvent::DESCRIPTOR,                                                  \
+        MsgInternetStatus::DESCRIPTOR,                                             \
+        MsgCloudStatus::DESCRIPTOR,                                                \
     };                                                                            \
     static const uint16_t k_msg_table_count =                                    \
         (uint16_t)(sizeof(k_msg_table) / sizeof(k_msg_table[0]))

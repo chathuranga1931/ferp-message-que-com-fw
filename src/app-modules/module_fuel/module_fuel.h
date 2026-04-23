@@ -28,7 +28,7 @@
 #include "display_types.h"
 #include "pumping_types.h"
 
-#define MODULE_FUEL_ID    ((hsys_module_id_t)11)
+#include "app_module_ids.h"
 #define MODULE_FUEL_NAME  "fuel"
 
 // Depth of the per-nozzle frame queue (frames received faster than they are

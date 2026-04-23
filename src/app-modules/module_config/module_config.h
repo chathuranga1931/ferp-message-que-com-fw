@@ -22,7 +22,7 @@
 // Module identity
 // ---------------------------------------------------------------------------
 
-#define MODULE_CONFIG_ID    ((hsys_module_id_t)6)
+#include "app_module_ids.h"
 #define MODULE_CONFIG_NAME  "config"
 
 // ---------------------------------------------------------------------------

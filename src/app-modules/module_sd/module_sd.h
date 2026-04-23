@@ -19,7 +19,7 @@
 // Module identity
 // ---------------------------------------------------------------------------
 
-#define MODULE_SD_ID    ((hsys_module_id_t)16)
+#include "app_module_ids.h"
 #define MODULE_SD_NAME  "mod_sd"
 
 // ---------------------------------------------------------------------------
