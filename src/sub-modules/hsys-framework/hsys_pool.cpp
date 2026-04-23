@@ -36,6 +36,7 @@ typedef struct {
     uint16_t  block_size;
     uint16_t  total_count;
     uint16_t  free_count;
+    uint16_t  peak_used;    ///< High-water mark of simultaneous allocations
     uint8_t  *storage;      ///< Points into s_backing_arena
     void    **free_list;    ///< Points into s_freelist_arena
 } hsys_pool_class_t;
@@ -115,6 +116,8 @@ void *hsys_pool_alloc(uint16_t size)
         hsys_pool_class_t *cls = &s_classes[i];
         if (cls->block_size >= size && cls->free_count > 0) {
             block = cls->free_list[--cls->free_count];
+            uint16_t used = cls->total_count - cls->free_count;
+            if (used > cls->peak_used) cls->peak_used = used;
             break;
         }
     }
@@ -165,6 +168,7 @@ hsys_status_t hsys_pool_get_info(uint8_t class_index,
     info->block_size   = s_classes[class_index].block_size;
     info->total_count  = s_classes[class_index].total_count;
     info->free_count   = s_classes[class_index].free_count;
+    info->peak_used    = s_classes[class_index].peak_used;
     hsys_critical_exit();
 
     return HSYS_OK;

@@ -17,34 +17,36 @@
 
 static hsys_queue_handle_t button_event_queue;
 
-bool gpio_get_input1() { return pal_gpio_read(INPUT1); }
-bool gpio_get_input2() { return pal_gpio_read(INPUT2); }
-bool gpio_get_input3() { return pal_gpio_read(INPUT3); }
-bool gpio_get_input4() { return pal_gpio_read(INPUT4); }
-bool gpio_get_input5() { return pal_gpio_read(INPUT5); }
-bool gpio_get_switch() { return pal_gpio_read(SWITCH); }
+// bool gpio_get_input1() { return pal_gpio_read(INPUT1); }
+// bool gpio_get_input2() { return pal_gpio_read(INPUT2); }
+// bool gpio_get_input3() { return pal_gpio_read(INPUT3); }
+// bool gpio_get_input4() { return pal_gpio_read(INPUT4); }
+// bool gpio_get_input5() { return pal_gpio_read(INPUT5); }
+// bool gpio_get_switch() { return pal_gpio_read(SWITCH); }
 
-void gpio_set_output1(const bool level) { pal_gpio_write(OUTPUT1, level); }
-void gpio_set_output2(const bool level) { pal_gpio_write(OUTPUT2, level); }
-void gpio_set_output3(const bool level) { pal_gpio_write(OUTPUT3, level); }
-void gpio_set_output4(const bool level) { pal_gpio_write(OUTPUT4, level); }
-void gpio_set_output5(const bool level) { pal_gpio_write(OUTPUT5, level); }
-void gpio_set_output6(const bool level) { pal_gpio_write(OUTPUT6, level); }
-void gpio_set_led1(const bool level) { pal_gpio_write(LED1, level); }
-void gpio_set_led2(const bool level) { pal_gpio_write(LED2, level); }
-void gpio_set_en4g(const bool level) { pal_gpio_write(EN_4G, level); }
-void gpio_set_reset_distap(const bool level) { pal_gpio_write(RESET_DISTAP, level); }
+// void gpio_set_output1(const bool level) { pal_gpio_write(OUTPUT1, level); }
+// void gpio_set_output2(const bool level) { pal_gpio_write(OUTPUT2, level); }
+// void gpio_set_output3(const bool level) { pal_gpio_write(OUTPUT3, level); }
+// void gpio_set_output4(const bool level) { pal_gpio_write(OUTPUT4, level); }
+// void gpio_set_output5(const bool level) { pal_gpio_write(OUTPUT5, level); }
+// void gpio_set_output6(const bool level) { pal_gpio_write(OUTPUT6, level); }
+// void gpio_set_led1(const bool level) { pal_gpio_write(LED1, level); }
+// void gpio_set_led2(const bool level) { pal_gpio_write(LED2, level); }
+// void gpio_set_en4g(const bool level) { pal_gpio_write(EN_4G, level); }
+// void gpio_set_reset_distap(const bool level) { pal_gpio_write(RESET_DISTAP, level); }
 
-void gpio_set_io0_distap(const bool level) 
-{ 
-    pal_gpio_write(IO0_DISTAP, level); 
-}
+// void gpio_set_io0_distap(const bool level) 
+// { 
+//     pal_gpio_write(IO0_DISTAP, level); 
+// }
 
-void gpio_set_mode_output_io0_distap()
-{
-    pal_gpio_set_direction(IO0_DISTAP, PAL_GPIO_MODE_OUTPUT);
-    pal_gpio_write(IO0_DISTAP, false);
-}
+// void gpio_set_mode_output_io0_distap()
+// {
+//     pal_gpio_set_direction(IO0_DISTAP, PAL_GPIO_MODE_OUTPUT);
+//     pal_gpio_write(IO0_DISTAP, false);
+// }
+
+dasfdas
 
 void gpio_reset_io0_distap()
 {

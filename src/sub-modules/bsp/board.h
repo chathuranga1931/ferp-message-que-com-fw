@@ -13,7 +13,7 @@
     // #error "Including board configuration for COM 2404"
     #include "com-boards/2404/board_2404_wrap.h"
 #elif defined(FERP_COM_2602)
-    // #error "Including board configuration for COM 2602"
+    #error "Including board configuration for COM 2602"
     #include "com-boards/2602/board_2602_wrap.h"
 #endif
 

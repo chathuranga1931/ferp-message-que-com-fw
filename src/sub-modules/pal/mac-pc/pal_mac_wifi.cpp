@@ -85,7 +85,7 @@ static void _refresh_system_wifi_info(void)
         strncpy(s_mac, "00:00:00:00:00:00", sizeof(s_mac) - 1);
     }
 
-    LOG_MSG_INFO(WIFI_LOG, "system wifi: ip=%s  mac=%s", s_ip, s_mac);
+    // LOG_MSG_INFO(WIFI_LOG, "system wifi: ip=%s  mac=%s", s_ip, s_mac);
 }
 
 static bool _has_valid_ip(void)

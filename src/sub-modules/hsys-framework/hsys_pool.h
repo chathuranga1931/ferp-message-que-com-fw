@@ -40,6 +40,7 @@ typedef struct {
     uint16_t  block_size;     ///< Size of each buffer in bytes
     uint16_t  total_count;    ///< Total blocks in this class
     uint16_t  free_count;     ///< Currently available blocks
+    uint16_t  peak_used;      ///< Peak simultaneous allocations (watermark)
 } hsys_pool_class_info_t;
 
 // ---------------------------------------------------------------------------

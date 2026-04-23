@@ -122,7 +122,7 @@ class App(tk.Tk):
         self.title("ferp-com Simulator UI")
         self.configure(bg="#1e1e2e")
         self.resizable(True, True)
-        self.geometry("1375x700")   # sensible initial size
+        self.geometry("1375x875")   # sensible initial size
 
         self._rx_queue = queue.Queue()
         self._conn     = SimConnection(host, port, self._rx_queue)
@@ -392,8 +392,10 @@ class App(tk.Tk):
         data   = obj.get("data", {})
         ts     = obj.get("ts", 0)
 
-        # Log everything except bulky pool snapshots and high-freq GPIO updates
-        if msg_id not in ("SIM_POOL_STATUS", "SIM_GPIO_OUT"):
+        # Log everything except pool snapshots (too frequent) and high-freq GPIO
+        if msg_id in ("SIM_POOL_STATUS", "SIM_GPIO_OUT"):
+            pass
+        else:
             self._log.append(obj)
 
         if msg_id == "_SIM_DISCONNECTED":

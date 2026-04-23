@@ -391,14 +391,15 @@ void ModuleSimBridge::_send_json(const char *id, const char *data_json)
 
 void ModuleSimBridge::_send_pool_status()
 {
-    char buf[768];
+    // Compact format: {"c":[[used,total,peak],...], "h":[used,total,peak]}
+    char buf[256];
     int  pos = 0;
     int  rem = (int)sizeof(buf);
 
 #define APPEND(...) do { int w = snprintf(buf+pos, (size_t)rem, __VA_ARGS__); \
                          if (w > 0) { pos += w; rem -= w; } } while(0)
 
-    APPEND("{\"classes\":[");
+    APPEND("{\"c\":[");
 
     uint8_t idx = 0;
     hsys_pool_class_info_t info;
@@ -408,27 +409,17 @@ void ModuleSimBridge::_send_pool_status()
         uint16_t used = info.total_count - info.free_count;
         if (!first) APPEND(",");
         first = false;
-        APPEND("{\"idx\":%u,\"block_size\":%u,\"total\":%u,\"free\":%u,\"used\":%u}",
-               (unsigned)idx,
-               (unsigned)info.block_size,
-               (unsigned)info.total_count,
-               (unsigned)info.free_count,
-               (unsigned)used);
+        APPEND("[%u,%u,%u]", (unsigned)used, (unsigned)info.total_count, (unsigned)info.peak_used);
         ++idx;
     }
-
-    APPEND("],");
 
     hsys_msg_header_pool_info_t hdr;
     hsys_msg_get_header_pool_info(&hdr);
 
-    APPEND("\"hdr\":{\"total\":%u,\"free\":%u,\"used\":%u,\"peak\":%u},",
-           (unsigned)hdr.total_slots,
-           (unsigned)hdr.free_slots,
+    APPEND("],\"h\":[%u,%u,%u]}",
            (unsigned)hdr.used_slots,
+           (unsigned)hdr.total_slots,
            (unsigned)hdr.peak_used_slots);
-
-    APPEND("\"ts_ms\":%llu}", (unsigned long long)pal_time_get_ms());
 
 #undef APPEND
 
