@@ -21,9 +21,14 @@
 #include "msg_printer_btn.h"
 #include "msg_nozzle_state.h"
 #include "msg_fuel_pumped.h"
+#include "msg_wifi_event.h"
+#include "msg_internet_status.h"
+#include "msg_cloud_status.h"
 
 #include <stdio.h>
 #include <string.h>
+#include <chrono>
+#include <thread>
 
 // ─── Singleton ───────────────────────────────────────────────────────────────
 
@@ -40,6 +45,20 @@ void ModuleSimBridge::init()
     subscribe(MSG_ID_PRINTER_BTN);
     subscribe(MSG_ID_NOZZLE_STATE);
     subscribe(MSG_ID_FUEL_PUMPED);
+    subscribe(MSG_ID_WIFI_EVENT);
+    subscribe(MSG_ID_INTERNET_STATUS);
+    subscribe(MSG_ID_CLOUD_STATUS);
+
+    mac_driver_set_connect_cb(&ModuleSimBridge::on_ui_connected);
+
+    // Send pool status every 500 ms on a dedicated thread.
+    _pool_thread = std::thread([this]() {
+        while (!_pool_stop.load()) {
+            _send_pool_status();
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        }
+    });
+    _pool_thread.detach();
 
     log("init");
 }
@@ -55,10 +74,6 @@ void ModuleSimBridge::on_msg_received(const hsys_msg_t &msg)
         case MSG_ID_TICK_1000MS:
             snprintf(data, sizeof(data), "{}");
             _send_json("MSG_TICK_1000MS", data);
-            ++_tick_count;
-            if (_tick_count % POOL_REPORT_INTERVAL_TICKS == 0) {
-                _send_pool_status();
-            }
             break;
 
         case MSG_ID_SPIFFS_READY:
@@ -111,14 +126,56 @@ void ModuleSimBridge::on_msg_received(const hsys_msg_t &msg)
             break;
         }
 
-        // case MSG_ID_WIFI_EVENT: {
-        //     auto *m = hsys_msg_cast<MsgWifiEvent>(msg);
-        //     snprintf(data, sizeof(data),
-        //              "{\"event\":\"%s\",\"rssi\":%d}",
-        //              wifi_event_to_str(m->event_id), m->rssi);
-        //     _send_json("MSG_WIFI_EVENT", data);
-        //     break;
-        // }
+        case MSG_ID_WIFI_EVENT: {
+            auto p = MsgWifiEvent::deserialize(msg);
+            static const auto _ev_str = [](wifi_event_id_t e) -> const char * {
+                switch (e) {
+                    case WIFI_EVENT_STA_CONNECTED:    return "STA_CONNECTED";
+                    case WIFI_EVENT_STA_DISCONNECTED: return "STA_DISCONNECTED";
+                    case WIFI_EVENT_STA_GOT_IP:       return "GOT_IP";
+                    case WIFI_EVENT_STA_RSSI_CHANGED: return "STA_RSSI_CHANGED";
+                    default:                          return "UNKNOWN";
+                }
+            };
+            snprintf(data, sizeof(data),
+                     "{\"event\":\"%s\",\"rssi\":%d,"
+                     "\"ip\":\"%s\",\"ssid\":\"%s\",\"mac\":\"%s\"}",
+                     _ev_str(p.event), (int)p.rssi,
+                     p.ip_address, p.ssid, p.mac_address);
+            _send_json("MSG_WIFI_EVENT", data);
+            strncpy(_last_wifi_json, data, sizeof(_last_wifi_json) - 1);
+            break;
+        }
+
+        case MSG_ID_INTERNET_STATUS: {
+            auto p = MsgInternetStatus::deserialize(msg);
+            snprintf(data, sizeof(data),
+                     "{\"connected\":%s}", p.connected ? "true" : "false");
+            _send_json("MSG_INTERNET_STATUS", data);
+            strncpy(_last_internet_json, data, sizeof(_last_internet_json) - 1);
+            break;
+        }
+
+        case MSG_ID_CLOUD_STATUS: {
+            auto p = MsgCloudStatus::deserialize(msg);
+            static const auto _cs_str = [](cloud_status_event_t e) -> const char * {
+                switch (e) {
+                    case CLOUD_STATUS_REGISTERED:      return "REGISTERED";
+                    case CLOUD_STATUS_REGISTER_FAILED: return "REGISTER_FAILED";
+                    case CLOUD_STATUS_PUMPED_SUCCESS:  return "PUMPED_SUCCESS";
+                    case CLOUD_STATUS_PUMPED_FAILED:   return "PUMPED_FAILED";
+                    case CLOUD_STATUS_HB_SENT:         return "HB_SENT";
+                    case CLOUD_STATUS_HB_FAILED:       return "HB_FAILED";
+                    default:                           return "UNKNOWN";
+                }
+            };
+            snprintf(data, sizeof(data),
+                     "{\"event\":\"%s\",\"nozzle_idx\":%u}",
+                     _cs_str(p.event), (unsigned)p.nozzle_idx);
+            _send_json("MSG_CLOUD_STATUS", data);
+            strncpy(_last_cloud_json, data, sizeof(_last_cloud_json) - 1);
+            break;
+        }
 
         default:
             break;
@@ -130,6 +187,24 @@ void ModuleSimBridge::on_msg_received(const hsys_msg_t &msg)
 void ModuleSimBridge::_send_json(const char *id, const char *data_json)
 {
     mac_driver_send_json(id, data_json);
+}
+
+// ─── UI reconnect: replay last known state ────────────────────────────────
+
+/*static*/ void ModuleSimBridge::on_ui_connected()
+{
+    // Called from the mac_driver accept thread — mac_driver_send_json() is
+    // thread-safe, so we can call it directly here.
+    auto &b = s_instance;
+
+    if (b._last_wifi_json[0])
+        mac_driver_send_json("MSG_WIFI_EVENT", b._last_wifi_json);
+
+    if (b._last_internet_json[0])
+        mac_driver_send_json("MSG_INTERNET_STATUS", b._last_internet_json);
+
+    if (b._last_cloud_json[0])
+        mac_driver_send_json("MSG_CLOUD_STATUS", b._last_cloud_json);
 }
 
 void ModuleSimBridge::_send_pool_status()

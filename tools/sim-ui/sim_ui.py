@@ -38,15 +38,12 @@ from datetime import datetime
 from widgets.led_widget            import LedWidget
 from widgets.nozzle_widget         import NozzleWidget
 from widgets.log_widget            import LogWidget
-from widgets.mqtt_widget           import MqttWidget
 from widgets.ota_widget            import OtaWidget
 from widgets.pool_widget           import PoolWidget
 from widgets.config_widget         import ConfigWidget
 from widgets.spiffs_widget         import SpiffsWidget
 from widgets.sdcard_widget         import SdCardWidget
 from widgets.message_inject_widget import MessageInjectWidget
-from widgets.wifi_widget           import WifiWidget
-from widgets.internet_widget       import InternetWidget
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -178,71 +175,70 @@ class App(tk.Tk):
         notebook = ttk.Notebook(right)
         notebook.pack(fill=tk.BOTH, expand=True)
 
-        # Tab: Console log
-        log_frame = tk.Frame(notebook, bg="#1e1e2e")
-        notebook.add(log_frame, text="Console")
-        self._log = LogWidget(log_frame)
-        self._log.pack(fill=tk.BOTH, expand=True)
+        # ── Tab: Monitor (Nozzles | Pool + OTA) + Console at bottom ──────────
+        monitor_frame = tk.Frame(notebook, bg="#1e1e2e")
+        notebook.add(monitor_frame, text="Monitor")
 
-        # Tab: Nozzles
-        nozzle_frame = tk.Frame(notebook, bg="#1e1e2e")
-        notebook.add(nozzle_frame, text="Nozzles")
+        # Outer vertical split: top content pane / bottom console
+        monitor_v = tk.PanedWindow(monitor_frame, orient=tk.VERTICAL,
+                                   bg="#1e1e2e", sashwidth=4)
+        monitor_v.pack(fill=tk.BOTH, expand=True)
+
+        # Top: horizontal split  ← Nozzles | Pool+OTA →
+        top_pane = tk.PanedWindow(monitor_v, orient=tk.HORIZONTAL,
+                                  bg="#1e1e2e", sashwidth=4)
+        monitor_v.add(top_pane, minsize=200)
+
+        # Left: two nozzle widgets side-by-side
+        nozzle_frame = tk.Frame(top_pane, bg="#1e1e2e")
+        top_pane.add(nozzle_frame, minsize=200)
         self._nozzle_0 = NozzleWidget(nozzle_frame, label="Nozzle 1",
-                                       nozzle_idx=0, send_fn=self._send_cmd)
+                                      nozzle_idx=0, send_fn=self._send_cmd)
         self._nozzle_0.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=4, pady=4)
         self._nozzle_1 = NozzleWidget(nozzle_frame, label="Nozzle 2",
-                                       nozzle_idx=1, send_fn=self._send_cmd)
+                                      nozzle_idx=1, send_fn=self._send_cmd)
         self._nozzle_1.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=4, pady=4)
 
-        # Tab: MQTT
-        mqtt_frame = tk.Frame(notebook, bg="#1e1e2e")
-        notebook.add(mqtt_frame, text="MQTT")
-        self._mqtt = MqttWidget(mqtt_frame, send_fn=self._send_cmd)
-        self._mqtt.pack(fill=tk.BOTH, expand=True)
+        # Right: Pool (top) + OTA (bottom) stacked
+        right_pane = tk.PanedWindow(top_pane, orient=tk.VERTICAL,
+                                    bg="#1e1e2e", sashwidth=4)
+        top_pane.add(right_pane, minsize=200)
 
-        # Tab: WiFi
-        wifi_frame = tk.Frame(notebook, bg="#1e1e2e")
-        notebook.add(wifi_frame, text="WiFi")
-        self._wifi_widget = WifiWidget(wifi_frame, send_fn=self._send_cmd)
-        self._wifi_widget.pack(fill=tk.BOTH, expand=True)
-
-        # Tab: Internet
-        internet_frame = tk.Frame(notebook, bg="#1e1e2e")
-        notebook.add(internet_frame, text="Internet")
-        self._internet_widget = InternetWidget(internet_frame, send_fn=self._send_cmd)
-        self._internet_widget.pack(fill=tk.BOTH, expand=True)
-
-        # Tab: OTA
-        ota_frame = tk.Frame(notebook, bg="#1e1e2e")
-        notebook.add(ota_frame, text="OTA")
-        self._ota = OtaWidget(ota_frame, send_fn=self._send_cmd)
-        self._ota.pack(fill=tk.BOTH, expand=True)
-
-        # Tab: Pool memory
-        pool_frame = tk.Frame(notebook, bg="#1e1e2e")
-        notebook.add(pool_frame, text="Pool")
+        pool_frame = tk.Frame(right_pane, bg="#1e1e2e")
+        right_pane.add(pool_frame, minsize=80)
         self._pool = PoolWidget(pool_frame)
         self._pool.pack(fill=tk.BOTH, expand=True)
 
-        # Tab: Device Config
+        ota_frame = tk.Frame(right_pane, bg="#1e1e2e")
+        right_pane.add(ota_frame, minsize=80)
+        self._ota = OtaWidget(ota_frame, send_fn=self._send_cmd)
+        self._ota.pack(fill=tk.BOTH, expand=True)
+
+        # Bottom: Console log
+        log_frame = tk.Frame(monitor_v, bg="#1e1e2e")
+        monitor_v.add(log_frame, minsize=120)
+        self._log = LogWidget(log_frame)
+        self._log.pack(fill=tk.BOTH, expand=True)
+
+        # ── Tab: Device Config ────────────────────────────────────────────────
         config_frame = tk.Frame(notebook, bg="#1e1e2e")
         notebook.add(config_frame, text="Config")
         self._config = ConfigWidget(config_frame)
         self._config.pack(fill=tk.BOTH, expand=True)
 
-        # Tab: SPIFFS Explorer
+        # ── Tab: SPIFFS Explorer ──────────────────────────────────────────────
         spiffs_frame = tk.Frame(notebook, bg="#1e1e2e")
         notebook.add(spiffs_frame, text="SPIFFS")
         self._spiffs = SpiffsWidget(spiffs_frame)
         self._spiffs.pack(fill=tk.BOTH, expand=True)
 
-        # Tab: SD Card Explorer
+        # ── Tab: SD Card Explorer ─────────────────────────────────────────────
         sdcard_frame = tk.Frame(notebook, bg="#1e1e2e")
         notebook.add(sdcard_frame, text="SDCard")
         self._sdcard = SdCardWidget(sdcard_frame)
         self._sdcard.pack(fill=tk.BOTH, expand=True)
 
-        # Tab: Message Injector
+        # ── Tab: Message Injector ─────────────────────────────────────────────
         msg_frame = tk.Frame(notebook, bg="#1e1e2e")
         notebook.add(msg_frame, text="Messages")
 
@@ -269,13 +265,14 @@ class App(tk.Tk):
         self._led_wifi     = LedWidget(frame, label="WiFi",     color_on="#89dceb")
         self._led_internet = LedWidget(frame, label="Internet", color_on="#89b4fa")
         self._led_cloud    = LedWidget(frame, label="Cloud",    color_on="#cba6f7")
+        self._led_mqtt     = LedWidget(frame, label="MQTT",     color_on="#a6e3a1")
         self._led_pump     = LedWidget(frame, label="Pump",     color_on="#f9e2af")
         self._led_led1     = LedWidget(frame, label="LED1",     color_on="#fab387")
         self._led_led2     = LedWidget(frame, label="LED2",     color_on="#fab387")
         self._led_buzzer   = LedWidget(frame, label="Buzzer",   color_on="#f9e2af")
 
         for w in (self._led_power, self._led_wifi,
-                  self._led_internet, self._led_cloud, self._led_pump,
+                  self._led_internet, self._led_cloud, self._led_mqtt, self._led_pump,
                   self._led_led1, self._led_led2, self._led_buzzer):
             w.pack(anchor=tk.W, padx=6, pady=2)
 
@@ -431,7 +428,6 @@ class App(tk.Tk):
         elif msg_id == "MSG_INTERNET_STATUS":
             connected = data.get("connected", False)
             self._led_internet.set_on(connected)
-            self._internet_widget.on_internet_status(data)
 
         elif msg_id == "MSG_NOZZLE_STATE":
             self._handle_nozzle_state(data)
@@ -443,10 +439,10 @@ class App(tk.Tk):
             self._handle_cloud_status(data)
 
         elif msg_id == "MSG_MQTT_EVENT":
-            self._mqtt.on_event(data)
+            self._led_mqtt.set_on(data.get("event") == "CONNECTED")
 
         elif msg_id == "MSG_MQTT_RX_MESSAGE":
-            self._mqtt.on_rx(data)
+            pass  # already captured by the generic log handler above
 
         elif msg_id == "MSG_OTA_EVENT":
             self._ota.on_event(data)
@@ -490,9 +486,6 @@ class App(tk.Tk):
             pct  = max(0, min(100, rssi + 100))
             self._rssi_bar["value"] = pct
             self._rssi_label.config(text=f"{rssi} dBm")
-
-        # Forward to the dedicated WiFi tab widget
-        self._wifi_widget.on_wifi_event(data)
 
     def _handle_nozzle_state(self, data: dict):
         idx   = data.get("idx", 0)

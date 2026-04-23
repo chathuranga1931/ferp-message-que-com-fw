@@ -63,6 +63,7 @@ extern "C" void mac_distap_inject_frame(uint8_t   nozzle_idx,
 /* ── Internal state ──────────────────────────────────────────────────────────*/
 static int          s_server_fd = -1;
 static int          s_client_fd = -1;
+static mac_driver_connect_cb_t s_connect_cb = nullptr;
 static std::mutex   s_mutex;
 
 /* ── Button → GPIO pin map ───────────────────────────────────────────────────
@@ -211,6 +212,9 @@ static void _accept_loop()
             s_client_fd = fd;
         }
 
+        // Notify bridge so it can replay cached state
+        if (s_connect_cb) s_connect_cb();
+
         _read_loop(fd);   /* blocks until client disconnects */
 
         MLOG("UI disconnected");
@@ -252,6 +256,11 @@ void mac_driver_init(uint16_t port)
     MLOG("TCP UI server listening on port %u", port);
 
     std::thread(_accept_loop).detach();
+}
+
+void mac_driver_set_connect_cb(mac_driver_connect_cb_t cb)
+{
+    s_connect_cb = cb;
 }
 
 void mac_driver_send_json(const char *id, const char *data_json)

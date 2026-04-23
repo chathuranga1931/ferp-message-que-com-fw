@@ -65,6 +65,17 @@ void mac_driver_send_json(const char *id, const char *data_json);
  */
 void mac_driver_send_gpio(int pin, int level, const char *name);
 
+/**
+ * Register a callback invoked each time a new Python UI client connects.
+ * Called from the accept thread immediately after the TCP connection is
+ * established — the caller may call mac_driver_send_json() from within
+ * the callback to replay cached state.
+ *
+ * @param cb  Callback function pointer, or NULL to clear.
+ */
+typedef void (*mac_driver_connect_cb_t)(void);
+void mac_driver_set_connect_cb(mac_driver_connect_cb_t cb);
+
 #ifdef __cplusplus
 }
 #endif

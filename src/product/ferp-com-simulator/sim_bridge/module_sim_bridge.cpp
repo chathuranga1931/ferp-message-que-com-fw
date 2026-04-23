@@ -33,7 +33,7 @@ ModuleSimBridge *ModuleSimBridge::instance() { return &s_instance; }
 
 void ModuleSimBridge::init()
 {
-    subscribe(MSG_ID_TICK_1000MS);
+    // subscribe(MSG_ID_TICK_1000MS);
     subscribe(MSG_ID_SPIFFS_READY);
     subscribe(MSG_ID_WIFI_EVENT);
     subscribe(MSG_ID_INTERNET_STATUS);

@@ -16,6 +16,9 @@
 #include "hsys_module.h"
 #include "app_module_ids.h"
 
+#include <atomic>
+#include <thread>
+
 class ModuleSimBridge : public HsysModule
 {
 public:
@@ -29,14 +32,21 @@ protected:
     void init() override;
     void on_msg_received(const hsys_msg_t &msg) override;
 
+    static void on_ui_connected();   ///< called by mac_driver on each new client
+
 private:
     void _send_json(const char *id, const char *data_json);
     void _send_pool_status();
 
-    static constexpr uint32_t POOL_REPORT_INTERVAL_TICKS = 5;
+    std::atomic<bool> _pool_stop{false};
+    std::thread        _pool_thread;
 
-    uint32_t _tick_count   = 0;
-    bool     _spiffs_ready = false;
+    bool _spiffs_ready = false;
+
+    // ── Cached state for UI-reconnect replay ──────────────────────────────
+    char _last_wifi_json[256]     = {};
+    char _last_internet_json[64]  = {};
+    char _last_cloud_json[128]    = {};
 };
 
 #define SIM_BRIDGE_MODULE_ID  ModuleSimBridge::MODULE_ID
