@@ -16,11 +16,33 @@
 #include "app_msg_ids.h"
 #include "hsys_pool.h"
 #include "hsys_msg.h"
+#include "hsys_type.h"
 #include "pal_time.h"
+// ── Sensor / data ──
+#include "msg_sensor_data.h"
+// ── Timer ──
+#include "msg_timer_start.h"
+#include "msg_timer_stop.h"
+// ── System / timing ──
+#include "msg_tick_1000ms.h"
+#include "msg_spiffs_ready.h"
+#include "msg_sd_ready.h"
+#include "msg_sd_status.h"
+#include "msg_time_status.h"
+// ── Config ──
+#include "msg_config_ready.h"
+#include "msg_config_set.h"
+#include "msg_config_get.h"
+#include "msg_config_get_wifi.h"
+#include "msg_config_get_cloud.h"
+#include "msg_config_get_mqtt.h"
+#include "msg_config_get_dt.h"
+// ── Fuel / dispenser ──
 #include "msg_default_btn.h"
 #include "msg_printer_btn.h"
 #include "msg_nozzle_state.h"
 #include "msg_fuel_pumped.h"
+// ── Connectivity ──
 #include "msg_wifi_event.h"
 #include "msg_internet_status.h"
 #include "msg_cloud_status.h"
@@ -39,12 +61,31 @@ ModuleSimBridge *ModuleSimBridge::instance() { return &s_instance; }
 
 void ModuleSimBridge::init()
 {
+    // ── Sensor / data ──
+    subscribe(MSG_ID_SENSOR_DATA);
+    // ── Timer (notifications only; responses/alarms are DIRECT) ──
+    subscribe(MSG_ID_TIMER_START);
+    subscribe(MSG_ID_TIMER_STOP);
+    // ── System / timing ──
     // subscribe(MSG_ID_TICK_1000MS);
     subscribe(MSG_ID_SPIFFS_READY);
+    subscribe(MSG_ID_SD_READY);
+    subscribe(MSG_ID_SD_STATUS);
+    subscribe(MSG_ID_TIME_STATUS);
+    // ── Config ──
+    subscribe(MSG_ID_CONFIG_READY);
+    subscribe(MSG_ID_CONFIG_SET);
+    subscribe(MSG_ID_CONFIG_GET);
+    subscribe(MSG_ID_CONFIG_GET_WIFI);
+    subscribe(MSG_ID_CONFIG_GET_CLOUD);
+    subscribe(MSG_ID_CONFIG_GET_MQTT);
+    subscribe(MSG_ID_CONFIG_GET_DT);
+    // ── Fuel / dispenser / buttons ──
     subscribe(MSG_ID_DEFAULT_BTN);
     subscribe(MSG_ID_PRINTER_BTN);
     subscribe(MSG_ID_NOZZLE_STATE);
     subscribe(MSG_ID_FUEL_PUMPED);
+    // ── Connectivity ──
     subscribe(MSG_ID_WIFI_EVENT);
     subscribe(MSG_ID_INTERNET_STATUS);
     subscribe(MSG_ID_CLOUD_STATUS);
@@ -71,6 +112,43 @@ void ModuleSimBridge::on_msg_received(const hsys_msg_t &msg)
 
     switch (msg.msg_id)
     {
+        // ── Sensor / data ─────────────────────────────────────────────────
+
+        case MSG_ID_SENSOR_DATA: {
+            auto p = MsgSensorData::deserialize(msg);
+            snprintf(data, sizeof(data),
+                     "{\"counter\":%u,\"temperature\":%.2f}",
+                     (unsigned)p.counter, (double)p.temperature);
+            _send_json("MSG_SENSOR_DATA", data);
+            break;
+        }
+
+        // ── Timer ─────────────────────────────────────────────────────────
+
+        case MSG_ID_TIMER_START: {
+            auto p = MsgTimerStart::deserialize(msg);
+            snprintf(data, sizeof(data),
+                     "{\"module_id\":%u,\"offset_ms\":%u,"
+                     "\"duration_ms\":%u,\"repetitive\":%s,\"forced\":%s}",
+                     (unsigned)p.source_module_id,
+                     (unsigned)p.start_offset_ms,
+                     (unsigned)p.duration_ms,
+                     p.is_repetitive ? "true" : "false",
+                     p.forced        ? "true" : "false");
+            _send_json("MSG_TIMER_START", data);
+            break;
+        }
+
+        case MSG_ID_TIMER_STOP: {
+            auto p = MsgTimerStop::deserialize(msg);
+            snprintf(data, sizeof(data),
+                     "{\"module_id\":%u}", (unsigned)p.source_module_id);
+            _send_json("MSG_TIMER_STOP", data);
+            break;
+        }
+
+        // ── System / timing ───────────────────────────────────────────────
+
         case MSG_ID_TICK_1000MS:
             snprintf(data, sizeof(data), "{}");
             _send_json("MSG_TICK_1000MS", data);
@@ -81,6 +159,110 @@ void ModuleSimBridge::on_msg_received(const hsys_msg_t &msg)
             snprintf(data, sizeof(data), "{}");
             _send_json("MSG_SPIFFS_READY", data);
             break;
+
+        case MSG_ID_SD_READY:
+            snprintf(data, sizeof(data), "{}");
+            _send_json("MSG_SD_READY", data);
+            break;
+
+        case MSG_ID_SD_STATUS: {
+            auto p = MsgSdStatus::deserialize(msg);
+            snprintf(data, sizeof(data),
+                     "{\"status\":\"%s\",\"card_type\":\"%s\","
+                     "\"card_size_mb\":%llu,\"free_mb\":%llu}",
+                     p.status_str(), p.card_type,
+                     (unsigned long long)p.card_size_mb,
+                     (unsigned long long)p.free_mb);
+            _send_json("MSG_SD_STATUS", data);
+            break;
+        }
+
+        case MSG_ID_TIME_STATUS: {
+            auto p = MsgTimeStatus::deserialize(msg);
+            static const auto _src_str = [](uint8_t s) -> const char * {
+                switch (s) {
+                    case TIME_SOURCE_NONE:   return "NONE";
+                    case TIME_SOURCE_BACKUP: return "BACKUP";
+                    case TIME_SOURCE_RTC:    return "RTC";
+                    case TIME_SOURCE_NTP:    return "NTP";
+                    default:                 return "UNKNOWN";
+                }
+            };
+            snprintf(data, sizeof(data),
+                     "{\"epoch\":%lld,\"source\":\"%s\",\"valid\":%s}",
+                     (long long)p.epoch, _src_str(p.source),
+                     p.valid ? "true" : "false");
+            _send_json("MSG_TIME_STATUS", data);
+            break;
+        }
+
+        // ── Config ────────────────────────────────────────────────────────
+
+        case MSG_ID_CONFIG_READY:
+            snprintf(data, sizeof(data), "{}");
+            _send_json("MSG_CONFIG_READY", data);
+            break;
+
+        case MSG_ID_CONFIG_SET: {
+            auto p = MsgConfigSet::deserialize(msg);
+            char val[160];
+            switch (p.type) {
+                case HSYS_TYPE_BOOL:
+                    snprintf(val, sizeof(val), "%s",
+                             p.value.as_bool ? "true" : "false");
+                    break;
+                case HSYS_TYPE_UINT32:
+                    snprintf(val, sizeof(val), "%u",
+                             (unsigned)p.value.as_uint32);
+                    break;
+                default:  // HSYS_TYPE_STRING
+                    snprintf(val, sizeof(val), "\"%s\"", p.value.as_str);
+                    break;
+            }
+            snprintf(data, sizeof(data),
+                     "{\"key\":\"%s\",\"value\":%s}", p.key, val);
+            _send_json("MSG_CONFIG_SET", data);
+            break;
+        }
+
+        case MSG_ID_CONFIG_GET:
+            snprintf(data, sizeof(data), "{}");
+            _send_json("MSG_CONFIG_GET", data);
+            break;
+
+        case MSG_ID_CONFIG_GET_WIFI: {
+            auto p = MsgConfigGetWifi::deserialize(msg);
+            snprintf(data, sizeof(data),
+                     "{\"requester\":%u}", (unsigned)p.source_module_id);
+            _send_json("MSG_CONFIG_GET_WIFI", data);
+            break;
+        }
+
+        case MSG_ID_CONFIG_GET_CLOUD: {
+            auto p = MsgConfigGetCloud::deserialize(msg);
+            snprintf(data, sizeof(data),
+                     "{\"requester\":%u}", (unsigned)p.source_module_id);
+            _send_json("MSG_CONFIG_GET_CLOUD", data);
+            break;
+        }
+
+        case MSG_ID_CONFIG_GET_MQTT: {
+            auto p = MsgConfigGetMqtt::deserialize(msg);
+            snprintf(data, sizeof(data),
+                     "{\"requester\":%u}", (unsigned)p.source_module_id);
+            _send_json("MSG_CONFIG_GET_MQTT", data);
+            break;
+        }
+
+        case MSG_ID_CONFIG_GET_DT: {
+            auto p = MsgConfigGetDT::deserialize(msg);
+            snprintf(data, sizeof(data),
+                     "{\"requester\":%u}", (unsigned)p.source_module_id);
+            _send_json("MSG_CONFIG_GET_DT", data);
+            break;
+        }
+
+        // ── Fuel / dispenser / buttons ────────────────────────────────────
 
         case MSG_ID_DEFAULT_BTN: {
             auto p = MsgDefaultBtn::deserialize(msg);
@@ -101,8 +283,6 @@ void ModuleSimBridge::on_msg_received(const hsys_msg_t &msg)
             break;
         }
 
-        // ── Add cases here as each sprint adds message types ──────────────
-        //
         case MSG_ID_NOZZLE_STATE: {
             auto p = MsgNozzleState::deserialize(msg);
             snprintf(data, sizeof(data),
@@ -125,6 +305,8 @@ void ModuleSimBridge::on_msg_received(const hsys_msg_t &msg)
             _send_json("MSG_FUEL_PUMPED", data);
             break;
         }
+
+        // ── Connectivity ──────────────────────────────────────────────────
 
         case MSG_ID_WIFI_EVENT: {
             auto p = MsgWifiEvent::deserialize(msg);

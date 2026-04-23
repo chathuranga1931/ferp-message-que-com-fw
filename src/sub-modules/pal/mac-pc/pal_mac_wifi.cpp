@@ -31,9 +31,10 @@
 // ---------------------------------------------------------------------------
 
 static pal_wifi_init_config_t    s_cfg{};
-static pal_wifi_event_callback_t s_cb       = nullptr;
-static void                     *s_user_data = nullptr;
-static volatile bool             s_connected = false;
+static pal_wifi_event_callback_t s_cb            = nullptr;
+static void                     *s_user_data      = nullptr;
+static volatile bool             s_connected      = false;
+static volatile bool             s_monitor_running = false;
 static char                      s_ip[PAL_WIFI_IP_STR_LEN]  = "0.0.0.0";
 static char                      s_mac[PAL_WIFI_MAC_STR_LEN] = "00:00:00:00:00:00";
 
@@ -87,6 +88,45 @@ static void _refresh_system_wifi_info(void)
     LOG_MSG_INFO(WIFI_LOG, "system wifi: ip=%s  mac=%s", s_ip, s_mac);
 }
 
+static bool _has_valid_ip(void)
+{
+    return s_ip[0] != '\0' && strcmp(s_ip, "0.0.0.0") != 0;
+}
+
+// ---------------------------------------------------------------------------
+// Background monitor thread — watches en0 every 2 s and fires real events
+// ---------------------------------------------------------------------------
+
+static void *_monitor_thread(void * /*arg*/)
+{
+    while (s_monitor_running)
+    {
+        sleep(2);
+        if (!s_monitor_running) break;
+
+        bool was_connected = s_connected;
+        _refresh_system_wifi_info();
+        bool now_has_ip = _has_valid_ip();
+
+        if (was_connected && !now_has_ip)
+        {
+            s_connected = false;
+            LOG_MSG_INFO(WIFI_LOG, "en0 lost IP — STA_DISCONNECTED (sim)");
+            if (s_cb) s_cb(PAL_WIFI_EVENT_STA_DISCONNECTED, nullptr, s_user_data);
+        }
+        else if (!was_connected && now_has_ip)
+        {
+            LOG_MSG_INFO(WIFI_LOG, "en0 got IP — STA_CONNECTED (sim)");
+            if (s_cb) s_cb(PAL_WIFI_EVENT_STA_CONNECTED, nullptr, s_user_data);
+            usleep(500 * 1000);
+            s_connected = true;
+            LOG_MSG_INFO(WIFI_LOG, "STA_GOT_IP ip=%s (sim)", s_ip);
+            if (s_cb) s_cb(PAL_WIFI_EVENT_STA_GOT_IP, nullptr, s_user_data);
+        }
+    }
+    return nullptr;
+}
+
 // ---------------------------------------------------------------------------
 // Background connect thread
 // ---------------------------------------------------------------------------
@@ -97,18 +137,31 @@ static void *_connect_thread(void * /*arg*/)
     usleep(500 * 1000);
 
     if (s_cb) s_cb(PAL_WIFI_EVENT_STA_CONNECTED, nullptr, s_user_data);
-
     LOG_MSG_INFO(WIFI_LOG, "STA_CONNECTED (sim)");
 
     // Simulate DHCP delay (~0.5 s), then read real system IP/MAC
     usleep(500 * 1000);
-
     _refresh_system_wifi_info();
 
-    s_connected = true;
-    if (s_cb) s_cb(PAL_WIFI_EVENT_STA_GOT_IP, nullptr, s_user_data);
+    if (_has_valid_ip())
+    {
+        s_connected = true;
+        if (s_cb) s_cb(PAL_WIFI_EVENT_STA_GOT_IP, nullptr, s_user_data);
+        LOG_MSG_INFO(WIFI_LOG, "STA_GOT_IP ip=%s (sim)", s_ip);
+    }
+    else
+    {
+        s_connected = false;
+        LOG_MSG_INFO(WIFI_LOG, "en0 has no IP — STA_DISCONNECTED (sim)");
+        if (s_cb) s_cb(PAL_WIFI_EVENT_STA_DISCONNECTED, nullptr, s_user_data);
+    }
 
-    LOG_MSG_INFO(WIFI_LOG, "STA_GOT_IP ip=%s (sim)", s_ip);
+    // Start the continuous monitor
+    s_monitor_running = true;
+    pthread_t tid;
+    pthread_create(&tid, nullptr, _monitor_thread, nullptr);
+    pthread_detach(tid);
+
     return nullptr;
 }
 
@@ -130,6 +183,7 @@ int32_t pal_wifi_init(const pal_wifi_init_config_t *config,
 
 int32_t pal_wifi_deinit(void)
 {
+    s_monitor_running = false;
     s_cb = nullptr;
     s_connected = false;
     return 0;
@@ -143,6 +197,7 @@ int32_t pal_wifi_start(void)
 
 int32_t pal_wifi_stop(void)
 {
+    s_monitor_running = false;
     s_connected = false;
     if (s_cb) s_cb(PAL_WIFI_EVENT_STA_DISCONNECTED, nullptr, s_user_data);
     return 0;

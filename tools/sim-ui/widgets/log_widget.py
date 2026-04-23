@@ -11,16 +11,24 @@ from datetime import datetime
 _BG      = "#11111b"
 _FG      = "#cdd6f4"
 _TAG_MAP = {
-    # id prefix → (foreground colour)
-    "MSG_TICK":        "#585b70",
-    "MSG_WIFI":        "#89dceb",
-    "MSG_INTERNET":    "#89b4fa",
-    "MSG_NOZZLE":      "#f9e2af",
-    "MSG_FUEL":        "#a6e3a1",
-    "MSG_CLOUD":       "#cba6f7",
-    "MSG_MQTT":        "#fab387",
-    "MSG_OTA":         "#f38ba8",
-    "SIM_":            "#6c7086",
+    # id prefix → foreground colour
+    "MSG_TICK":        "#585b70",   # dim — high frequency
+    "MSG_TIMER":       "#6c7086",   # muted grey
+    "MSG_SENSOR":      "#94e2d5",   # teal
+    "MSG_WIFI":        "#89dceb",   # sky blue
+    "MSG_INTERNET":    "#89b4fa",   # blue
+    "MSG_NOZZLE":      "#f9e2af",   # yellow
+    "MSG_FUEL":        "#a6e3a1",   # green
+    "MSG_CLOUD":       "#cba6f7",   # mauve
+    "MSG_MQTT":        "#fab387",   # peach
+    "MSG_OTA":         "#f38ba8",   # red
+    "MSG_SPIFFS":      "#b4befe",   # lavender
+    "MSG_SD":          "#b4befe",   # lavender
+    "MSG_TIME":        "#cdd6f4",   # default white
+    "MSG_CONFIG":      "#f5c2e7",   # pink
+    "MSG_DEFAULT_BTN": "#cba6f7",   # mauve
+    "MSG_PRINTER_BTN": "#89dceb",   # sky blue
+    "SIM_":            "#6c7086",   # muted grey
     "_LOG":            "#cdd6f4",
     "_SIM_ERROR":      "#f38ba8",
     "_SIM_DISCONNECT": "#f38ba8",
