@@ -46,6 +46,7 @@ from widgets.spiffs_widget         import SpiffsWidget
 from widgets.sdcard_widget         import SdCardWidget
 from widgets.message_inject_widget import MessageInjectWidget
 from widgets.wifi_widget           import WifiWidget
+from widgets.internet_widget       import InternetWidget
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -204,6 +205,12 @@ class App(tk.Tk):
         notebook.add(wifi_frame, text="WiFi")
         self._wifi_widget = WifiWidget(wifi_frame, send_fn=self._send_cmd)
         self._wifi_widget.pack(fill=tk.BOTH, expand=True)
+
+        # Tab: Internet
+        internet_frame = tk.Frame(notebook, bg="#1e1e2e")
+        notebook.add(internet_frame, text="Internet")
+        self._internet_widget = InternetWidget(internet_frame, send_fn=self._send_cmd)
+        self._internet_widget.pack(fill=tk.BOTH, expand=True)
 
         # Tab: OTA
         ota_frame = tk.Frame(notebook, bg="#1e1e2e")
@@ -424,6 +431,7 @@ class App(tk.Tk):
         elif msg_id == "MSG_INTERNET_STATUS":
             connected = data.get("connected", False)
             self._led_internet.set_on(connected)
+            self._internet_widget.on_internet_status(data)
 
         elif msg_id == "MSG_NOZZLE_STATE":
             self._handle_nozzle_state(data)

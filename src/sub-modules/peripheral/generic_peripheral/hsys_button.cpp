@@ -40,7 +40,11 @@ bool hsys_button_init(hsys_button_t* button,
                       uint32_t short_press_duration_ms,
                       uint32_t long_press_duration_ms) {
     
-    if (!button) return false;
+    if (!button)
+    {
+        LOG_MSG_ERROR(LOG_EN, "hsys_button_init: null button pointer");
+        return false;
+    } 
 
     memset((void *)button, 0, sizeof(hsys_button_t));
     button->on_short_press = on_short_press;
@@ -50,12 +54,15 @@ bool hsys_button_init(hsys_button_t* button,
     button->press_start_time = 0;
     button->is_pressed = PUSH_BUTTON_STATE_UNKNOWN;
     button->mutex = hsys_mutex_create();
-    if (!button->mutex) {
+    if (!button->mutex) 
+    {
         LOG_MSG_ERROR(LOG_EN, "hsys_button_init: mutex create failed (addr=%p)", (void*)button);
         return false;
     }
+    
     button->timer = hsys_timer_create("Button Timer", 25, true, (void *)button, hsys_button_timer_callback);
-    if (!button->timer) {
+    if (!button->timer) 
+    {
         LOG_MSG_ERROR(LOG_EN, "hsys_button_init: timer create failed (addr=%p)", (void*)button);
         return false;
     }

@@ -30,10 +30,14 @@ void ModulePrintBtn::init()
 {
     // Initialise both hsys_button instances (debounce=50ms, long_press=5000ms)
     if (!hsys_button_init(&_button_p1, _on_p1_short_press, _on_p1_long_press, 50, 5000))
+    {
         LOG_MSG_ERROR(PRNBTN_LOG, "hsys_button_init failed for P1");
+    }
 
     if (!hsys_button_init(&_button_p2, _on_p2_short_press, _on_p2_long_press, 50, 5000))
+    {
         LOG_MSG_ERROR(PRNBTN_LOG, "hsys_button_init failed for P2");
+    }
 
     // GPIO config — input-only pins, any-edge interrupt
     pal_gpio_config_t cfg_p1 = {
