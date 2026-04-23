@@ -48,6 +48,11 @@
 #define MODULE_SD_ID              ((hsys_module_id_t) 16)   ///< ModuleSD        — SD card
 
 // ------------------------------------------------------------------
+// Reserved for future shared modules  (17 – 19)
+// ------------------------------------------------------------------
+#define MODULE_TIMEMGR_ID         ((hsys_module_id_t) 17)   ///< ModuleTimeMgr   — real-time clock manager
+
+// ------------------------------------------------------------------
 // Simulator-only / platform-specific  (20+)
 // ------------------------------------------------------------------
 #define MODULE_SIM_BRIDGE_ID      ((hsys_module_id_t) 20)   ///< ModuleSimBridge — TCP UI bridge (sim only)

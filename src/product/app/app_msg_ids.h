@@ -50,9 +50,10 @@ typedef enum : uint16_t
     // System / timing  (0x0200 – 0x02FF)
     // ------------------------------------------------------------------
     MSG_ID_TICK_1000MS      = 0x0200,   ///< Ticker -> all: 1 s heartbeat
-    MSG_ID_SPIFFS_READY     = 0x0201,   ///< ModuleSpiffs -> all: SPIFFS mounted and ready
-    MSG_ID_SD_READY         = 0x0202,   ///< ModuleSD    -> all: SD card mounted and ready
-    MSG_ID_SD_STATUS        = 0x0203,   ///< ModuleSD    -> all: SD card info (type, size, free)
+    MSG_ID_SPIFFS_READY     = 0x0201,   ///< ModuleSpiffs  -> all: SPIFFS mounted and ready
+    MSG_ID_SD_READY         = 0x0202,   ///< ModuleSD      -> all: SD card mounted and ready
+    MSG_ID_SD_STATUS        = 0x0203,   ///< ModuleSD      -> all: SD card info (type, size, free)
+    MSG_ID_TIME_STATUS      = 0x0204,   ///< ModuleTimeMgr -> all: current time source and validity
 
     // ------------------------------------------------------------------
     // Config  (0x0300 – 0x03FF)

@@ -11,6 +11,8 @@ A "Refresh" button rescans the directory at any time.
 
 import json
 import os
+import struct
+import datetime
 import tkinter as tk
 from tkinter import ttk
 
@@ -167,13 +169,16 @@ class SpiffsWidget(tk.Frame):
         self._file_label.config(text=rel, fg=_FG)
 
         try:
-            with open(path, "r", encoding="utf-8", errors="replace") as fh:
-                raw = fh.read()
-            if path.endswith(".json"):
-                try:
-                    raw = json.dumps(json.loads(raw), indent=2)
-                except json.JSONDecodeError:
-                    pass
+            if path.endswith(".bin"):
+                raw = self._format_bin(path)
+            else:
+                with open(path, "r", encoding="utf-8", errors="replace") as fh:
+                    raw = fh.read()
+                if path.endswith(".json"):
+                    try:
+                        raw = json.dumps(json.loads(raw), indent=2)
+                    except json.JSONDecodeError:
+                        pass
         except OSError as e:
             raw = f"Error reading file:\n{e}"
 
@@ -181,3 +186,32 @@ class SpiffsWidget(tk.Frame):
         self._text.delete("1.0", tk.END)
         self._text.insert("1.0", raw)
         self._text.config(state=tk.DISABLED)
+
+    @staticmethod
+    def _format_bin(path: str) -> str:
+        """Render a binary file as a hex dump, with special decoding for known formats."""
+        with open(path, "rb") as fh:
+            data = fh.read()
+
+        lines = []
+
+        # ── Known formats ──────────────────────────────────────────────────────
+        name = os.path.basename(path)
+        if name == "timemgr.bin" and len(data) >= 8:
+            epoch = struct.unpack_from("<q", data)[0]   # int64_t little-endian
+            try:
+                dt = datetime.datetime.utcfromtimestamp(epoch)
+                human = dt.strftime("%Y-%m-%d %H:%M:%S UTC")
+            except (OSError, OverflowError, ValueError):
+                human = "(invalid)"
+            lines.append(f"timemgr backup — epoch: {epoch}  ({human})")
+            lines.append("")
+
+        # ── Generic hex dump ───────────────────────────────────────────────────
+        for i in range(0, len(data), 16):
+            chunk = data[i:i + 16]
+            hex_part  = " ".join(f"{b:02x}" for b in chunk)
+            ascii_part = "".join(chr(b) if 0x20 <= b < 0x7F else "." for b in chunk)
+            lines.append(f"{i:08x}  {hex_part:<47}  |{ascii_part}|")
+
+        return "\n".join(lines) if lines else "(empty)"

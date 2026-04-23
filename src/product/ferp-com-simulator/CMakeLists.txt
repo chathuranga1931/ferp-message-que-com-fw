@@ -20,6 +20,8 @@ set(APP        "${ROOT}/product/app")
 set(ARDUINOJSON "${ROOT}/managed_components/bblanchon__arduinojson")
 # DT board device library (display_types.h, com_distap.h, cmd_distap.h)
 set(DISTAP_LIB "${ROOT}/sub-modules/ferp-device-firmware/ferp_board/main-esp32/lib/device")
+set(DRIVERS    "${ROOT}/sub-modules/drivers")
+set(SUB_MODS   "${ROOT}/sub-modules")
 
 # Force-include user_config.h first in every TU
 add_compile_options(-include "${APP}/user_config.h")
@@ -51,6 +53,9 @@ add_library(pal_mac STATIC
     ${PAL_MAC}/pal_mac_system.cpp           # pal_system_init() → boot everything
     ${PAL_MAC}/pal_mac_network.cpp          # pal_network_ping() via TCP connect
     ${PAL_MAC}/pal_mac_wifi.cpp             # pal_wifi_*() simulator stub
+    ${PAL_MAC}/pal_mac_i2c.cpp              # pal_i2c_*() emulator routing
+    ${PAL_MAC}/pal_mac_ntp.cpp              # pal_ntp_*() host-clock stub
+    ${PAL_MAC}/ds1307_i2c_emulator.cpp      # DS1307 register-bank emulator
     # Common middleware — uses ArduinoJson (platform-independent)
     ${MIDDLEWARE}/hsys_config.cpp
     # Simulator driver — owns the TCP socket and all UI I/O
@@ -123,6 +128,7 @@ add_library(app_messages STATIC
     ${APP_MSGS}/msg_wifi_event.cpp
     ${APP_MSGS}/msg_internet_status.cpp
     ${APP_MSGS}/msg_cloud_status.cpp
+    ${APP_MSGS}/msg_time_status.cpp
 )
 target_include_directories(app_messages PUBLIC
     ${APP_MSGS}
@@ -182,6 +188,10 @@ add_library(app_modules STATIC
     ${APP_MODS}/module_wifi/module_wifi.cpp
     # SD card module
     ${APP_MODS}/module_sd/module_sd.cpp
+    # Time manager module
+    ${APP_MODS}/module_timemgr/module_timemgr.cpp
+    # DS1307 hardware driver
+    ${DRIVERS}/DS1307/ds1307.cpp
 )
 target_include_directories(app_modules PUBLIC
     ${APP_MODS}
@@ -203,6 +213,9 @@ target_include_directories(app_modules PUBLIC
     ${APP_MODS}/module_internet
     ${APP_MODS}/module_wifi
     ${APP_MODS}/module_sd
+    ${APP_MODS}/module_timemgr
+    ${DRIVERS}/DS1307
+    ${SUB_MODS}           # for ds1307.cpp: #include "pal/pal_i2c.h"
     ${APP_PHR}
     ${APP}
     ${PAL_MAC}       # esp_err.h stub
@@ -236,6 +249,7 @@ target_include_directories(app_product PUBLIC
     ${APP_MODS}/module_internet
     ${APP_MODS}/module_wifi
     ${APP_MODS}/module_sd
+    ${APP_MODS}/module_timemgr
     ${APP_MSGS}
     ${HSYS_OS}
     ${PAL_MAC}       # esp_err.h stub
@@ -253,7 +267,8 @@ add_executable(ferp-com-simulator
 target_include_directories(ferp-com-simulator PRIVATE
     ${MIDDLEWARE}   # hsys_config.h — before PAL to avoid shim collision
     ${PAL}          # pal_logger.h
-    ${APP}          # app.h
+    ${PAL_MAC}      # ds1307_i2c_emulator.h, pal_mac_i2c_emulator.h
+    ${APP}          # app.h, app_hw_config.h
 )
 target_link_libraries(ferp-com-simulator PRIVATE
     hsys_framework hsys_os pal_mac

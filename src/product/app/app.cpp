@@ -53,6 +53,7 @@
 #include "module_internet.h"
 #include "module_wifi.h"
 #include "module_sd.h"
+#include "module_timemgr.h"
 #include "app_msg_table.h"
 #include "app_config.h"
 #include "hsys_config.h"
@@ -164,6 +165,7 @@ static HsysModule *k_module_table[] = {
     ModuleInternet::instance(),
     ModuleWifi::instance(),
     ModuleSD::instance(),
+    ModuleTimeMgr::instance(),
 };
 #define MODULE_TABLE_SIZE  (sizeof(k_module_table) / sizeof(k_module_table[0]))
 
@@ -189,6 +191,7 @@ static const hsys_task_desc_t k_task_table[] = {
     { "btn_task",           2048,  5,  0,   { MODULE_PRINT_BTN_ID,   MODULE_DEFAULT_BTN_ID,                      0 } },
     { "fuel_task",          4096,  5,  0,   { MODULE_FUEL_ID,                                                    0 } },
     { "network_task",       8192,  5,  0,   { MODULE_WIFI_ID,        MODULE_INTERNET_ID,     MODULE_CLOUD_ID,    0 } },
+    { "timemgr_task",       3072,  5,  0,   { MODULE_TIMEMGR_ID,                                                 0 } },
 };
 #define TASK_TABLE_SIZE  (sizeof(k_task_table) / sizeof(k_task_table[0]))
 
