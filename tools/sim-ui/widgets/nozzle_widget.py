@@ -213,6 +213,21 @@ class NozzleWidget(tk.Frame):
 
         tx.columnconfigure(1, weight=1)
 
+        # ── Print button ──────────────────────────────────────────────────────
+
+        ttk.Separator(self, orient=tk.HORIZONTAL).pack(fill=tk.X, padx=4, pady=(8, 4))
+
+        self._print_btn_name = f"print{self._nozzle_idx + 1}"
+        self._print_btn = tk.Button(
+            self, text=f"\U0001f5a8  Print {self._nozzle_idx + 1}",
+            bg="#313244", fg="#cdd6f4",
+            activebackground="#89b4fa",
+            font=("Menlo", 11, "bold"),
+            relief=tk.FLAT, padx=8, pady=6)
+        self._print_btn.pack(fill=tk.X, padx=8, pady=(0, 8))
+        self._print_btn.bind("<ButtonPress-1>",   lambda e: self._print_press())
+        self._print_btn.bind("<ButtonRelease-1>", lambda e: self._print_release())
+
     # ── Public API (called by sim_ui._dispatch) ───────────────────────────────
 
     def set_state(self, state: str):
@@ -236,6 +251,14 @@ class NozzleWidget(tk.Frame):
         self.set_state("PUMPED")
 
     # ── Internal ──────────────────────────────────────────────────────────────
+
+    def _print_press(self):
+        self._print_btn.config(bg="#89b4fa", fg="#1e1e2e")
+        self._send_fn({"id": "SIM_BTN", "data": {"btn": self._print_btn_name, "action": "press"}})
+
+    def _print_release(self):
+        self._print_btn.config(bg="#313244", fg="#cdd6f4")
+        self._send_fn({"id": "SIM_BTN", "data": {"btn": self._print_btn_name, "action": "release"}})
 
     def _toggle_nozzle(self):
         self._nozzle_active = not self._nozzle_active

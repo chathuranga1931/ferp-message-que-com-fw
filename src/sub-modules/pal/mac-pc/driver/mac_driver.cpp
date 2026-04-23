@@ -267,19 +267,21 @@ void mac_driver_send_json(const char *id, const char *data_json)
 {
     if (s_server_fd < 0) return;
 
-    char line[512];
-    int n = snprintf(line, sizeof(line) - 1,
-                     "{\"id\":\"%s\",\"ts\":%llu,\"data\":%s}\n",
-                     id,
-                     (unsigned long long)pal_time_get_ms(),
-                     data_json);
-    if (n <= 0) return;
+    // Write the envelope in three separate pieces to avoid a fixed-size
+    // copy buffer that would truncate large payloads (e.g. SIM_POOL_STATUS).
+    char hdr[128];
+    int hdr_n = snprintf(hdr, sizeof(hdr),
+                         "{\"id\":\"%s\",\"ts\":%llu,\"data\":",
+                         id,
+                         (unsigned long long)pal_time_get_ms());
+    if (hdr_n <= 0) return;
 
     std::lock_guard<std::mutex> lock(s_mutex);
-    if (s_client_fd >= 0)
-    {
-        ::write(s_client_fd, line, (size_t)n);
-    }
+    if (s_client_fd < 0) return;
+
+    ::write(s_client_fd, hdr,      (size_t)hdr_n);
+    ::write(s_client_fd, data_json, strlen(data_json));
+    ::write(s_client_fd, "}\n",    2);
 }
 
 void mac_driver_send_gpio(int pin, int level, const char *name)

@@ -122,7 +122,7 @@ class App(tk.Tk):
         self.title("ferp-com Simulator UI")
         self.configure(bg="#1e1e2e")
         self.resizable(True, True)
-        self.geometry("1100x700")   # sensible initial size
+        self.geometry("1375x700")   # sensible initial size
 
         self._rx_queue = queue.Queue()
         self._conn     = SimConnection(host, port, self._rx_queue)
@@ -156,10 +156,15 @@ class App(tk.Tk):
             font=("Menlo", 11))
         self._tick_label.pack(side=tk.RIGHT, padx=10)
 
-        # ── Main paned area ───────────────────────────────────────────────────
-        main = tk.PanedWindow(self, orient=tk.HORIZONTAL,
+        # ── Body: vertical split — tabs on top, console always at bottom ──────
+        body = tk.PanedWindow(self, orient=tk.VERTICAL,
                               bg="#1e1e2e", sashwidth=4)
-        main.pack(fill=tk.BOTH, expand=True, padx=6, pady=6)
+        body.pack(fill=tk.BOTH, expand=True, padx=6, pady=6)
+
+        # ── Top section: horizontal split — indicators | notebook ─────────────
+        main = tk.PanedWindow(body, orient=tk.HORIZONTAL,
+                              bg="#1e1e2e", sashwidth=4)
+        body.add(main, minsize=300)
 
         # Left column — system indicators
         left = tk.Frame(main, bg="#1e1e2e", width=260)
@@ -168,30 +173,24 @@ class App(tk.Tk):
         self._build_system_panel(left)
         self._build_button_panel(left)
 
-        # Right column — log + tabs
+        # Pool widget — compact sidebar view, below buttons
+        self._pool = PoolWidget(left, compact=True)
+        self._pool.pack(fill=tk.X, padx=4, pady=4)
+
+        # Right column — notebook tabs
         right = tk.Frame(main, bg="#1e1e2e")
         main.add(right, minsize=400)
 
         notebook = ttk.Notebook(right)
         notebook.pack(fill=tk.BOTH, expand=True)
 
-        # ── Tab: Monitor (Nozzles | Pool + OTA) + Console at bottom ──────────
+        # ── Tab: Monitor (Nozzles only) ───────────────────────────────────────
         monitor_frame = tk.Frame(notebook, bg="#1e1e2e")
         notebook.add(monitor_frame, text="Monitor")
 
-        # Outer vertical split: top content pane / bottom console
-        monitor_v = tk.PanedWindow(monitor_frame, orient=tk.VERTICAL,
-                                   bg="#1e1e2e", sashwidth=4)
-        monitor_v.pack(fill=tk.BOTH, expand=True)
-
-        # Top: horizontal split  ← Nozzles | Pool+OTA →
-        top_pane = tk.PanedWindow(monitor_v, orient=tk.HORIZONTAL,
-                                  bg="#1e1e2e", sashwidth=4)
-        monitor_v.add(top_pane, minsize=200)
-
-        # Left: two nozzle widgets side-by-side
-        nozzle_frame = tk.Frame(top_pane, bg="#1e1e2e")
-        top_pane.add(nozzle_frame, minsize=200)
+        # Two nozzle widgets side-by-side
+        nozzle_frame = tk.Frame(monitor_frame, bg="#1e1e2e")
+        nozzle_frame.pack(fill=tk.BOTH, expand=True)
         self._nozzle_0 = NozzleWidget(nozzle_frame, label="Nozzle 1",
                                       nozzle_idx=0, send_fn=self._send_cmd)
         self._nozzle_0.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=4, pady=4)
@@ -199,26 +198,11 @@ class App(tk.Tk):
                                       nozzle_idx=1, send_fn=self._send_cmd)
         self._nozzle_1.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=4, pady=4)
 
-        # Right: Pool (top) + OTA (bottom) stacked
-        right_pane = tk.PanedWindow(top_pane, orient=tk.VERTICAL,
-                                    bg="#1e1e2e", sashwidth=4)
-        top_pane.add(right_pane, minsize=200)
-
-        pool_frame = tk.Frame(right_pane, bg="#1e1e2e")
-        right_pane.add(pool_frame, minsize=80)
-        self._pool = PoolWidget(pool_frame)
-        self._pool.pack(fill=tk.BOTH, expand=True)
-
-        ota_frame = tk.Frame(right_pane, bg="#1e1e2e")
-        right_pane.add(ota_frame, minsize=80)
-        self._ota = OtaWidget(ota_frame, send_fn=self._send_cmd)
+        # ── Tab: OTA ──────────────────────────────────────────────────────────
+        ota_tab_frame = tk.Frame(notebook, bg="#1e1e2e")
+        notebook.add(ota_tab_frame, text="OTA")
+        self._ota = OtaWidget(ota_tab_frame, send_fn=self._send_cmd)
         self._ota.pack(fill=tk.BOTH, expand=True)
-
-        # Bottom: Console log
-        log_frame = tk.Frame(monitor_v, bg="#1e1e2e")
-        monitor_v.add(log_frame, minsize=120)
-        self._log = LogWidget(log_frame)
-        self._log.pack(fill=tk.BOTH, expand=True)
 
         # ── Tab: Device Config ────────────────────────────────────────────────
         config_frame = tk.Frame(notebook, bg="#1e1e2e")
@@ -242,7 +226,6 @@ class App(tk.Tk):
         msg_frame = tk.Frame(notebook, bg="#1e1e2e")
         notebook.add(msg_frame, text="Messages")
 
-        # Resolve canonical paths from the repo root (two levels up from sim_ui.py)
         _sim_ui_dir = os.path.dirname(os.path.abspath(__file__))
         _src_dir    = os.path.join(_sim_ui_dir, "..", "..", "src")
         _msgs_dir   = os.path.join(_src_dir, "app-messages", "messages")
@@ -255,6 +238,12 @@ class App(tk.Tk):
             modules_json=_mods_json,
         )
         self._msg_inject.pack(fill=tk.BOTH, expand=True)
+
+        # ── Bottom section: console log — always visible across all tabs ──────
+        log_frame = tk.Frame(body, bg="#1e1e2e")
+        body.add(log_frame, minsize=120)
+        self._log = LogWidget(log_frame)
+        self._log.pack(fill=tk.BOTH, expand=True)
     def _build_system_panel(self, parent):
         frame = tk.LabelFrame(
             parent, text="System", bg="#1e1e2e",
@@ -303,8 +292,6 @@ class App(tk.Tk):
 
         hw_buttons = [
             ("Default",  "default"),
-            ("Print 1",  "print1"),
-            ("Print 2",  "print2"),
         ]
         for label, btn_name in hw_buttons:
             btn = tk.Button(

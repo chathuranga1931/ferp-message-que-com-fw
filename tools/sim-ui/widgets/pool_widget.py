@@ -33,39 +33,68 @@ def _util_colour(pct: int) -> str:
 class _PoolRow(tk.Frame):
     """One labelled canvas-bar row (avoids ttk style conflicts on macOS Tk)."""
 
-    BAR_W  = 220
-    BAR_H  = 16
-    LABEL_W = 16   # characters
+    _COMPACT_BAR_H = 4
+    _NORMAL_BAR_H  = 14
+    _COMPACT_BAR_W = 210
+    _NORMAL_BAR_W  = 220
 
-    def __init__(self, parent, label: str, **kwargs):
+    def __init__(self, parent, label: str, compact: bool = False, **kwargs):
         super().__init__(parent, bg="#1e1e2e", **kwargs)
+        self._compact = compact
 
-        tk.Label(self, text=label, width=self.LABEL_W, anchor=tk.W,
-                 bg="#1e1e2e", fg="#cdd6f4",
-                 font=("Menlo", 10)).pack(side=tk.LEFT, padx=(0, 4))
+        if compact:
+            # ── Stacked layout: label+detail on top, thin bar below ───────────
+            hdr = tk.Frame(self, bg="#1e1e2e")
+            hdr.pack(fill=tk.X)
+
+            tk.Label(hdr, text=label, anchor=tk.W,
+                     bg="#1e1e2e", fg="#cdd6f4",
+                     font=("Menlo", 9)).pack(side=tk.LEFT)
+
+            self._detail = tk.Label(hdr, text="", anchor=tk.E,
+                                    bg="#1e1e2e", fg="#585b70",
+                                    font=("Menlo", 8))
+            self._detail.pack(side=tk.RIGHT, padx=(0, 2))
+
+            bar_h = self._COMPACT_BAR_H
+            bar_w = self._COMPACT_BAR_W
+        else:
+            # ── Horizontal layout: label | bar | detail ───────────────────────
+            tk.Label(self, text=label, width=16, anchor=tk.W,
+                     bg="#1e1e2e", fg="#cdd6f4",
+                     font=("Menlo", 10)).pack(side=tk.LEFT, padx=(0, 4))
+
+            self._detail = tk.Label(self, text="waiting…", width=24, anchor=tk.W,
+                                    bg="#1e1e2e", fg="#585b70",
+                                    font=("Menlo", 9))
+
+            bar_h = self._NORMAL_BAR_H
+            bar_w = self._NORMAL_BAR_W
 
         # Canvas bar — drawn manually so colour works on macOS system Tk
-        self._canvas = tk.Canvas(self, width=self.BAR_W, height=self.BAR_H,
+        self._canvas = tk.Canvas(self, width=bar_w, height=bar_h,
                                  bg="#313244", highlightthickness=0)
-        self._canvas.pack(side=tk.LEFT)
+        self._canvas.pack(side=tk.LEFT if not compact else tk.TOP,
+                          fill=tk.X if compact else tk.NONE,
+                          pady=(1, 2) if compact else 0)
         self._fill = self._canvas.create_rectangle(
-            0, 0, 0, self.BAR_H, fill="#a6e3a1", outline="")
+            0, 0, 0, bar_h, fill="#a6e3a1", outline="")
+        self._bar_w = bar_w
+        self._bar_h = bar_h
 
-        self._detail = tk.Label(self, text="waiting…", width=24, anchor=tk.W,
-                                bg="#1e1e2e", fg="#585b70",
-                                font=("Menlo", 9))
-        self._detail.pack(side=tk.LEFT, padx=(6, 0))
+        if not compact:
+            self._detail.pack(side=tk.LEFT, padx=(6, 0))
 
     def update(self, used: int, total: int, peak: int = 0):
         pct    = int(used * 100 / total) if total > 0 else 0
-        bar_px = int(self.BAR_W * pct / 100)
+        bar_px = int(self._bar_w * pct / 100)
         colour = _util_colour(pct)
 
-        self._canvas.coords(self._fill, 0, 0, bar_px, self.BAR_H)
+        self._canvas.coords(self._fill, 0, 0, bar_px, self._bar_h)
         self._canvas.itemconfig(self._fill, fill=colour)
 
-        detail = f"{used}/{total}  ({pct}%)"
-        if peak:
+        detail = f"{used}/{total} ({pct}%)"
+        if peak and not self._compact:
             detail += f"  pk={peak}"
         self._detail.config(text=detail,
                             fg="#a6adc8" if pct < 85 else "#f38ba8")
@@ -84,11 +113,12 @@ class PoolWidget(tk.Frame):
         (4, 512),
     ]
 
-    def __init__(self, parent, **kwargs):
+    def __init__(self, parent, compact: bool = False, **kwargs):
         super().__init__(parent, bg="#1e1e2e", **kwargs)
+        self._compact = compact
 
         tk.Label(self,
-                 text="Memory Pool  —  live usage (updates every 5 s)",
+                 text="Memory Pool — live usage",
                  bg="#1e1e2e", fg="#6c7086",
                  font=("Menlo", 9, "italic")).pack(anchor=tk.W, padx=8, pady=(8, 4))
 
@@ -97,13 +127,13 @@ class PoolWidget(tk.Frame):
         # Build placeholder rows immediately
         self._class_rows = []   # type: List[_PoolRow]
         for idx, bsize in self._DEFAULT_CLASSES:
-            row = _PoolRow(self, label=f"cls {idx}  ({bsize} B)")
+            row = _PoolRow(self, label=f"cls {idx}  ({bsize} B)", compact=compact)
             row.pack(fill=tk.X, padx=8, pady=2)
             self._class_rows.append(row)
 
         tk.Frame(self, bg="#45475a", height=1).pack(fill=tk.X, padx=8, pady=(6, 4))
 
-        self._hdr_row = _PoolRow(self, label="hdr-pool  (msgs)")
+        self._hdr_row = _PoolRow(self, label="hdr-pool", compact=compact)
         self._hdr_row.pack(fill=tk.X, padx=8, pady=2)
 
         self._ts_label = tk.Label(self, text="⏳ waiting for first snapshot…",
@@ -125,18 +155,13 @@ class PoolWidget(tk.Frame):
         # Grow row list if firmware has more classes than our default
         while len(classes) > len(self._class_rows):
             i = len(self._class_rows)
-            row = _PoolRow(self, label=f"cls {i}")
+            row = _PoolRow(self, label=f"cls {i}", compact=self._compact)
             row.pack(fill=tk.X, padx=8, pady=2, before=self._hdr_row)
             self._class_rows.append(row)
 
         # Update labels and bars
         for i, c in enumerate(classes):
             row = self._class_rows[i]
-            # Refresh label with real block_size from firmware
-            for widget in row.winfo_children():
-                if isinstance(widget, tk.Label) and widget.cget("width") == _PoolRow.LABEL_W:
-                    widget.config(text=f"cls {c['idx']}  ({c['block_size']} B)")
-                    break
             row.update(used=c.get("used", 0), total=c.get("total", 0))
 
         if hdr:
