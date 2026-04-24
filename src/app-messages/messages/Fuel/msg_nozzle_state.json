@@ -1,0 +1,22 @@
+{
+  "msg_id": "0x0801",
+  "fields": [
+    {
+      "name":    "nozzle_idx",
+      "label":   "Nozzle Index",
+      "type":    "uint8",
+      "default": 0
+    },
+    {
+      "name":  "state",
+      "label": "State",
+      "type":  "enum",
+      "options": [
+        {"label": "IDLE",    "value": 0},
+        {"label": "PUMPING", "value": 1},
+        {"label": "PUMPED",  "value": 2}
+      ],
+      "default": 0
+    }
+  ]
+}

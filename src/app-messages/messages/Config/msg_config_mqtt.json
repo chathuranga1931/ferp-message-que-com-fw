@@ -1,0 +1,29 @@
+{
+  "msg_id": "0x0309",
+  "fields": [
+    {
+      "name":    "host",
+      "label":   "Broker Host",
+      "type":    "string",
+      "default": "mqtt.example.com"
+    },
+    {
+      "name":    "port",
+      "label":   "Port",
+      "type":    "uint32",
+      "default": 1883
+    },
+    {
+      "name":    "user",
+      "label":   "Username",
+      "type":    "string",
+      "default": ""
+    },
+    {
+      "name":    "password",
+      "label":   "Password",
+      "type":    "string",
+      "default": ""
+    }
+  ]
+}

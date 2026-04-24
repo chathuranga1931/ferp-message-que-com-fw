@@ -58,6 +58,14 @@ class LogWidget(tk.Frame):
                   font=("Menlo", 9), relief=tk.FLAT,
                   command=self._clear).pack(side=tk.RIGHT, padx=4)
 
+        self._autoscroll_var = tk.BooleanVar(value=True)
+        tk.Checkbutton(toolbar, text="Auto-scroll",
+                       variable=self._autoscroll_var,
+                       bg=_BG, fg="#6c7086",
+                       selectcolor="#313244",
+                       activebackground=_BG,
+                       font=("Menlo", 9)).pack(side=tk.RIGHT, padx=4)
+
         self._text = scrolledtext.ScrolledText(
             self, bg=_BG, fg=_FG,
             font=("Menlo", 9),
@@ -115,7 +123,8 @@ class LogWidget(tk.Frame):
         if self._line_count > self.MAX_LINES:
             self._text.delete("1.0", "500.0")
             self._line_count -= 500
-        self._text.see(tk.END)
+        if self._autoscroll_var.get():
+            self._text.see(tk.END)
         self._text.config(state=tk.DISABLED)
 
     def _clear(self):

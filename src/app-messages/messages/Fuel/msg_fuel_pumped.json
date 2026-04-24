@@ -1,0 +1,29 @@
+{
+  "msg_id": "0x0800",
+  "fields": [
+    {
+      "name":    "nozzle_idx",
+      "label":   "Nozzle Index",
+      "type":    "uint8",
+      "default": 0
+    },
+    {
+      "name":    "vol_lx1000",
+      "label":   "Volume (L×1000)",
+      "type":    "uint32",
+      "default": 5000
+    },
+    {
+      "name":    "unit_pricex100",
+      "label":   "Unit Price (×100)",
+      "type":    "uint32",
+      "default": 300
+    },
+    {
+      "name":    "total_pricex100",
+      "label":   "Total Price (×100)",
+      "type":    "uint32",
+      "default": 1500
+    }
+  ]
+}

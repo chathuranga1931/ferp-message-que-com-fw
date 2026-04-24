@@ -13,12 +13,13 @@
     {"id":   8, "name": "ModuleLeds"},
     {"id":   9, "name": "ModuleDefaultBtn"},
     {"id":  10, "name": "ModulePrintBtn"},
-    {"id":  11, "name": "ModuleBuzzer"},
-    {"id":  12, "name": "ModuleNozzle"},
+    {"id":  11, "name": "ModuleFuel"},
+    {"id":  12, "name": "ModuleBuzzer"},
     {"id":  13, "name": "ModuleCloud"},
     {"id":  14, "name": "ModuleInternet"},
     {"id":  15, "name": "ModuleWifi"},
     {"id":  16, "name": "ModuleSD"},
+    {"id":  17, "name": "ModuleTimeMgr"},
     {"id":  20, "name": "ModuleSimBridge"}
   ]
 }
