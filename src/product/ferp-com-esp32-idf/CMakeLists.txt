@@ -1,22 +1,23 @@
 cmake_minimum_required(VERSION 3.16)
 
-# Paths are relative to THIS file (src/product/ferp-com-esp32-idf/).
-# EXTRA_COMPONENT_DIRS must point to the PARENT of each component folder.
-# IDF scans each listed directory for sub-folders containing a
-# CMakeLists.txt with idf_component_register() and names each component
-# after its sub-folder:
+# Library components (each sub-folder has its own idf_component_register()):
+#   hsys-os        <- sub-modules/hsys-os/
+#   hsys-framework <- sub-modules/hsys-framework/
+#   pal            <- sub-modules/pal/   (headers-only PAL interface)
+#   bblanchon__arduinojson <- managed_components/bblanchon__arduinojson/
 #
-#   hsys-os        <- src/sub-modules/hsys-os/
-#   hsys-framework <- src/sub-modules/hsys-framework/
-#   app-modules    <- src/app-modules/
-#   app            <- src/product/app/
-#
+# All application sources are compiled as part of the "main" component.
+# To add/remove sources, edit main/CMakeLists.txt.
 set(EXTRA_COMPONENT_DIRS
     "../../sub-modules/hsys-os"
     "../../sub-modules/hsys-framework"
-    "../../app-modules"
-    "../app"
+    "../../sub-modules/pal"
+    "../../../src/managed_components"
 )
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
+
+# Force-include user_config.h in every translation unit.
+add_compile_options(-include "${CMAKE_CURRENT_SOURCE_DIR}/../app/user_config.h")
+
 project(ferp-com)

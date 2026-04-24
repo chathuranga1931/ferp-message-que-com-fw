@@ -279,19 +279,19 @@ void ModuleFuel::_on_distap_frame(uint8_t nozzle_idx, display_type_t type,
 
 
 const pump_driver_t pump_drivers[DIS_SIZE] = {
-    [DIS_NONE] = { nullptr, nullptr, nullptr },
-    [DIS_LONGFENG_8_DIGIT] = { nullptr, nullptr, nullptr },
-    [DIS_CENSTAR_6_DIGIT] = { nullptr, nullptr, nullptr },
-    [DIS_CENSTAR_7_DIGIT] = { nullptr, nullptr, nullptr },
-    [DIS_CENSTAR_7_DIGIT_CS] = { nullptr, nullptr, nullptr },
-    [DIS_HONGYANG_8_DIGIT] = { nullptr, nullptr, nullptr },
-    [DIS_WAYNE_6_DIGIT] = { nullptr, nullptr, nullptr },
-    [DIS_SANKI_6_DIGIT] = {
-        .get_event = (fp_pump_get_event_t *)sanki6_get_event,
-        .process_data = (fp_pump_process_data_t *)sanki6_process_data,
-        .process_state_machine = (fp_pump_process_state_machine_t *)sanki6_process_state_machine,
-        .data_validate = (fp_pump_data_validate *)sanki6_data_validate
-    }
+    /* DIS_NONE             [0] */ { nullptr, nullptr, nullptr, nullptr },
+    /* DIS_CENSTAR_6_DIGIT  [1] */ { nullptr, nullptr, nullptr, nullptr },
+    /* DIS_CENSTAR_7_DIGIT  [2] */ { nullptr, nullptr, nullptr, nullptr },
+    /* DIS_CENSTAR_7_DIGIT_CS [3] */ { nullptr, nullptr, nullptr, nullptr },
+    /* DIS_HONGYANG_8_DIGIT [4] */ { nullptr, nullptr, nullptr, nullptr },
+    /* DIS_WAYNE_6_DIGIT    [5] */ { nullptr, nullptr, nullptr, nullptr },
+    /* DIS_SANKI_6_DIGIT    [6] */ {
+        (fp_pump_get_event_t *)sanki6_get_event,
+        (fp_pump_process_data_t *)sanki6_process_data,
+        (fp_pump_process_state_machine_t *)sanki6_process_state_machine,
+        (fp_pump_data_validate *)sanki6_data_validate
+    },
+    /* DIS_LONGFENG_8_DIGIT [7] */ { nullptr, nullptr, nullptr, nullptr },
 };
 
 void ModuleFuel::_process_queues()

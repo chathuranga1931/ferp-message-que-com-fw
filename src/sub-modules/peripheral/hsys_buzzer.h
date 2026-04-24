@@ -7,7 +7,9 @@
 #include "hsys_soft_timer.h"
 
 #define MAX_BUZ 5
+#ifndef CUE_RESOLUTION_MS
 #define CUE_RESOLUTION_MS 250
+#endif
 
 typedef struct {
     void (*buz_on)(void);

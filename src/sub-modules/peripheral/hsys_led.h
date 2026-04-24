@@ -7,7 +7,9 @@
 #include "hsys_soft_timer.h"
 
 #define MAX_LEDS 5
+#ifndef CUE_RESOLUTION_MS
 #define CUE_RESOLUTION_MS 125
+#endif
 
 typedef struct {
     void (*led_on)(void);

@@ -6,22 +6,28 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 set(ROOT       "${CMAKE_CURRENT_SOURCE_DIR}/../..")   # src/
-set(HSYS_OS    "${ROOT}/sub-modules/hsys-os")
-set(HSYS_FW    "${ROOT}/sub-modules/hsys-framework")
-set(PAL        "${ROOT}/sub-modules/pal")
-set(PAL_MAC    "${PAL}/mac-pc")
-set(PAL_MAC_DRV "${PAL_MAC}/driver")
-set(MIDDLEWARE "${ROOT}/sub-modules/middleware")
-set(PERIPHERAL "${ROOT}/sub-modules/peripheral")
+
 set(APP_MSGS   "${ROOT}/app-messages")
 set(APP_MODS   "${ROOT}/app-modules")
 set(APP_PHR    "${ROOT}/app-pheripherals")
 set(APP        "${ROOT}/product/app")
+
 set(ARDUINOJSON "${ROOT}/managed_components/bblanchon__arduinojson")
-# DT board device library (display_types.h, com_distap.h, cmd_distap.h)
-set(DISTAP_LIB "${ROOT}/sub-modules/ferp-device-firmware/ferp_board/main-esp32/lib/device")
-set(DRIVERS    "${ROOT}/sub-modules/drivers")
+
 set(SUB_MODS   "${ROOT}/sub-modules")
+
+set(HSYS_FW    "${SUB_MODS}/hsys-framework")
+set(HSYS_OS    "${SUB_MODS}/hsys-os")
+set(PAL        "${SUB_MODS}/pal")
+set(MIDDLEWARE "${SUB_MODS}/middleware")
+set(PERIPHERAL "${SUB_MODS}/peripheral")
+
+# DT board device library (display_types.h, com_distap.h, cmd_distap.h)
+set(DISTAP_LIB "${SUB_MODS}/ferp-device-firmware/ferp_board/main-esp32/lib/device")
+set(DRIVERS    "${SUB_MODS}/drivers")
+
+set(PAL_MAC    "${PAL}/mac-pc")
+set(PAL_MAC_DRV "${PAL_MAC}/driver")
 
 # Force-include user_config.h first in every TU
 add_compile_options(-include "${APP}/user_config.h")

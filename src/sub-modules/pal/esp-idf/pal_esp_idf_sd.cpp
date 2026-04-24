@@ -20,6 +20,7 @@
 #include "driver/sdspi_host.h"
 #include "driver/spi_common.h"
 #include "sdmmc_cmd.h"
+#include "ff.h"
 
 /*===========================================================================*/
 /*                            DEFINITIONS                                    */
@@ -516,5 +517,22 @@ int32_t pal_sd_dir_create(const char* path) {
         return PAL_ERROR_IO;
     }
     
+    return PAL_OK;
+}
+
+int32_t pal_sd_get_free_mb(uint64_t *free_mb) {
+    if(!is_initialized || sd_card == NULL) {
+        return PAL_ERROR_INIT;
+    }
+    if(free_mb == NULL) {
+        return PAL_ERROR_INVALID;
+    }
+    FATFS *fs;
+    DWORD free_clusters;
+    if(f_getfree("0:", &free_clusters, &fs) != FR_OK) {
+        return PAL_ERROR_IO;
+    }
+    uint64_t sector_size = sd_card->csd.sector_size ? sd_card->csd.sector_size : 512;
+    *free_mb = ((uint64_t)free_clusters * fs->csize * sector_size) / (1024 * 1024);
     return PAL_OK;
 }

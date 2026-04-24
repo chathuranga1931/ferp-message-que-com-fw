@@ -11,19 +11,19 @@
 
 #define EXEC_IF_NOT_NULL(x, ...) 		((x != NULL) ? x(__VA_ARGS__) : CONFIG_NULL)
 #define EXEC_IF_NOT_NULL_RET(y,x, ...) 		((x != NULL) ? y = x(__VA_ARGS__) : y = CONFIG_NULL)
-#define EXEC_IF_NOT_NULL_RET_BREAK(z,y,x, ...) 		\
-    if(x){ \
-        y = x(__VA_ARGS__); \        
-    } else { \
+#define EXEC_IF_NOT_NULL_RET_BREAK(z,y,x, ...)\
+    if(x){\
+        y = x(__VA_ARGS__);\
+    } else {\
         z = CONFIG_NULL;\
-        break;\ 
+        break;\
     }
-#define EXEC_IF_NOT_NULL_BREAK(z,x, ...) 		\
-    if(x){ \
-        x(__VA_ARGS__); \        
-    } else { \
+#define EXEC_IF_NOT_NULL_BREAK(z,x, ...)\
+    if(x){\
+        x(__VA_ARGS__);\
+    } else {\
         z = CONFIG_NULL;\
-        break;\ 
+        break;\
     }
 
 int32_t hsys_config_init(config_init_t config_init, config_handle_t * config_hndl){
