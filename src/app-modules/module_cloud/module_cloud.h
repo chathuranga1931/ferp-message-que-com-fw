@@ -4,15 +4,14 @@
 //
 // State machine:
 //   WAIT_FOR_INTERNET ──[internet connected]──▶ REGISTERING
-//   REGISTERING ──[driver success]──▶ RUNNING
-//   REGISTERING ──[driver fail]──▶ REGISTERING (retry via timer)
+//   REGISTERING ──[cube_sphere_register success]──▶ RUNNING
+//   REGISTERING ──[cube_sphere_register fail]──▶ REGISTERING (retry via timer)
 //   RUNNING ──[internet lost]──▶ WAIT_FOR_INTERNET
 //
-// Driver injection:
-//   Call set_driver() before the HSYS framework starts.
-//   For the simulator, leave the driver as nullptr — the module will idle.
-//   For the device, call set_driver(cloud_driver_cube_sphere()) in
-//   app_platform_pre_init().
+// Cloud backend:
+//   Calls the CubeSphere HTTP API (cube_sphere_api.h) directly.
+//   In the simulator build (FERP_SIMULATOR) all network calls are skipped;
+//   the module still compiles but does nothing over the network.
 //
 // Retransmission handoff (future):
 //   On PUMPED_FAILED, the module currently publishes MsgCloudStatus.
@@ -21,8 +20,9 @@
 #pragma once
 
 #include "hsys_module.h"
-#include "cloud_driver.h"
+#include "cube_sphere_api.h"
 #include "msg_cloud_status.h"
+#include "msg_config_wifi.h"
 
 // ---------------------------------------------------------------------------
 // Module identity
@@ -48,17 +48,11 @@ public:
 
     static ModuleCloud *instance();
 
-    /** Inject the cloud backend driver.  Must be called before app_init(). */
-    void set_driver(const cloud_driver_t *drv) { _drv = drv; }
-
 protected:
     void init()                                  override;
     void on_msg_received(const hsys_msg_t &msg)  override;
 
 private:
-    // ── Driver ───────────────────────────────────────────────────────────────
-    const cloud_driver_t *_drv = nullptr;
-
     // ── State machine ─────────────────────────────────────────────────────────
     typedef enum {
         STATE_WAIT_FOR_INTERNET,
@@ -70,13 +64,14 @@ private:
 
     // ── Connectivity tracking ─────────────────────────────────────────────────
     bool    _internet_up           = false;
+    bool    _cloud_config_ready    = false;  ///< true once MsgConfigCloud received
     bool    _wifi_reconnected      = false;  ///< true when wifi lost + re-got IP
     bool    _wifi_was_connected    = false;
 
     // ── Cached runtime info (populated from messages) ─────────────────────────
-    char    _wifi_ssid[50]         = {};
-    char    _wifi_password[50]     = {};
-    char    _cloud_secret[64]      = {};   ///< PEM root-CA cached from MsgConfigCloud
+    char    _wifi_ssid[50]         = {};   ///< Connected SSID  — from MsgWifiEvent
+    char          _wifi_password[50] = {};       ///< WiFi password  — from MsgConfigWifi
+    const char   *_cloud_root_ca    = nullptr;  ///< PEM root-CA pointer — from MsgConfigCloud (static lifetime)
     char    _wifi_ip[25]           = {};
     char    _wifi_mac[25]          = {};
     int8_t  _wifi_rssi             = -100;
@@ -99,6 +94,7 @@ private:
     // ── Helpers ───────────────────────────────────────────────────────────────
     void _on_config_ready();
     void _on_config_cloud(const hsys_msg_t &msg);
+    void _on_config_wifi(const hsys_msg_t &msg);
     void _on_wifi_event(const hsys_msg_t &msg);
     void _on_internet_status(const hsys_msg_t &msg);
     void _on_fuel_pumped(const hsys_msg_t &msg);
@@ -110,8 +106,8 @@ private:
 
     void _arm_timer(uint32_t duration_ms);
 
-    cloud_startup_info_t _build_startup_info() const;
-    cloud_hb_info_t      _build_hb_info()      const;
+    startup_info_t    _build_startup_info() const;
+    heart_beat_info_t _build_hb_info()      const;
 
     void _publish_cloud_status(cloud_status_event_t ev, uint8_t nozzle_idx = 0);
 };

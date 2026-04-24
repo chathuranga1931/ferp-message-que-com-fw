@@ -1,0 +1,15 @@
+# Custom partition table for ferp-com (2MB flash)
+#
+# Layout (2MB = 0x200000 total):
+#   0x000000 - 0x007FFF  bootloader  (32KB, managed by IDF)
+#   0x008000 - 0x008FFF  partition table (4KB)
+#   0x009000 - 0x00EFFF  nvs         (24KB)
+#   0x00F000 - 0x00FFFF  phy_init    (4KB)
+#   0x010000 - 0x17FFFF  factory app (1472KB) — fits current ~1.1MB binary with headroom
+#   0x180000 - 0x1FFFFF  storage     (512KB, SPIFFS)
+#
+# Name,     Type,   SubType,  Offset,   Size
+nvs,        data,   nvs,      0x9000,   24K
+phy_init,   data,   phy,      0xf000,   4K
+factory,    app,    factory,  0x10000,  1472K
+storage,    data,   spiffs,   0x180000, 512K

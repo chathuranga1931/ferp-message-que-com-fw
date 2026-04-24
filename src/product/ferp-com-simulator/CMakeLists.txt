@@ -73,6 +73,12 @@ add_library(pal_mac STATIC
     # Simulator implementations of DT board comms APIs
     ${PAL_MAC_DRV}/mac_com_distap.cpp
     ${PAL_MAC_DRV}/mac_cmd_distap.cpp
+    # HTTP client (libcurl), crypto (CommonCrypto), and eFuse MAC — needed by cube_sphere_api
+    ${PAL_MAC}/pal_mac_http_client.cpp
+    ${PAL_MAC}/pal_mac_crypto.cpp
+    ${PAL_MAC}/pal_mac_efuse.cpp
+    # CubeSphere cloud driver
+    ${DRIVERS}/cube_sphere/cube_sphere_api.cpp
 )
 target_include_directories(pal_mac PUBLIC
     ${PAL}          # pal_*.h interfaces + pal_system.h
@@ -90,8 +96,9 @@ target_include_directories(pal_mac PUBLIC
     ${DISTAP_LIB}   # display_types.h, com_distap.h, cmd_distap.h
     ${ARDUINOJSON}      # ArduinoJson.h (root)
     ${ARDUINOJSON}/src  # ArduinoJson internal headers (angle-bracket includes)
+    ${DRIVERS}/cube_sphere  # cube_sphere_api.h, cube_sphere_config.h
 )
-target_link_libraries(pal_mac PRIVATE hsys_os)
+target_link_libraries(pal_mac PRIVATE hsys_os curl)
 target_compile_definitions(pal_mac PRIVATE FERP_SIMULATOR=1)
 
 # ── 3. hsys-framework ─────────────────────────────────────────────────────────
@@ -221,6 +228,7 @@ target_include_directories(app_modules PUBLIC
     ${APP_MODS}/module_sd
     ${APP_MODS}/module_timemgr
     ${DRIVERS}/DS1307
+    ${DRIVERS}/cube_sphere  # cube_sphere_api.h, cube_sphere_config.h
     ${SUB_MODS}           # for ds1307.cpp: #include "pal/pal_i2c.h"
     ${APP_PHR}
     ${APP}

@@ -25,6 +25,8 @@
 #include "msg_config_cloud.h"
 #include "msg_config_mqtt.h"
 #include "msg_config_dt.h"
+
+#include "app_rootca.h"
 #include "pal_logger.h"
 #include <cstring>
 
@@ -188,11 +190,7 @@ void ModuleConfig::_send_config_cloud(hsys_module_id_t requester)
     if (!cfg) return;
 
     MsgConfigCloud::Payload p{};
-    strncpy(p.url,           cfg->cloud_url,       sizeof(p.url)           - 1);
-    strncpy(p.secret,        cfg->cloud_secret,    sizeof(p.secret)        - 1);
-    strncpy(p.uuid,          cfg->device_uuid,     sizeof(p.uuid)          - 1);
-    strncpy(p.wifi_ssid,     cfg->wifi_ssid,       sizeof(p.wifi_ssid)     - 1);
-    strncpy(p.wifi_password, cfg->wifi_password,   sizeof(p.wifi_password) - 1);
+    p.root_ca       = root_ca;   // pointer to static PEM string in app_rootca.h
     p.hb_enabled    = cfg->cloud_hb_enabled;
     p.hb_interval_s = cfg->cloud_hb_interval_s;
 
@@ -201,10 +199,7 @@ void ModuleConfig::_send_config_cloud(hsys_module_id_t requester)
         out->receiver_id = requester;
         send(out, requester);
         LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "MsgConfigCloud -> module %u:", (unsigned)requester);
-        LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "  url          = \"%s\"", p.url);
-        LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "  uuid         = \"%s\"", p.uuid);
-        LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "  secret       = %s", (p.secret[0] != '\0') ? "***" : "(empty)");
-        LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "  wifi_ssid    = \"%s\"", p.wifi_ssid);
+        LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "  root_ca      = %s", p.root_ca ? "***" : "(null)");
         LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "  hb_enabled   = %d", (int)p.hb_enabled);
         LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "  hb_interval  = %us", (unsigned)p.hb_interval_s);
     }

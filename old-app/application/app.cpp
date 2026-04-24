@@ -509,7 +509,7 @@ static char _esp07_fw_version[SIZE_OF_DISPTAP_FW_VERSION] = {0};
 int32_t app_cloud_on_cloud_register_rqst(void * arg)
 {
     uint8_t mac_address[8];
-    board_get_mac_address(mac_address, 8);
+    pal_efuse_get_mac(mac_address, sizeof(mac_address));
 
     char mac_address_str[SIZE_OF_MAC];
     sprintf(mac_address_str, "%02X%02X%02X%02X%02X%02X", 

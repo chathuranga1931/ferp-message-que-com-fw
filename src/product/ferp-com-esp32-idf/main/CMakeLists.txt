@@ -108,8 +108,7 @@ idf_component_register(
         "${D_SUB}/ferp-device-firmware/ferp_board/main-esp32/lib/device/board.c"
 
         # ── External drivers ──────────────────────────────────────────────
-        "${D_SUB}/drivers/DS1307/ds1307.cpp"
-
+        "${D_SUB}/drivers/DS1307/ds1307.cpp"        "${D_SUB}/drivers/cube_sphere/cube_sphere_api.cpp"
     INCLUDE_DIRS
         # Entry point + app
         "."
@@ -151,6 +150,8 @@ idf_component_register(
         "${D_SUB}/ferp-device-firmware/ferp_board/main-esp32/lib/device"
         # DS1307 driver
         "${D_SUB}/drivers/DS1307"
+        # CubeSphere cloud driver
+        "${D_SUB}/drivers/cube_sphere"
         # hsys headers (needed by app.h and friends)
         "${D_SUB}/hsys-framework"
         "${D_SUB}/hsys-os"
@@ -187,6 +188,11 @@ set_source_files_properties(
     "${D_MODS}/module_print_btn/module_print_btn.cpp"
     "${D_SUB}/drivers/DS1307/ds1307.cpp"
     PROPERTIES COMPILE_OPTIONS "-Wno-missing-field-initializers;-Wno-type-limits"
+)
+
+set_source_files_properties(
+    "${D_SUB}/drivers/cube_sphere/cube_sphere_api.cpp"
+    PROPERTIES COMPILE_OPTIONS "-Wno-deprecated-declarations;-Wno-unused-variable;-Wno-unused-but-set-variable;-Wno-missing-field-initializers"
 )
 
 set_source_files_properties(

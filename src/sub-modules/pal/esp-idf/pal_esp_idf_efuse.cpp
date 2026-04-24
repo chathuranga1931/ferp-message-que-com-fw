@@ -9,6 +9,7 @@
 #define EFUS_DEBUG_LOG_EN      LOG_DIS
 
 int32_t pal_efuse_get_mac(uint8_t* mac, size_t length) {
+    
     if (mac == NULL) {
         LOG_MSG_ERROR(EFUS_DEBUG_LOG_EN, "MAC buffer is NULL");
         return PAL_ERROR_INVALID;

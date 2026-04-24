@@ -3,7 +3,9 @@
 // Typed message class for MSG_ID_CONFIG_CLOUD.
 //
 // Sent DIRECT by ModuleConfig in response to MsgConfigGetCloud.
-// Carries all cloud-related parameters needed by ModuleCloud.
+// Carries cloud-specific parameters needed by ModuleCloud.
+// WiFi credentials (ssid, password) travel via MsgConfigWifi.
+// The device MAC address is sourced from MsgWifiEvent at runtime.
 
 #ifndef MSG_CONFIG_CLOUD_H
 #define MSG_CONFIG_CLOUD_H
@@ -20,14 +22,10 @@ public:
     static constexpr hsys_msg_id_t ID = MSG_ID_CONFIG_CLOUD;
 
     struct Payload {
-        char     url[128];          ///< Cloud HTTPS endpoint
-        char     secret[64];        ///< PEM root-CA or shared secret
-        char     uuid[40];          ///< Device UUID
-        char     wifi_ssid[64];     ///< WiFi SSID (for startup/reconnect payloads)
-        char     wifi_password[64]; ///< WiFi password
-        bool     hb_enabled;        ///< Heartbeat enabled flag
-        uint8_t  _pad[3];
-        uint32_t hb_interval_s;     ///< Heartbeat interval in seconds
+        const char *root_ca;        ///< Pointer to PEM root-CA string (static lifetime, e.g. app_rootca.h)
+        bool        hb_enabled;     ///< Heartbeat enabled flag
+        uint8_t     _pad[3];
+        uint32_t    hb_interval_s;  ///< Heartbeat interval in seconds
     };
 
     static constexpr hsys_msg_desc_t DESCRIPTOR =

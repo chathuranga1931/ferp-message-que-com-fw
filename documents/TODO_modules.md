@@ -9,52 +9,84 @@ Legend: `[ ]` = not started · `[~]` = in progress · `[x]` = done
 
 ---
 
+## Progress Summary *(updated 2026-04-24)*
+
+| # | Module | Status | Notes |
+|---|---|---|---|
+| 1 | ModuleConfig | ✅ done | 257 lines, 0 TODOs |
+| 2 | ModuleWifi | ✅ done | 216 lines, 0 TODOs |
+| 3 | ModuleInternet | ✅ done | 190 lines, 0 TODOs |
+| 4 | ModuleCloud | 🔶 in progress | 379 lines, 4 TODOs (retransmit, timestamp, version, driver wiring) |
+| 5 | ModuleMqtt | ❌ not started | — |
+| 6 | ModuleFuel | ✅ done | 446 lines, 0 TODOs — display-tap logic integrated internally |
+| 7 | ModuleRetransmit | ❌ not started | Referenced by ModuleCloud (TODOs at lines 181, 208) |
+| 8 | ModuleOta | ❌ not started | — |
+| 9 | ModuleWebServer | ❌ not started | — |
+| 10 | ModuleTimeMgr | ✅ done | 347 lines, 0 TODOs (implemented as `module_timemgr`) |
+| 11 | ModuleLeds | 🔶 partial | 82 lines; only subscribes to `MsgSpiffsReady` — missing WiFi/cloud/OTA subscriptions |
+| 12 | ModuleBuzzer | 🔶 partial | 113 lines; subscribes to `MsgPrinterBtn` + `MsgFuelPumped` — missing OTA events |
+| 13 | ModulePrintBtn | ✅ done | 136 lines, 0 TODOs |
+| 14 | ModuleDefaultBtn | ✅ done | 92 lines, 0 TODOs |
+| 15 | ModuleSpiffs | 🔶 partial | 54 lines; mounts and publishes `MsgSpiffsReady` — no `MsgStorageWrite/Read` broker yet |
+| 16 | ModuleSD | 🔶 partial | 86 lines; mounts and publishes `MsgSdReady/Status` — no `MsgSdStorageRequest` broker yet |
+| 17 | ModuleHw | ❌ not started | GPIO/ADC/UART init that is not PAL-owned |
+
+### Known gaps (pre-existing, not blocking build)
+- `app_msg_table.h`: `MsgTimeStatus`, `MsgWifiEvent`, `MsgInternetStatus`, `MsgCloudStatus` are **defined and compiled** but **missing from the descriptor table** — runtime pool allocations for these messages will fail silently
+- `user_config.h`: log-enable flags missing for most modules and PAL implementations
+- `ModuleCloud::set_driver()` is never called from `main.cpp` — cloud driver is not wired
+- Firmware version hardcoded `"1.0.0"` in `module_cloud.cpp` (no `version.h` exists yet)
+
+---
+
 ## 1. ModuleConfig  *(was `app_config`)*
 
-- [ ] Port `app_config_t` (wifi, app settings, printer, mqtt, logging) to a config-store module
-- [ ] On init: load config from SPIFFS/NVS, publish `MsgConfigLoaded` with snapshot
-- [ ] On `MsgConfigUpdateRequest`: save new value, re-publish `MsgConfigLoaded`
-- [ ] Consumers subscribe to `MsgConfigLoaded` (wifi, cloud, mqtt, printer…)
-- [ ] No more global `_app_config`; config is owned by this module
+- [x] Port `app_config_t` (wifi, cloud, mqtt, device-type) to a config-store module
+- [x] On init: subscribe to `MsgSpiffsReady`, load config from SPIFFS JSON, publish `MsgConfigReady`
+- [x] On `MsgConfigSet`: save new value, re-publish `MsgConfigReady`
+- [x] On `MsgConfigGet`: re-publish `MsgConfigReady`
+- [x] On typed domain requests (`MsgConfigGetWifi/Cloud/Mqtt/DT`): reply DIRECT with `MsgConfigWifi/Cloud/Mqtt/DT`
+- [x] No more global `_app_config`; config is owned by this module
 
 ---
 
 ## 2. ModuleWifi  *(was `app_wifi`)*
 
-- [ ] Wrap PAL wifi driver; subscribe to `MsgConfigLoaded` for SSID / password
-- [ ] Publish `MsgWifiEvent` for every PAL wifi state change
-  (STA_START, STA_CONNECTED, STA_DISCONNECTED, STA_GOT_IP, AP_START, AP_STOP,
-   AP_STA_CONNECTED, AP_STA_DISCONNECTED, STA_RSSI_CHANGED, NO_AVAILABLE_SIGNAL)
-- [ ] Internal soft-timer for RSSI polling / reconnect back-off
-- [ ] Replace `_on_config_event` callback with subscription to `MsgConfigLoaded`
+- [x] Wrap PAL wifi driver; subscribe to `MsgConfigReady` → request `MsgConfigGetWifi` → receive `MsgConfigWifi`
+- [x] Publish `MsgWifiEvent` for every PAL wifi state change (STA_CONNECTED, STA_DISCONNECTED, STA_GOT_IP)
+- [x] Internal soft-timer (via `MsgTimerStart`) for reconnect back-off
+- [x] Replace `_on_config_event` callback with subscription to `MsgConfigReady`
 
 ---
 
 ## 3. ModuleInternet  *(was `app_internet`)*
 
-- [ ] Subscribe to `MsgWifiEvent` (GOT_IP → connected, DISCONNECTED → disconnected)
-- [ ] Perform periodic HTTP reachability check (ping / HEAD request)
-- [ ] Publish `MsgInternetStatus` (CONNECTED / DISCONNECTED)
-- [ ] Consumers: ModuleCloud, ModuleMqtt, ModuleOta
+- [x] Subscribe to `MsgWifiEvent` (GOT_IP → start periodic ping; DISCONNECTED → report offline)
+- [x] Perform periodic ICMP/HTTP reachability check using PAL ping
+- [x] Publish `MsgInternetStatus` (CONNECTED / DISCONNECTED) on change only
+- [ ] Consumers: ModuleCloud ✅ · ModuleMqtt ❌ · ModuleOta ❌
 
 ---
 
 ## 4. ModuleCloud  *(was `app_cloud`)*
 
-- [ ] Subscribe to `MsgWifiEvent`, `MsgInternetStatus`, `MsgFuelPumped`, `MsgPrinted`
-- [ ] On internet connected: send startup request, then periodic heartbeat
-- [ ] On `MsgFuelPumped`: call cloud driver `fp_on_cloud_event_pumped_rqst`
-- [ ] On `MsgPrinted`: call cloud driver `fp_on_cloud_event_printed_rqst`
-- [ ] Publish `MsgCloudStatus` (CONFIG_READY, CONFIG_FAILED, PUMPED_SUCCESS, PUMPED_FAILED)
-- [ ] Replace internal `hsys_eventgroup` + `hsys_queue` with HSYS message queue
-- [ ] `cloud_driver_t` stays as an injected interface (dependency injection via init struct)
+- [x] Subscribe to `MsgConfigReady` → request cloud config via `MsgConfigGetCloud`
+- [x] Subscribe to `MsgWifiEvent`, `MsgInternetStatus`, `MsgFuelPumped`, `MsgTimerAlarm`, `MsgTick1000ms`
+- [x] On internet connected: send device registration, then periodic heartbeat
+- [x] On `MsgFuelPumped`: call cloud driver `fp_on_cloud_event_pumped_rqst`
+- [x] Publish `MsgCloudStatus` (REGISTERED, REGISTER_FAILED, PUMPED_SUCCESS, PUMPED_FAILED, HB_SENT, HB_FAILED)
+- [x] `cloud_driver_t` injected via `set_driver()` (dependency injection)
+- [ ] **OPEN**: `set_driver()` never called from `main.cpp` — driver must be wired before `app_init()`
+- [ ] **OPEN**: `info.time_stamp = 0` (line 189) — populate from `pal_time_get_unix()` once `MsgTimeStatus` is subscribed
+- [ ] **OPEN**: `fw_version` hardcoded `"1.0.0"` (line 351) — replace with `version.h` constant
+- [ ] **OPEN**: publish `MsgRetransmitStore` on PUMPED_FAILED (lines 181, 208) — requires `ModuleRetransmit`
 
 ---
 
 ## 5. ModuleMqtt  *(was `app_mqtt`)*
 
 - [ ] Subscribe to `MsgWifiEvent` (GOT_IP → connect broker), `MsgInternetStatus`
-- [ ] Subscribe to `MsgConfigLoaded` for broker URI / port / topic table
+- [ ] Subscribe to `MsgConfigReady` → request `MsgConfigGetMqtt` for broker URI / port / topic table
 - [ ] Publish `MsgMqttEvent` (CONNECTED, DISCONNECTED, MSG_RECEIVED)
 - [ ] Carry inbound payload in `MsgMqttRxMessage` (topic + payload buffer)
 - [ ] Provide `app_mqtt_publish()` equivalent via `MsgMqttPublishRequest`
@@ -64,152 +96,137 @@ Legend: `[ ]` = not started · `[~]` = in progress · `[x]` = done
 
 ## 6. ModuleFuel  *(was `app_fuel` + `app_disptap`)*
 
-> Core domain module — nozzle start/stop capture and display-tap decoding.
+> Core domain module — nozzle start/stop capture and Sanki 6-digit state machine.
 >
-> ### Internal vs external events
->
-> The old code exposed `on_nozzle1_start` / `on_nozzle2_start` callbacks
-> because the flat `hsys_taskrunner` ran every module from the same loop and
-> needed cross-module function pointers.  In the new architecture
 > `ModuleFuel` **owns** both the `hsys_tog_button` debouncers and the Sanki
 > state machine.  They execute inside `ModuleFuel`'s task and communicate only
 > through private member variables — **no messages for intra-module state**.
->
 > A message is only sent when a **completed transaction result** must be
 > delivered to other tasks (cloud, printer, retransmit, LEDs, buzzer).
 
-- [ ] Subscribe to `MsgDispTapData` (raw display-tap frames from `ModuleDispTap`)
-- [ ] Run Sanki 6-digit state machine **internally** on each received frame
-- [ ] Drive `hsys_tog_button` debouncers **internally** — no nozzle-start/stop messages to self
-- [ ] On nozzle start transition (internal): update member state, start accumulation
-- [ ] On nozzle stop + valid complete data: publish `MsgFuelPumped` (single message, one per transaction)
-- [ ] On nozzle start/stop state change: publish `MsgNozzleState` (for LEDs/buzzer/cloud status only)
-- [ ] All intermediate display-tap values (unit price, running volume, total) are plain member variables
-- [ ] Replace per-nozzle `hsys_queue` with typed `MsgDispTapData` messages (task boundary only)
-
+- [x] Subscribe to `MsgConfigReady` → request `MsgConfigGetDT` for display-type / HW settings
+- [x] Run Sanki 6-digit state machine **internally** on each hardware poll cycle
+- [x] Drive `hsys_tog_button` debouncers **internally** — no nozzle-start/stop messages to self
+- [x] On nozzle stop + valid complete data: publish `MsgFuelPumped` (one per transaction)
+- [x] On nozzle start/stop state change: publish `MsgNozzleState` (for LEDs/buzzer/cloud status)
+- [x] All intermediate display-tap values (unit price, running volume, total) are plain member variables
 ---
 
-## 7. ModuleDispTap  *(was `app_disptap`)*
+## 7. ModuleRetransmit  *(was `app_retransmit` + `retransmission_manager`)*
 
-- [ ] Hardware driver module: reads Sanki display-tap serial lines (UART/GPIO)
-- [ ] On each complete frame: publish `MsgDispTapData` (nozzle index, raw frame bytes)
-- [ ] Publish `MsgDispTapFwVersion` when firmware version string is loaded from tap
-- [ ] Decoupled from fuel logic; ModuleFuel consumes `MsgDispTapData`
+> **Next module to implement.** ModuleCloud already has the publish calls stubbed
+> at lines 181 and 208 of `module_cloud.cpp`.
 
----
-
-## 8. ModuleRetransmit  *(was `app_retransmit` + `retransmission_manager`)*
-
-- [ ] Subscribe to `MsgFuelPumped`, `MsgPrinted` to detect events that need cloud ACK
+- [ ] Subscribe to `MsgFuelPumped` to detect transactions that need cloud ACK
 - [ ] Subscribe to `MsgCloudStatus` to know when cloud is reachable for retry
-- [ ] On cloud NACK / timeout: persist event to SD/SPIFFS via `MsgStorageWrite`
-- [ ] Periodic retry: publish `MsgRetransmitRetry` with serialised `retx_event_t`
+- [ ] On cloud PUMPED_FAILED: persist serialised event to SD/SPIFFS
+- [ ] Periodic retry: re-publish `MsgFuelPumped` (or a dedicated `MsgRetransmitRetry`)
 - [ ] Publish `MsgRetransmitStatus` (pending count, last retry result)
+- [ ] New message IDs needed: `MSG_ID_RETRANSMIT_STORE` (0x0B00), `MSG_ID_RETRANSMIT_STATUS` (0x0B01)
 
 ---
 
-## 9. ModuleOta  *(was `app_ota`)*
+## 8. ModuleOta  *(was `app_ota`)*
 
 > ### Three OTA paths — all execute inside ModuleOta's task
 >
 > | Path | Wake source | How binary arrives |
 > |---|---|---|
-> | **Web-upload** | HTTP upload callback (synchronous, no wake message) | `ModuleWebServer` calls `hsys_ota_driver_t::fw_drv->fp_write()` directly |
+> | **Web-upload** | HTTP upload callback (synchronous) | `ModuleWebServer` calls `hsys_ota_driver_t::fw_drv->fp_write()` directly |
 > | **Cloud-pull** | `MsgInternetStatus` CONNECTED + internal soft-timer (300 s) | ModuleOta downloads via `fp_download_and_flash()` |
-> | **MQTT-push** | `MsgOtaTrigger` (small JSON control message) | Same cloud-pull path, triggered immediately |
->
-> **No OTA binary data crosses the message bus.**  Only the small
-> control/status messages (`MsgOtaEvent`, `MsgOtaTrigger`) use the queue.
-> Binary chunks are handled synchronously inside the PAL flash-writer or the
-> HTTP upload callback — adding a queue hop would waste RAM (large pool blocks)
-> and add latency to the write stream.
+> | **MQTT-push** | `MsgOtaTrigger` | Same cloud-pull path, triggered immediately |
 
 - [ ] Maintain array of `hsys_ota_driver_t*` (one per firmware target: esp32-main, esp07-coprocessor)
 - [ ] Each driver has its own state machine: WAIT_INTERNET → CHECKING → DOWNLOAD_PENDING → DOWNLOADING
 - [ ] Subscribe to `MsgInternetStatus` (CONNECTED → start 300 s timer + immediate check)
-- [ ] Subscribe to `MsgOtaTrigger` (MQTT-push path → set TIMER_FIRED bit immediately)
-- [ ] Subscribe to `MsgDispTapFwVersion` (sets esp07 driver "is_ready", same as `app_ota_on_driver_ready()`)
-- [ ] Subscribe to `MsgSpiffsReady` (sets esp32-main driver "is_ready", same as `app_ota_on_driver_ready()`)
+- [ ] Subscribe to `MsgOtaTrigger` (MQTT-push path)
+- [ ] Subscribe to `MsgDispTapFwVersion` (marks esp07 driver ready)
+- [ ] Subscribe to `MsgSpiffsReady` (marks esp32-main driver ready)
 - [ ] Publish `MsgOtaEvent` on state transitions (CHECK_STARTED, DOWNLOAD_STARTED, DOWNLOAD_SUCCESS, DOWNLOAD_FAILURE)
 - [ ] On DOWNLOAD_SUCCESS: publish `MsgOtaEvent`, wait ~500 ms, call `pal_power_reset()`
-- [ ] Web-upload path: register `hsys_ota_driver_t::fw_drv` callbacks at init; `ModuleWebServer` calls them directly with no queue involvement
-- [ ] esp07 "binary" is staged to SPIFFS (same as old `_esp07dt_fw_begin/write/end`); only the esp32-main binary writes directly to the OTA partition
 
 ---
 
-## 10. ModuleWebServer  *(was `app_webserver`)*
+## 9. ModuleWebServer  *(was `app_webserver`)*
 
 - [ ] Subscribe to `MsgWifiEvent` (AP_START → start HTTP server; AP_STOP → stop)
-- [ ] On config form POST: publish `MsgConfigUpdateRequest`
-- [ ] On OTA file upload: forward raw chunks via `MsgOtaChunkReceived`
+- [ ] On config form POST: publish `MsgConfigSet`
+- [ ] On OTA file upload: call OTA driver write callbacks directly (no queue)
 - [ ] Publish `MsgWebServerEvent` (STARTED, CONFIG_UPDATED)
 
 ---
 
-## 11. ModuleTime  *(was `app_time` / timeman)*
+## 10. ModuleTimeMgr  *(was `app_time` / timeman — implemented as `module_timemgr`)*
 
-- [ ] On init: try RTC → NTP → SPIFFS backup file (priority order)
-- [ ] Subscribe to `MsgInternetStatus` (CONNECTED → sync NTP)
-- [ ] Publish `MsgTimeStatus` (READY, UPDATED_FROM_RTC, UPDATED_FROM_NTP,
-      UPDATED_FROM_BACKUP, UPDATE_FAILED_CRITICAL)
-- [ ] Periodic: call `timeman_update_last_working_time()` → write epoch to SPIFFS
-      via `MsgStorageWrite`
-
----
-
-## 12. ModuleLeds  *(was `app_leds`)*
-
-- [ ] Subscribe to `MsgWifiEvent`, `MsgInternetStatus`, `MsgNozzleState`,
-      `MsgCloudStatus`, `MsgOtaEvent`
-- [ ] Translate system state into LED patterns (idle, connected, pumping, OTA, error)
-- [ ] Drive LED hardware via PAL; no outgoing messages needed
+- [x] On init: arm SPIFFS-wait timer; fall back to RTC if SPIFFS times out
+- [x] Subscribe to `MsgSpiffsReady` → load SPIFFS backup epoch, publish `MsgTimeStatus`
+- [x] Subscribe to `MsgInternetStatus` (CONNECTED → start NTP sync via `pal_ntp`)
+- [x] Poll `pal_ntp_timesync_process()` on `MsgTimerAlarm` during NTP sync
+- [x] In READY: 5-minute backup timer writes `timemgr.bin` to SPIFFS
+- [x] Publish `MsgTimeStatus` (epoch, source, valid flag) on every source change
+- [ ] **OPEN**: `MsgTimeStatus::DESCRIPTOR` missing from `app_msg_table.h` — add entry
 
 ---
 
-## 13. ModuleBuzzer  *(was `app_buzzer`)*
+## 11. ModuleLeds  *(was `app_leds`)*
 
-- [ ] Subscribe to `MsgNozzleState` (START → short beep, STOP → double beep)
-- [ ] Subscribe to `MsgPrintBtnEvent` (button press confirm tone)
+- [x] Drive LED hardware via PAL
+- [x] Subscribe to `MsgSpiffsReady` (storage ready indication)
+- [ ] Subscribe to `MsgWifiEvent` (connected / disconnected LED pattern)
+- [ ] Subscribe to `MsgInternetStatus`
+- [ ] Subscribe to `MsgNozzleState` (pumping LED)
+- [ ] Subscribe to `MsgCloudStatus`
+- [ ] Subscribe to `MsgOtaEvent` (OTA in-progress LED)
+
+---
+
+## 12. ModuleBuzzer  *(was `app_buzzer`)*
+
+- [x] Drive buzzer GPIO via PAL
+- [x] Subscribe to `MsgPrinterBtn` (button press confirm tone)
+- [x] Subscribe to `MsgFuelPumped` (transaction complete tone)
+- [x] Subscribe to `MsgConfigReady` (config-loaded tone)
+- [ ] Subscribe to `MsgNozzleState` (nozzle start/stop tones)
 - [ ] Subscribe to `MsgOtaEvent` (success / failure tones)
-- [ ] Drive buzzer GPIO via PAL; no outgoing messages needed
 
 ---
 
-## 14. ModulePrintBtn  *(was `app_print_btn`)*
+## 13. ModulePrintBtn  *(was `app_print_btn`)*
 
-- [ ] Debounce two physical print buttons via `hsys_tog_button`
-- [ ] Publish `MsgPrintBtnEvent` (PRINT1_SHORT, PRINT1_LONG, PRINT2_SHORT, PRINT2_LONG)
-- [ ] No event-table callbacks; upstream modules subscribe to the message
-
----
-
-## 15. ModuleDefaultBtn  *(was `app_default_btn`)*
-
-- [ ] Debounce factory-reset / default button
-- [ ] Publish `MsgDefaultBtnEvent` (SHORT_PRESS → log/info, LONG_PRESS → reset config)
-- [ ] On long press: publish `MsgConfigResetRequest`
+- [x] Debounce two physical print buttons via `hsys_tog_button`
+- [x] Publish `MsgPrinterBtn` (PRINT1_SHORT, PRINT1_LONG, PRINT2_SHORT, PRINT2_LONG)
+- [x] No event-table callbacks; upstream modules subscribe to the message
 
 ---
 
-## 16. ModuleSpiffs  *(was `app_spiffs`)*
+## 14. ModuleDefaultBtn  *(was `app_default_btn`)*
 
-- [ ] Centralise all SPIFFS access; other modules must NOT call `pal_spiffs` directly
-- [ ] Subscribe to `MsgStorageWrite` / `MsgStorageRead` / `MsgStorageAppend` /
-      `MsgStorageDelete` requests
+- [x] Debounce factory-reset / default button via `hsys_tog_button`
+- [x] Publish `MsgDefaultBtn` (SHORT_PRESS, LONG_PRESS)
+- [ ] On long press: publish `MsgConfigSet` to trigger config reset (currently only logs)
+
+---
+
+## 15. ModuleSpiffs  *(was `app_spiffs`)*
+
+- [x] Mount SPIFFS on init
+- [x] Publish `MsgSpiffsReady` when mount succeeds
+- [ ] Centralise all SPIFFS access: subscribe to `MsgStorageWrite` / `MsgStorageRead` / `MsgStorageDelete`
 - [ ] Reply with `MsgStorageResult` (success / error + data for reads)
-- [ ] Publish `MsgSpiffsReady` when mount succeeds at init
+- [ ] Other modules currently call `pal_spiffs` directly — migrate once broker pattern is needed
 
 ---
 
-## 17. ModuleSd  *(was `app_sd`)*
+## 16. ModuleSD  *(was `app_sd`)*
 
-- [ ] Same pattern as ModuleSpiffs but for SD card
+- [x] Mount SD card on init
+- [x] Publish `MsgSdReady` and `MsgSdStatus` (type, size, free space)
 - [ ] Subscribe to `MsgSdStorageRequest`; reply with `MsgSdStorageResult`
-- [ ] Publish `MsgSdReady` when card is mounted
+- [ ] Centralise SD access (currently other modules call PAL directly)
 
 ---
 
-## 18. ModuleHw  *(was `app_hw`)*
+## 17. ModuleHw  *(was `app_hw`)*
 
 - [ ] Hardware initialisation module (GPIO, ADC, UART setup that is not PAL-owned)
 - [ ] Publish `MsgHwReady` once hardware is configured
@@ -219,8 +236,11 @@ Legend: `[ ]` = not started · `[~]` = in progress · `[x]` = done
 
 ## Cross-cutting tasks
 
+- [x] Remove `hsys_taskrunner` vectors; tasks are created by `HsysTaskMgr`
+- [x] `app.cpp` calls only `app_init()` / `app_run()`
+- [ ] Add missing descriptors to `app_msg_table.h`: `MsgTimeStatus`, `MsgWifiEvent`, `MsgInternetStatus`, `MsgCloudStatus`
+- [ ] Add log-enable flags in `user_config.h` for all modules and PAL implementations
+- [ ] Wire `ModuleCloud::set_driver(cloud_driver_cube_sphere())` in `main.cpp` before `app_init()`
+- [ ] Create `src/product/app/version.h` with `FW_VERSION_STRING` constant
 - [ ] Remove `event_table_t` and `fp_event_interface_t` from `app_common.h` once all modules ported
-- [ ] Remove global `_app_config`; replace with `ModuleConfig` messages
-- [ ] Remove `hsys_taskrunner` vectors; tasks are created by `HsysTaskMgr`
-- [ ] Update `app.cpp` to only call `app_init()` / `app_run()` (already the pattern)
 - [ ] Audit every `while(1)` crash-on-null guard → replace with `log_error` + graceful degradation
