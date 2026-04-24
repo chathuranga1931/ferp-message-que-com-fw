@@ -108,7 +108,9 @@ idf_component_register(
         "${D_SUB}/ferp-device-firmware/ferp_board/main-esp32/lib/device/board.c"
 
         # ── External drivers ──────────────────────────────────────────────
-        "${D_SUB}/drivers/DS1307/ds1307.cpp"        "${D_SUB}/drivers/cube_sphere/cube_sphere_api.cpp"
+        "${D_SUB}/drivers/DS1307/ds1307.cpp"
+        "${D_SUB}/drivers/cube_sphere/cube_sphere_api.cpp"
+        "${D_SUB}/drivers/cube_sphere/cube_sphere_cloud_driver.cpp"
     INCLUDE_DIRS
         # Entry point + app
         "."

@@ -19,6 +19,8 @@
 #include "pal_logger.h"
 #include "pal_efuse.h"
 
+#define ERROR_OK  0
+
 #include <string.h>
 
 #define __TAG__       "CLOUD   "
@@ -211,8 +213,8 @@ void ModuleCloud::_on_fuel_pumped(const hsys_msg_t &msg)
         return;
     }
 
-    pumped_event_info_t info = {};
-    info.n_idx           = p.nozzle_idx;
+    cloud_pumped_info_t info = {};
+    info.nozzle_idx      = p.nozzle_idx;
     info.time_stamp      = 0;   // TODO: populate from pal_time when available
     info.unit_pricex100  = p.unit_pricex100;
     info.total_pricex100 = p.total_pricex100;
@@ -222,7 +224,7 @@ void ModuleCloud::_on_fuel_pumped(const hsys_msg_t &msg)
     LOG_MSG_INFO(CLOUD_LOG_EN, "sending pumped event nozzle=%u vol=%lu",
                  p.nozzle_idx, (unsigned long)p.vol_lx1000);
 
-    int32_t ret = cube_sphere_send_pumped(info);
+    int32_t ret = _drv ? _drv->send_pumped(info) : -1;
     if (ret == ERROR_OK) {
         _pumped_success++;
         LOG_MSG_INFO(CLOUD_LOG_EN, "pumped sent OK (success=%lu)", (unsigned long)_pumped_success);
@@ -279,9 +281,15 @@ void ModuleCloud::_attempt_registration()
     // root_ca: pointer cached from MsgConfigCloud (app_rootca.h static string).
     const char *root_ca = _cloud_root_ca;
 
+    if (!_drv) {
+        LOG_MSG_ERROR(CLOUD_LOG_EN, "no cloud driver set — aborting registration");
+        _arm_timer(MODULE_CLOUD_RETRY_INTERVAL_MS);
+        return;
+    }
+
     LOG_MSG_INFO(CLOUD_LOG_EN, "attempting registration mac=%s", mac12);
 
-    int32_t ret = cube_sphere_register(mac12, root_ca);
+    int32_t ret = _drv->register_device(mac12, root_ca);
     if (ret == ERROR_OK) {
         LOG_MSG_INFO(CLOUD_LOG_EN, "registration OK — state=RUNNING");
         _state = STATE_RUNNING;
@@ -308,31 +316,31 @@ void ModuleCloud::_process_events()
     if (_pending_startup) {
         _pending_startup = false;
         LOG_MSG_INFO(CLOUD_LOG_EN, "sending startup event");
-        cube_sphere_send_startup(_build_startup_info());
+        _drv->send_startup(_build_startup_info());
     }
 
     if (_pending_reconnect) {
         _pending_reconnect = false;
         LOG_MSG_INFO(CLOUD_LOG_EN, "sending reconnect event");
-        reconnect_info_t r = {};
+        cloud_reconnect_info_t r = {};
         strncpy(r.ssid,       _wifi_ssid,    sizeof(r.ssid)       - 1);
         strncpy(r.password,   _wifi_password,sizeof(r.password)   - 1);
         strncpy(r.ip_address, _wifi_ip,      sizeof(r.ip_address) - 1);
         r.rssi       = _wifi_rssi;
         r.uptime_sec = _uptime_sec;
-        cube_sphere_send_reconnect(r);
+        _drv->send_reconnect(r);
     }
 
     if (_pending_status_update) {
         _pending_status_update = false;
         LOG_MSG_INFO(CLOUD_LOG_EN, "sending status-updated event");
-        cube_sphere_send_status_updated(_build_startup_info());
+        _drv->send_status_updated(_build_startup_info());
     }
 
     if (_pending_heartbeat && _hb_enabled) {
         _pending_heartbeat = false;
         LOG_MSG_INFO(CLOUD_LOG_EN, "sending heartbeat");
-        int32_t ret = cube_sphere_send_hb(_build_hb_info());
+        int32_t ret = _drv->send_heartbeat(_build_hb_info());
         if (ret == ERROR_OK) {
             _publish_cloud_status(CLOUD_STATUS_HB_SENT);
         } else {
@@ -359,9 +367,9 @@ void ModuleCloud::_arm_timer(uint32_t duration_ms)
     if (msg) publish(msg);
 }
 
-startup_info_t ModuleCloud::_build_startup_info() const
+cloud_startup_info_t ModuleCloud::_build_startup_info() const
 {
-    startup_info_t s = {};
+    cloud_startup_info_t s = {};
     strncpy(s.ssid,           _wifi_ssid,    sizeof(s.ssid)          - 1);
     strncpy(s.password,       _wifi_password,sizeof(s.password)      - 1);
     strncpy(s.ip_address,     _wifi_ip,      sizeof(s.ip_address)    - 1);
@@ -371,20 +379,20 @@ startup_info_t ModuleCloud::_build_startup_info() const
     strncpy(s.hw_version,     "2602",        sizeof(s.hw_version)    - 1);
     strncpy(s.board_version,  "2602",        sizeof(s.board_version) - 1);
     strncpy(s.sd_card_status, "unknown",     sizeof(s.sd_card_status)- 1);
-    s.rssi                        = _wifi_rssi;
-    s.uptime_sec                  = _uptime_sec;
-    s.nozzle_event_count_success  = _pumped_success;
-    s.nozzle_event_count_failure  = _pumped_failure;
+    s.rssi                  = _wifi_rssi;
+    s.uptime_sec            = _uptime_sec;
+    s.event_count_success   = _pumped_success;
+    s.event_count_failure   = _pumped_failure;
     return s;
 }
 
-heart_beat_info_t ModuleCloud::_build_hb_info() const
+cloud_hb_info_t ModuleCloud::_build_hb_info() const
 {
-    heart_beat_info_t hb = {};
-    hb.rssi                       = _wifi_rssi;
-    hb.uptime_sec                 = _uptime_sec;
-    hb.nozzle_event_count_success = _pumped_success;
-    hb.nozzle_event_count_failure = _pumped_failure;
+    cloud_hb_info_t hb = {};
+    hb.rssi                 = _wifi_rssi;
+    hb.uptime_sec           = _uptime_sec;
+    hb.event_count_success  = _pumped_success;
+    hb.event_count_failure  = _pumped_failure;
     return hb;
 }
 

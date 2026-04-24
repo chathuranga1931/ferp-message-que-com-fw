@@ -4,14 +4,13 @@
 //
 // State machine:
 //   WAIT_FOR_INTERNET ──[internet connected]──▶ REGISTERING
-//   REGISTERING ──[cube_sphere_register success]──▶ RUNNING
-//   REGISTERING ──[cube_sphere_register fail]──▶ REGISTERING (retry via timer)
+//   REGISTERING ──[cloud_driver register_device success]──▶ RUNNING
+//   REGISTERING ──[register_device fail]──▶ REGISTERING (retry via timer)
 //   RUNNING ──[internet lost]──▶ WAIT_FOR_INTERNET
 //
 // Cloud backend:
-//   Calls the CubeSphere HTTP API (cube_sphere_api.h) directly.
-//   In the simulator build (FERP_SIMULATOR) all network calls are skipped;
-//   the module still compiles but does nothing over the network.
+//   Calls through the cloud_driver_t abstraction set via set_driver().
+//   The concrete driver (e.g. cube_sphere) is wired in app.cpp before app_init().
 //
 // Retransmission handoff (future):
 //   On PUMPED_FAILED, the module currently publishes MsgCloudStatus.
@@ -20,7 +19,7 @@
 #pragma once
 
 #include "hsys_module.h"
-#include "cube_sphere_api.h"
+#include "cloud_driver.h"
 #include "msg_cloud_status.h"
 #include "msg_config_wifi.h"
 
@@ -48,11 +47,16 @@ public:
 
     static ModuleCloud *instance();
 
+    /** Wire the cloud backend before app_init(). Must be called before init(). */
+    void set_driver(const cloud_driver_t *drv) { _drv = drv; }
+
 protected:
     void init()                                  override;
     void on_msg_received(const hsys_msg_t &msg)  override;
 
 private:
+    const cloud_driver_t *_drv            = nullptr;  ///< Cloud backend — set via set_driver()
+
     // ── State machine ─────────────────────────────────────────────────────────
     typedef enum {
         STATE_WAIT_FOR_INTERNET,
@@ -106,8 +110,8 @@ private:
 
     void _arm_timer(uint32_t duration_ms);
 
-    startup_info_t    _build_startup_info() const;
-    heart_beat_info_t _build_hb_info()      const;
+    cloud_startup_info_t _build_startup_info() const;
+    cloud_hb_info_t      _build_hb_info()      const;
 
     void _publish_cloud_status(cloud_status_event_t ev, uint8_t nozzle_idx = 0);
 };

@@ -193,8 +193,9 @@ add_library(app_modules STATIC
     ${APP_MODS}/module_fuel/pumps/sanki/sanki_6_digit_1.cpp
     # Buzzer module
     ${APP_MODS}/module_buzzer/module_buzzer.cpp
-    # Cloud module (driver-agnostic — no cube_sphere in simulator)
+    # Cloud module (uses cloud_driver_t abstraction)
     ${APP_MODS}/module_cloud/module_cloud.cpp
+    ${DRIVERS}/cube_sphere/cube_sphere_cloud_driver.cpp
     # Internet monitor module
     ${APP_MODS}/module_internet/module_internet.cpp
     # WiFi module
@@ -271,6 +272,7 @@ target_include_directories(app_product PUBLIC
     ${MIDDLEWARE}
     ${PERIPHERAL}
     ${PAL}           # pal_system.h
+    ${DRIVERS}/cube_sphere  # cube_sphere_cloud_driver.h
 )
 target_link_libraries(app_product PRIVATE hsys_framework app_modules app_messages pal_mac)
 

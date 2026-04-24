@@ -50,6 +50,7 @@
 #include "module_fuel.h"
 #include "module_buzzer.h"
 #include "module_cloud.h"
+#include "cube_sphere_cloud_driver.h"
 #include "module_internet.h"
 #include "module_wifi.h"
 #include "module_sd.h"
@@ -248,6 +249,10 @@ extern "C" void app_init(void)
 
     // 0b. Platform-specific setup + extra module registration
     app_platform_pre_init();
+
+    // Wire the concrete cloud backend before modules are initialised.
+    // The cube_sphere driver singleton is defined in cube_sphere_cloud_driver.cpp.
+    ModuleCloud::instance()->set_driver(cloud_driver_cube_sphere());
 
     // 1. Config — load defaults and initialise the config handle
     app_config_init();
