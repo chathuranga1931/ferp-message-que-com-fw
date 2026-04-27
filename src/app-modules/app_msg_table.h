@@ -53,6 +53,14 @@
 #include "msg_wifi_event.h"             // MsgWifiEvent           (0x0A00)
 #include "msg_internet_status.h"        // MsgInternetStatus      (0x0A01)
 #include "msg_cloud_status.h"           // MsgCloudStatus         (0x0A02)
+#include "msg_ota_start_request.h"      // MsgOtaStartRequest     (0x0A03)
+#include "msg_ota_start_response.h"     // MsgOtaStartResponse    (0x0A04)
+#include "msg_ota_request_driver.h"     // MsgOtaRequestDriver    (0x0A05)
+#include "msg_ota_driver_response.h"    // MsgOtaDriverResponse   (0x0A06)
+#include "msg_ota_abort_request.h"      // MsgOtaAbortRequest     (0x0A07)
+#include "msg_ota_complete_notify.h"    // MsgOtaCompleteNotify   (0x0A08)
+#include "msg_ota_event.h"              // MsgOtaEvent            (0x0A09)
+#include "msg_ota_progress.h"           // MsgOtaProgress         (0x0A0A)
 
 // ---------------------------------------------------------------------------
 // Descriptor table macro
@@ -86,6 +94,14 @@
         MsgPrinterBtn::DESCRIPTOR,                                                \
         MsgFuelPumped::DESCRIPTOR,                                                \
         MsgNozzleState::DESCRIPTOR,                                               \
+        MsgOtaStartRequest::DESCRIPTOR,                                           \
+        MsgOtaStartResponse::DESCRIPTOR,                                          \
+        MsgOtaRequestDriver::DESCRIPTOR,                                          \
+        MsgOtaDriverResponse::DESCRIPTOR,                                         \
+        MsgOtaAbortRequest::DESCRIPTOR,                                           \
+        MsgOtaCompleteNotify::DESCRIPTOR,                                         \
+        MsgOtaEvent::DESCRIPTOR,                                                  \
+        MsgOtaProgress::DESCRIPTOR,                                               \
     };                                                                            \
     static const uint16_t k_msg_table_count =                                    \
         (uint16_t)(sizeof(k_msg_table) / sizeof(k_msg_table[0]))

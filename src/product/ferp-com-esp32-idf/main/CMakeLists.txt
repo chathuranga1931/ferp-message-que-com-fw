@@ -36,6 +36,8 @@ idf_component_register(
         "${D_MODS}/module_wifi/module_wifi.cpp"
         "${D_MODS}/module_sd/module_sd.cpp"
         "${D_MODS}/module_timemgr/module_timemgr.cpp"
+        "${D_MODS}/module_ota/OtaModule.cpp"
+        "${D_MODS}/module_ota/targets/ota_driver_esp32_main.c"
 
         # ── App messages ──────────────────────────────────────────────────
         "${D_MSGS}/msg_sensor_data.cpp"
@@ -67,6 +69,14 @@ idf_component_register(
         "${D_MSGS}/msg_internet_status.cpp"
         "${D_MSGS}/msg_cloud_status.cpp"
         "${D_MSGS}/msg_time_status.cpp"
+        "${D_MSGS}/msg_ota_start_request.cpp"
+        "${D_MSGS}/msg_ota_start_response.cpp"
+        "${D_MSGS}/msg_ota_request_driver.cpp"
+        "${D_MSGS}/msg_ota_driver_response.cpp"
+        "${D_MSGS}/msg_ota_abort_request.cpp"
+        "${D_MSGS}/msg_ota_complete_notify.cpp"
+        "${D_MSGS}/msg_ota_event.cpp"
+        "${D_MSGS}/msg_ota_progress.cpp"
 
         # ── App peripherals ───────────────────────────────────────────────
         "${D_PHER}/app_spiffs.cpp"
@@ -136,6 +146,8 @@ idf_component_register(
         "${D_MODS}/module_wifi"
         "${D_MODS}/module_sd"
         "${D_MODS}/module_timemgr"
+        "${D_MODS}/module_ota"
+        "${D_MODS}/module_ota/targets"
         # App messages and peripherals
         "${D_MSGS}"
         "${D_PHER}"

@@ -331,3 +331,11 @@ hsys_status_t hsys_task_mgr_wake_module_from_isr(hsys_module_id_t module_id,
     }
     return HSYS_OK;
 }
+
+bool hsys_task_mgr_same_task(hsys_module_id_t a, hsys_module_id_t b)
+{
+    if (!s_initialised) return false;
+    hsys_task_entry_t *ta = find_task_for_module(a);
+    hsys_task_entry_t *tb = find_task_for_module(b);
+    return (ta != nullptr) && (ta == tb);
+}

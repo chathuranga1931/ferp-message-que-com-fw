@@ -9,9 +9,11 @@
  *      so main.cpp has zero knowledge of simulator-specific modules.
  */
 #include "pal_system.h"
+#include "pal_power.h"
 #include "driver/mac_driver.h"
 #include "driver/module_sim_bridge.h"
 #include "app.h"
+#include <cstdlib>
 
 #ifndef MAC_DRIVER_TCP_PORT
 #define MAC_DRIVER_TCP_PORT 9000
@@ -29,4 +31,11 @@ extern "C" void pal_system_init(void)
         "sim_brdg_t", 4096, 2, 0, { SIM_BRIDGE_MODULE_ID, 0 }
     };
     app_register_extra_module(ModuleSimBridge::instance(), &sim_bridge_task);
+}
+
+extern "C" void pal_power_reset(void)
+{
+    // Simulator: OTA "reboot" — gracefully exit; a test harness can restart
+    // the process with the newly-written ota_download.bin if needed.
+    std::exit(0);
 }

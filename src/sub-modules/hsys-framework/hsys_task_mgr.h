@@ -136,6 +136,13 @@ hsys_status_t hsys_task_mgr_wake_module(hsys_module_id_t module_id);
 hsys_status_t hsys_task_mgr_wake_module_from_isr(hsys_module_id_t module_id,
                                                    bool *higher_priority_woken);
 
+/**
+ * @brief  Return true if both module IDs are bound to the same task.
+ *         Used by hsys_msg_publish() to deduplicate task-queue enqueues
+ *         when multiple subscribers in the same task subscribe to a message.
+ */
+bool hsys_task_mgr_same_task(hsys_module_id_t a, hsys_module_id_t b);
+
 #ifdef __cplusplus
 }
 #endif

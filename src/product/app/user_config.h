@@ -16,6 +16,10 @@
 #define HSYS_MAX_TASKS      16   ///< wifi_task + sd_task pushed count to 14; 16 gives headroom
 #endif
 
+#ifndef HSYS_MAX_MODULES
+#define HSYS_MAX_MODULES    24   ///< 16 shared + OtaModule + ModuleSimBridge (sim) + headroom
+#endif
+
 #ifndef HSYS_MAX_MSG_IDS
 #define HSYS_MAX_MSG_IDS    4096 ///< msg IDs go up to 0x0A02 (2562); 4096 covers all current + future
 #endif

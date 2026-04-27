@@ -94,9 +94,21 @@ typedef enum : uint16_t
     MSG_ID_CLOUD_STATUS         = 0x0A02,   ///< ModuleCloud    -> all: cloud event result
 
     // ------------------------------------------------------------------
+    // OTA  (0x0A03 – 0x0A0A)
+    // ------------------------------------------------------------------
+    MSG_ID_OTA_START_REQUEST    = 0x0A03,   ///< Source -> OtaModule:  request OTA session
+    MSG_ID_OTA_START_RESPONSE   = 0x0A04,   ///< OtaModule -> Source:  session grant/reject
+    MSG_ID_OTA_REQUEST_DRIVER   = 0x0A05,   ///< Source -> OtaModule:  get fs driver
+    MSG_ID_OTA_DRIVER_RESPONSE  = 0x0A06,   ///< OtaModule -> Source:  driver + ctx pointers
+    MSG_ID_OTA_ABORT_REQUEST    = 0x0A07,   ///< Source -> OtaModule:  abort active session
+    MSG_ID_OTA_COMPLETE_NOTIFY  = 0x0A08,   ///< Source -> OtaModule:  binary write finished
+    MSG_ID_OTA_EVENT            = 0x0A09,   ///< OtaModule -> all:     session lifecycle events
+    MSG_ID_OTA_PROGRESS         = 0x0A0A,   ///< Source -> all:        write progress update
+
+    // ------------------------------------------------------------------
     // Sentinel — keep one above the highest assigned ID
     // ------------------------------------------------------------------
-    MSG_ID_MAX              = 0x0A03,
+    MSG_ID_MAX              = 0x0A0B,
 
 } app_msg_id_e;
 

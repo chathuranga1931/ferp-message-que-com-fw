@@ -154,8 +154,15 @@ void hsys_module_dispatch_for_task(const hsys_msg_t       *msg,
                                    uint8_t                 count)
 {
     if (msg == nullptr) return;
+
+    // For DIRECT messages only the addressed receiver should handle the message,
+    // even if other modules in the same task have subscribed to the same ID.
+    bool is_direct = (msg->desc != nullptr &&
+                      msg->desc->msg_type == HSYS_MSG_DIRECT);
+
     for (uint8_t i = 0; i < count; i++) {
         if (!hsys_msg_is_subscriber(msg->msg_id, module_ids[i])) continue;
+        if (is_direct && module_ids[i] != msg->receiver_id) continue;
         HsysModule *m = hsys_module_find(module_ids[i]);
         if (m) m->dispatch(*msg);
     }

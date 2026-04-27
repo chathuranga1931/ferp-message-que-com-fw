@@ -304,14 +304,30 @@ hsys_status_t hsys_msg_publish(hsys_msg_t *msg)
         return HSYS_OK;
     }
 
+    // De-duplicate: if multiple subscribers share the same task, enqueue
+    // into that task only once.  dispatch_for_task delivers to all
+    // same-task subscribers on each dequeue, so enqueueing N times into
+    // the same task would cause N² deliveries.
+    bool skip[HSYS_MAX_SUBSCRIBERS_PER_MSG] = {};
+    uint8_t unique_count = 0;
+    for (uint8_t i = 0; i < count; i++) {
+        if (skip[i]) continue;
+        unique_count++;
+        for (uint8_t j = i + 1; j < count; j++) {
+            if (!skip[j] && hsys_task_mgr_same_task(snapshot[i], snapshot[j]))
+                skip[j] = true;
+        }
+    }
+
     // Stamp ref count before any enqueue to avoid race where first subscriber
     // dispatches and releases before we've finished stamping
     hsys_critical_enter();
-    msg->ref_count = count;
+    msg->ref_count = unique_count;
     hsys_critical_exit();
 
     hsys_status_t result = HSYS_OK;
     for (uint8_t i = 0; i < count; i++) {
+        if (skip[i]) continue;
         msg->receiver_id = snapshot[i];
         // Enqueue the pointer, not a copy of the struct
         hsys_status_t s = hsys_task_mgr_enqueue_ptr(msg, 0);

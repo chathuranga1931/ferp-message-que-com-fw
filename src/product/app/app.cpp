@@ -55,6 +55,51 @@
 #include "module_wifi.h"
 #include "module_sd.h"
 #include "module_timemgr.h"
+#include "module_ota.h"
+
+// ── OTA platform configuration ─────────────────────────────────────────────
+// ota_platform_get_config() wires the source/target tables for OtaModule.
+// The target driver (ota_driver_esp32_main) is platform-agnostic: it calls
+// pal_fw_update_* which maps to ESP-IDF OTA partitions on device and to a
+// host-file stream (<cwd>/ota_download.bin) on the simulator.
+// OtaModule stores only pointers — static storage duration required.
+#include "ota_driver_esp32_main.h"
+#include "app_module_ids.h"
+
+#ifndef MODULE_MQTT_ID
+#define MODULE_MQTT_ID  ((hsys_module_id_t)0xFF)   // placeholder — not yet implemented
+#endif
+
+static const ota_source_desc_t k_ota_sources[] = {
+    // source_module_id    priority  _pad  timeout_ms
+    { MODULE_MQTT_ID,      0,        0,    60000 },
+};
+
+static ota_esp32_ctx_t s_esp32_ota_ctx = {};
+
+static const ota_target_desc_t k_ota_targets[] = {
+    {
+        .target_idx   = 0,
+        .needs_reboot = true,
+        ._pad         = {},
+        .label        = "esp32-main",
+        .driver       = &g_ota_driver_esp32_main,
+        .ctx          = &s_esp32_ota_ctx,
+    },
+};
+
+#define OTA_ARRAY_SIZE(a) (sizeof(a) / sizeof((a)[0]))
+
+extern "C" void ota_platform_get_config(
+    const ota_source_desc_t **sources, uint8_t *source_count,
+    const ota_target_desc_t **targets, uint8_t *target_count)
+{
+    *sources      = k_ota_sources;
+    *source_count = (uint8_t)OTA_ARRAY_SIZE(k_ota_sources);
+    *targets      = k_ota_targets;
+    *target_count = (uint8_t)OTA_ARRAY_SIZE(k_ota_targets);
+}
+
 #include "app_msg_table.h"
 #include "app_config.h"
 #include "hsys_config.h"
@@ -167,6 +212,7 @@ static HsysModule *k_module_table[] = {
     ModuleWifi::instance(),
     ModuleSD::instance(),
     ModuleTimeMgr::instance(),
+    OtaModule::instance(),
 };
 #define MODULE_TABLE_SIZE  (sizeof(k_module_table) / sizeof(k_module_table[0]))
 
@@ -193,6 +239,7 @@ static const hsys_task_desc_t k_task_table[] = {
     { "fuel_task",          4096,  5,  0,   { MODULE_FUEL_ID,                                                    0 } },
     { "network_task",       8192,  5,  0,   { MODULE_WIFI_ID,        MODULE_INTERNET_ID,     MODULE_CLOUD_ID,    0 } },
     { "timemgr_task",       3072,  5,  0,   { MODULE_TIMEMGR_ID,                                                 0 } },
+    { "ota_task",           4096,  5,  0,   { MODULE_OTA_ID,                                                     0 } },
 };
 #define TASK_TABLE_SIZE  (sizeof(k_task_table) / sizeof(k_task_table[0]))
 

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(ferp-com-simulator CXX)
+project(ferp-com-simulator C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -77,6 +77,9 @@ add_library(pal_mac STATIC
     ${PAL_MAC}/pal_mac_http_client.cpp
     ${PAL_MAC}/pal_mac_crypto.cpp
     ${PAL_MAC}/pal_mac_efuse.cpp
+    # Firmware update PAL (simulator) — provides pal_fw_update_* for ota_driver_esp32_main
+    ${PAL_MAC}/pal_mac_fw_update.cpp
+    ${APP_MODS}/module_ota/targets/ota_driver_esp32_main.c
     # CubeSphere cloud driver
     ${DRIVERS}/cube_sphere/cube_sphere_api.cpp
 )
@@ -93,6 +96,7 @@ target_include_directories(pal_mac PUBLIC
     ${APP_MODS}/module_config   # app_config.h (needed by app.h transitively)
     ${APP_MODS}/module_fuel                        # module_fuel.h
     ${APP_MODS}/module_fuel/pumps                  # nozzle_event.h
+    ${APP_MODS}/module_ota/targets  # ota_driver_esp32_main.h
     ${DISTAP_LIB}   # display_types.h, com_distap.h, cmd_distap.h
     ${ARDUINOJSON}      # ArduinoJson.h (root)
     ${ARDUINOJSON}/src  # ArduinoJson internal headers (angle-bracket includes)
@@ -142,6 +146,15 @@ add_library(app_messages STATIC
     ${APP_MSGS}/msg_internet_status.cpp
     ${APP_MSGS}/msg_cloud_status.cpp
     ${APP_MSGS}/msg_time_status.cpp
+    # OTA messages
+    ${APP_MSGS}/msg_ota_start_request.cpp
+    ${APP_MSGS}/msg_ota_start_response.cpp
+    ${APP_MSGS}/msg_ota_request_driver.cpp
+    ${APP_MSGS}/msg_ota_driver_response.cpp
+    ${APP_MSGS}/msg_ota_abort_request.cpp
+    ${APP_MSGS}/msg_ota_complete_notify.cpp
+    ${APP_MSGS}/msg_ota_event.cpp
+    ${APP_MSGS}/msg_ota_progress.cpp
 )
 target_include_directories(app_messages PUBLIC
     ${APP_MSGS}
@@ -152,6 +165,7 @@ target_include_directories(app_messages PUBLIC
     ${PAL}
     ${PAL_MAC}       # esp_err.h stub
     ${DISTAP_LIB}    # display_types.h (needed transitively)
+    ${MIDDLEWARE}    # FileSystemDriver.h (needed by msg_ota_driver_response.h etc.)
     ${ARDUINOJSON}       # ArduinoJson.h — needed by from_json() implementations
     ${ARDUINOJSON}/src   # ArduinoJson internal headers
 )
@@ -206,6 +220,8 @@ add_library(app_modules STATIC
     ${APP_MODS}/module_timemgr/module_timemgr.cpp
     # DS1307 hardware driver
     ${DRIVERS}/DS1307/ds1307.cpp
+    # OTA module
+    ${APP_MODS}/module_ota/OtaModule.cpp
 )
 target_include_directories(app_modules PUBLIC
     ${APP_MODS}
@@ -228,6 +244,7 @@ target_include_directories(app_modules PUBLIC
     ${APP_MODS}/module_wifi
     ${APP_MODS}/module_sd
     ${APP_MODS}/module_timemgr
+    ${APP_MODS}/module_ota          # OtaModule.h, module_ota.h
     ${DRIVERS}/DS1307
     ${DRIVERS}/cube_sphere  # cube_sphere_api.h, cube_sphere_config.h
     ${SUB_MODS}           # for ds1307.cpp: #include "pal/pal_i2c.h"
@@ -265,6 +282,8 @@ target_include_directories(app_product PUBLIC
     ${APP_MODS}/module_wifi
     ${APP_MODS}/module_sd
     ${APP_MODS}/module_timemgr
+    ${APP_MODS}/module_ota          # module_ota.h (OtaModule)
+    ${APP_MODS}/module_ota/targets  # ota_driver_esp32_main.h
     ${APP_MSGS}
     ${HSYS_OS}
     ${PAL_MAC}       # esp_err.h stub
@@ -287,8 +306,9 @@ target_include_directories(ferp-com-simulator PRIVATE
     ${APP}          # app.h, app_hw_config.h
 )
 target_link_libraries(ferp-com-simulator PRIVATE
-    hsys_framework hsys_os pal_mac
+    hsys_framework hsys_os
     app_messages app_pheripherals app_modules app_product
+    pal_mac
 )
 
 # Tell the binary where its own source tree lives so it can chdir to it

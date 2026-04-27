@@ -51,6 +51,7 @@
 // Reserved for future shared modules  (17 – 19)
 // ------------------------------------------------------------------
 #define MODULE_TIMEMGR_ID         ((hsys_module_id_t) 17)   ///< ModuleTimeMgr   — real-time clock manager
+#define MODULE_OTA_ID             ((hsys_module_id_t) 18)   ///< ModuleOta       — OTA session manager
 
 // ------------------------------------------------------------------
 // Simulator-only / platform-specific  (20+)
