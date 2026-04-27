@@ -30,7 +30,7 @@
 #include "msg_spiffs_ready.h"           // MsgSpiffsReady         (0x0201)
 #include "msg_sd_ready.h"               // MsgSdReady             (0x0202)
 #include "msg_sd_status.h"              // MsgSdStatus            (0x0203)
-#include "msg_time_status.h"           // MsgTimeStatus          (0x0204)
+#include "msg_time_status.h"            // MsgTimeStatus          (0x0204)
 #include "msg_config_ready.h"           // MsgConfigReady         (0x0300)
 #include "msg_config_set.h"             // MsgConfigSet           (0x0301)
 #include "msg_config_get.h"             // MsgConfigGet           (0x0302)
@@ -69,7 +69,7 @@
 // ---------------------------------------------------------------------------
 
 #define APP_MSG_TABLE_INIT                                                        \
-    static const hsys_msg_desc_t k_msg_table[] = {                               \
+    static const hsys_msg_desc_t k_msg_table[] = {                                \
         MsgSensorData::DESCRIPTOR,                                                \
         MsgTick1000ms::DESCRIPTOR,                                                \
         MsgSpiffsReady::DESCRIPTOR,                                               \
@@ -96,19 +96,19 @@
         MsgPrinterBtn::DESCRIPTOR,                                                \
         MsgFuelPumped::DESCRIPTOR,                                                \
         MsgNozzleState::DESCRIPTOR,                                               \
-        MsgWifiEvent::DESCRIPTOR,                                                  \
-        MsgInternetStatus::DESCRIPTOR,                                             \
-        MsgCloudStatus::DESCRIPTOR,                                                \
-        MsgOtaStartRequest::DESCRIPTOR,                                            \
-        MsgOtaStartResponse::DESCRIPTOR,                                           \
-        MsgOtaRequestDriver::DESCRIPTOR,                                           \
-        MsgOtaDriverResponse::DESCRIPTOR,                                          \
-        MsgOtaAbortRequest::DESCRIPTOR,                                            \
-        MsgOtaCompleteNotify::DESCRIPTOR,                                          \
-        MsgOtaEvent::DESCRIPTOR,                                                   \
-        MsgOtaProgress::DESCRIPTOR,                                                \
+        MsgWifiEvent::DESCRIPTOR,                                                 \
+        MsgInternetStatus::DESCRIPTOR,                                            \
+        MsgCloudStatus::DESCRIPTOR,                                               \
+        MsgOtaStartRequest::DESCRIPTOR,                                           \
+        MsgOtaStartResponse::DESCRIPTOR,                                          \
+        MsgOtaRequestDriver::DESCRIPTOR,                                          \
+        MsgOtaDriverResponse::DESCRIPTOR,                                         \
+        MsgOtaAbortRequest::DESCRIPTOR,                                           \
+        MsgOtaCompleteNotify::DESCRIPTOR,                                         \
+        MsgOtaEvent::DESCRIPTOR,                                                  \
+        MsgOtaProgress::DESCRIPTOR,                                               \
     };                                                                            \
-    static const uint16_t k_msg_table_count =                                    \
+    static const uint16_t k_msg_table_count =                                     \
         (uint16_t)(sizeof(k_msg_table) / sizeof(k_msg_table[0]))
 
 #endif // APP_MSG_TABLE_H
