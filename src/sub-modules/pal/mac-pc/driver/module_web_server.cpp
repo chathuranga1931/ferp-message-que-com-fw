@@ -435,7 +435,8 @@ static const void *_find_mem(const void *haystack, size_t hlen,
 }
 
 void ModuleWebServer::_handle_post_firmware(int fd, int content_length,
-                                             const char *content_type_hdr)
+                                             const char *content_type_hdr,
+                                             uint8_t target_idx)
 {
     // ── 1. Extract multipart boundary ─────────────────────────────────────────
     const char *bp = strstr(content_type_hdr, "boundary=");
@@ -482,8 +483,8 @@ void ModuleWebServer::_handle_post_firmware(int fd, int content_length,
     }
 
     // ── 4. Send MsgOtaStartRequest → OtaModule ────────────────────────────────
-    LOG_MSG_INFO(WEB_SRV_LOG_EN, "OTA: requesting session from OtaModule");
-    if (!send_ota_start_request(0, "webserver-upload")) {
+    LOG_MSG_INFO(WEB_SRV_LOG_EN, "OTA: requesting session from OtaModule (target=%u)", (unsigned)target_idx);
+    if (!send_ota_start_request(target_idx, "webserver-upload")) {
         _fail("{\"ok\":false,\"error\":\"failed to create start-request message\"}", 500);
         return;
     }
@@ -632,7 +633,7 @@ void ModuleWebServer::_handle_post_firmware(int fd, int content_length,
         pthread_mutex_unlock(&s_ota_mtx);
 
         // Publish progress notification (resets OtaModule inactivity timer)
-        publish_ota_progress(0, offset, bin_len);
+        publish_ota_progress(target_idx, offset, bin_len);
     }
 
     if (write_ok) {
@@ -696,7 +697,19 @@ void ModuleWebServer::_handle_connection(int fd)
     const bool is_post = strcmp(method, "POST") == 0;
 
     if (is_post && strcmp(path, "/updateFirmwareBin") == 0) {
-        _handle_post_firmware(fd, content_length, content_type);
+        _handle_post_firmware(fd, content_length, content_type, 0);
+        return;
+    }
+    if (is_post && strcmp(path, "/updateDisplayTapBootloaderBin") == 0) {
+        _handle_post_firmware(fd, content_length, content_type, 1);
+        return;
+    }
+    if (is_post && strcmp(path, "/updateDisplayTapPartitionsBin") == 0) {
+        _handle_post_firmware(fd, content_length, content_type, 2);
+        return;
+    }
+    if (is_post && strcmp(path, "/updateDisplayTapBin") == 0) {
+        _handle_post_firmware(fd, content_length, content_type, 3);
         return;
     }
 

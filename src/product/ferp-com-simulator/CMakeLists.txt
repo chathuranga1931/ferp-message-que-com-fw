@@ -82,6 +82,7 @@ add_library(pal_mac STATIC
     # Firmware update PAL (simulator) — provides pal_fw_update_* for ota_driver_esp32_main
     ${PAL_MAC}/pal_mac_fw_update.cpp
     ${APP_MODS}/module_ota/targets/ota_driver_esp32_main.c
+    ${APP_MODS}/module_ota/targets/ota_driver_esp32_dt.c
     # CubeSphere cloud driver
     ${DRIVERS}/cube_sphere/cube_sphere_api.cpp
 )

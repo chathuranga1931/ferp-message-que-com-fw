@@ -12,12 +12,17 @@
  *   POST /api/config           → merge JSON patch into config file;
  *                                triggers ModuleConfig hot-reload via MsgSpiffsReady
  *   GET  /api/status           → {"running":true,"port":8080}
- *   GET  /api/ota/status       → {"state":"idle|uploading","bytes":N}
- *   POST /updateFirmwareBin    → multipart/form-data firmware upload (same as old app)
+ *   GET  /api/ota/status                → {"state":"idle|uploading","bytes":N}
+ *   POST /updateFirmwareBin             → ESP32 main firmware (target_idx=0)
+ *   POST /updateDisplayTapBootloaderBin → dispTap bootloader.bin (target_idx=1)
+ *   POST /updateDisplayTapPartitionsBin → dispTap partitions.bin (target_idx=2)
+ *   POST /updateDisplayTapBin           → dispTap firmware.bin   (target_idx=3)
  *
  * Shell usage:
- *   # Upload firmware (old-app compatible)
- *   curl -F "file=@firmware.bin" http://localhost:8080/updateFirmwareBin
+ *   curl -F "file=@firmware.bin"      http://localhost:8080/updateFirmwareBin
+ *   curl -F "file=@bootloader.bin"    http://localhost:8080/updateDisplayTapBootloaderBin
+ *   curl -F "file=@partitions.bin"    http://localhost:8080/updateDisplayTapPartitionsBin
+ *   curl -F "file=@dispTap.bin"       http://localhost:8080/updateDisplayTapBin
  *
  *   # Poll OTA status
  *   curl http://localhost:8080/api/ota/status
@@ -81,9 +86,11 @@ private:
     static bool send_ota_complete_notify(bool success);
 
     // ── Additional HTTP handlers ──────────────────────────────────────────────
-    /** Handle POST /updateFirmwareBin — streams multipart binary through OtaModule */
+    /** Handle POST /updateFirmwareBin or /updateDisplayTapBin — streams
+     *  multipart binary through OtaModule using the given target_idx. */
     static void _handle_post_firmware(int fd, int content_length,
-                                      const char *content_type_hdr);
+                                      const char *content_type_hdr,
+                                      uint8_t target_idx);
 
     /** Handle GET /api/ota/status */
     static void _handle_get_ota_status(int fd);

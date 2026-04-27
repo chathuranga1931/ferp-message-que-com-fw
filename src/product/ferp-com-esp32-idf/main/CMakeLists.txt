@@ -38,6 +38,7 @@ idf_component_register(
         "${D_MODS}/module_timemgr/module_timemgr.cpp"
         "${D_MODS}/module_ota/OtaModule.cpp"
         "${D_MODS}/module_ota/targets/ota_driver_esp32_main.c"
+        "${D_MODS}/module_ota/targets/ota_driver_esp32_dt.c"
 
         # ── App messages ──────────────────────────────────────────────────
         "${D_MSGS}/msg_sensor_data.cpp"
