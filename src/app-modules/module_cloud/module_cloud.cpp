@@ -295,7 +295,15 @@ void ModuleCloud::_attempt_registration()
         _state = STATE_RUNNING;
         _pending_startup = true;
         _process_events();
-        _publish_cloud_status(CLOUD_STATUS_REGISTERED);
+
+        /* Fetch the device UUID assigned by the server and broadcast it */
+        char uuid_buf[50] = {};   /* SIZE_OF_UUID = 50 in cube_sphere_config.h */
+        if (_drv->get_device_uuid && _drv->get_device_uuid(uuid_buf, sizeof(uuid_buf)) == ERROR_OK) {
+            LOG_MSG_INFO(CLOUD_LOG_EN, "device UUID: %s", uuid_buf);
+        } else {
+            LOG_MSG_WARNING(CLOUD_LOG_EN, "get_device_uuid not available or failed");
+        }
+        _publish_cloud_status(CLOUD_STATUS_REGISTERED, 0, uuid_buf);
 
         // Arm the heartbeat timer
         if (_hb_enabled) {
@@ -396,11 +404,15 @@ cloud_hb_info_t ModuleCloud::_build_hb_info() const
     return hb;
 }
 
-void ModuleCloud::_publish_cloud_status(cloud_status_event_t ev, uint8_t nozzle_idx)
+void ModuleCloud::_publish_cloud_status(cloud_status_event_t ev, uint8_t nozzle_idx,
+                                         const char *uuid)
 {
     MsgCloudStatus::Payload p{};
     p.event      = ev;
     p.nozzle_idx = nozzle_idx;
+    if (uuid) {
+        strncpy(p.device_uuid, uuid, sizeof(p.device_uuid) - 1);
+    }
     auto *msg = create_typed<MsgCloudStatus>(p);
     if (msg) publish(msg);
 }

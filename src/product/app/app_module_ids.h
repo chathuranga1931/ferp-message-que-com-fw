@@ -48,10 +48,11 @@
 #define MODULE_SD_ID              ((hsys_module_id_t) 16)   ///< ModuleSD        — SD card
 
 // ------------------------------------------------------------------
-// Reserved for future shared modules  (17 – 19)
+// Shared modules  (17 – 19)
 // ------------------------------------------------------------------
-#define MODULE_TIMEMGR_ID         ((hsys_module_id_t) 17)   ///< ModuleTimeMgr   — real-time clock manager
-#define MODULE_OTA_ID             ((hsys_module_id_t) 18)   ///< ModuleOta       — OTA session manager
+#define MODULE_TIMEMGR_ID         ((hsys_module_id_t) 17)   ///< ModuleTimeMgr       — real-time clock manager
+#define MODULE_OTA_ID             ((hsys_module_id_t) 18)   ///< ModuleOta           — OTA session manager
+#define MODULE_WEB_CLIENT_OTA_ID  ((hsys_module_id_t) 19)   ///< ModuleWebClientOta  — cloud-polling OTA source
 
 // ------------------------------------------------------------------
 // Simulator-only / platform-specific  (20+)

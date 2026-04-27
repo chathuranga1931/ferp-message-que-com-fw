@@ -42,6 +42,10 @@ typedef struct {
     // Cloud / HTTP
     char     cloud_url[128];
     char     cloud_secret[64];
+
+    // OTA server (separate endpoint from the cloud API)
+    char     ota_server_url[128];
+    uint32_t ota_check_interval_s;  ///< How often to poll for updates (seconds, 30–300)
     bool     cloud_hb_enabled;
     uint32_t cloud_hb_interval_s;
 

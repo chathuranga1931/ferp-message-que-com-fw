@@ -113,5 +113,6 @@ private:
     cloud_startup_info_t _build_startup_info() const;
     cloud_hb_info_t      _build_hb_info()      const;
 
-    void _publish_cloud_status(cloud_status_event_t ev, uint8_t nozzle_idx = 0);
+    void _publish_cloud_status(cloud_status_event_t ev, uint8_t nozzle_idx = 0,
+                               const char *uuid = nullptr);
 };

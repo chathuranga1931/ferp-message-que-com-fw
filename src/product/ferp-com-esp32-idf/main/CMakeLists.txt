@@ -40,6 +40,13 @@ idf_component_register(
         "${D_MODS}/module_ota/targets/ota_driver_esp32_main.c"
         "${D_MODS}/module_ota/targets/ota_driver_esp32_dt.c"
 
+        # ── Cloud-polling OTA source module ───────────────────────────────
+        "${D_MODS}/module_web_client_ota/ModuleWebClientOta.cpp"
+        "${D_MODS}/module_web_client_ota/hsys_ota.cpp"
+
+        # ── Utilities ────────────────────────────────────────────────────
+        "${D_SUB}/utils/crc32.cpp"
+
         # ── App messages ──────────────────────────────────────────────────
         "${D_MSGS}/msg_sensor_data.cpp"
         "${D_MSGS}/msg_tick_1000ms.cpp"
@@ -57,6 +64,8 @@ idf_component_register(
         "${D_MSGS}/msg_config_cloud.cpp"
         "${D_MSGS}/msg_config_mqtt.cpp"
         "${D_MSGS}/msg_config_dt.cpp"
+        "${D_MSGS}/msg_config_get_ota.cpp"
+        "${D_MSGS}/msg_config_ota.cpp"
         "${D_MSGS}/msg_timer_start.cpp"
         "${D_MSGS}/msg_timer_stop.cpp"
         "${D_MSGS}/msg_timer_start_response.cpp"
@@ -149,6 +158,7 @@ idf_component_register(
         "${D_MODS}/module_timemgr"
         "${D_MODS}/module_ota"
         "${D_MODS}/module_ota/targets"
+        "${D_MODS}/module_web_client_ota"
         # App messages and peripherals
         "${D_MSGS}"
         "${D_PHER}"
@@ -158,6 +168,7 @@ idf_component_register(
         # Middleware
         "${D_SUB}/middleware"
         "${D_SUB}/middleware/list-manager"
+        "${D_SUB}/utils"
         # PAL esp-idf impls + root for pal/pal_uart.h style includes
         "${D_SUB}/pal/esp-idf"
         "${D_SUB}"

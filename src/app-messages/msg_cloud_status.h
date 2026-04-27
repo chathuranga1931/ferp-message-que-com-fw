@@ -41,8 +41,9 @@ public:
 
     struct Payload {
         cloud_status_event_t event;
-        uint8_t              nozzle_idx;  ///< valid for PUMPED_* events
+        uint8_t              nozzle_idx;    ///< valid for PUMPED_* events
         uint8_t              _pad[2];
+        char                 device_uuid[50]; ///< device UUID — valid only for CLOUD_STATUS_REGISTERED (SIZE_OF_UUID=50)
     };
 
     static constexpr hsys_msg_desc_t DESCRIPTOR =

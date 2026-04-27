@@ -56,8 +56,10 @@
 #include "module_sd.h"
 #include "module_timemgr.h"
 #include "module_ota.h"
+#include "ModuleWebClientOta.h"
 
 #include "app_ota_config.h"
+#include "app_web_ota_config.h"  /* k_web_ota_targets[] + ModuleWebClientOta singleton */
 
 #include "app_msg_table.h"
 #include "app_config.h"
@@ -77,6 +79,8 @@ void app_config_load_defaults(app_config_t *cfg)
     strncpy(cfg->wifi_password,      "password123",          sizeof(cfg->wifi_password)       - 1);
     strncpy(cfg->cloud_url,          "https://cloud.example.com", sizeof(cfg->cloud_url)      - 1);
     strncpy(cfg->cloud_secret,       "changeme",             sizeof(cfg->cloud_secret)        - 1);
+    strncpy(cfg->ota_server_url,     "http://144.24.156.245:8080",  sizeof(cfg->ota_server_url)  - 1);
+    cfg->ota_check_interval_s        = 30;   /* 30 s default — clamp enforced in ModuleWebClientOta */
     cfg->cloud_hb_enabled            = true;
     cfg->cloud_hb_interval_s         = 60;
     strncpy(cfg->mqtt_host,          "mqtt.example.com",     sizeof(cfg->mqtt_host)           - 1);
@@ -99,6 +103,8 @@ static config_t k_config_table[] = {
     { "password",      HSYS_TYPE_STRING, _app_config.wifi_password,       sizeof(_app_config.wifi_password)       },
     { "cloud_url",     HSYS_TYPE_STRING, _app_config.cloud_url,           sizeof(_app_config.cloud_url)           },
     { "cloud_secret",  HSYS_TYPE_STRING, _app_config.cloud_secret,        sizeof(_app_config.cloud_secret)        },
+    { "ota_srvr_url",  HSYS_TYPE_STRING, _app_config.ota_server_url,       sizeof(_app_config.ota_server_url)       },
+    { "ota_chk_int",  HSYS_TYPE_UINT32, &_app_config.ota_check_interval_s, sizeof(_app_config.ota_check_interval_s) },
     { "display_type",  HSYS_TYPE_UINT32, &_app_config.display_type,       sizeof(_app_config.display_type)        },
     { "printer_url",   HSYS_TYPE_STRING, _app_config.printer_url,         sizeof(_app_config.printer_url)         },
     { "p_cpy_cnt",     HSYS_TYPE_UINT32, &_app_config.printer_copy_count, sizeof(_app_config.printer_copy_count)  },
@@ -172,6 +178,7 @@ static HsysModule *k_module_table[] = {
     ModuleSD::instance(),
     ModuleTimeMgr::instance(),
     OtaModule::instance(),
+    ModuleWebClientOta::instance(),
 };
 #define MODULE_TABLE_SIZE  (sizeof(k_module_table) / sizeof(k_module_table[0]))
 
@@ -199,6 +206,7 @@ static const hsys_task_desc_t k_task_table[] = {
     { "network_task",       8192,  5,  0,   { MODULE_WIFI_ID,        MODULE_INTERNET_ID,     MODULE_CLOUD_ID,    0 } },
     { "timemgr_task",       3072,  5,  0,   { MODULE_TIMEMGR_ID,                                                 0 } },
     { "ota_task",           4096,  5,  0,   { MODULE_OTA_ID,                                                     0 } },
+    { "web_ota_task",       8192,  4,  0,   { MODULE_WEB_CLIENT_OTA_ID,                                          0 } },
 };
 #define TASK_TABLE_SIZE  (sizeof(k_task_table) / sizeof(k_task_table[0]))
 

@@ -55,4 +55,5 @@ private:
     void _send_config_cloud(hsys_module_id_t requester);
     void _send_config_mqtt (hsys_module_id_t requester);
     void _send_config_dt   (hsys_module_id_t requester);
+    void _send_config_ota  (hsys_module_id_t requester);
 };

@@ -136,6 +136,8 @@ add_library(app_messages STATIC
     ${APP_MSGS}/msg_config_cloud.cpp
     ${APP_MSGS}/msg_config_mqtt.cpp
     ${APP_MSGS}/msg_config_dt.cpp
+    ${APP_MSGS}/msg_config_get_ota.cpp
+    ${APP_MSGS}/msg_config_ota.cpp
     ${APP_MSGS}/msg_timer_start.cpp
     ${APP_MSGS}/msg_timer_stop.cpp
     ${APP_MSGS}/msg_timer_start_response.cpp
@@ -225,6 +227,11 @@ add_library(app_modules STATIC
     ${DRIVERS}/DS1307/ds1307.cpp
     # OTA module
     ${APP_MODS}/module_ota/OtaModule.cpp
+    # Cloud-polling OTA source module
+    ${APP_MODS}/module_web_client_ota/ModuleWebClientOta.cpp
+    ${APP_MODS}/module_web_client_ota/hsys_ota.cpp
+    # Utilities
+    ${SUB_MODS}/utils/crc32.cpp
 )
 target_include_directories(app_modules PUBLIC
     ${APP_MODS}
@@ -248,6 +255,8 @@ target_include_directories(app_modules PUBLIC
     ${APP_MODS}/module_sd
     ${APP_MODS}/module_timemgr
     ${APP_MODS}/module_ota          # OtaModule.h, module_ota.h
+    ${APP_MODS}/module_web_client_ota  # ModuleWebClientOta.h, hsys_ota.h
+    ${SUB_MODS}/utils               # crc32.h
     ${DRIVERS}/DS1307
     ${DRIVERS}/cube_sphere  # cube_sphere_api.h, cube_sphere_config.h
     ${SUB_MODS}           # for ds1307.cpp: #include "pal/pal_i2c.h"
@@ -287,6 +296,8 @@ target_include_directories(app_product PUBLIC
     ${APP_MODS}/module_timemgr
     ${APP_MODS}/module_ota          # module_ota.h (OtaModule)
     ${APP_MODS}/module_ota/targets  # ota_driver_esp32_main.h
+    ${APP_MODS}/module_web_client_ota  # ModuleWebClientOta.h
+    ${SUB_MODS}/utils               # crc32.h (transitively needed)
     ${APP_MSGS}
     ${HSYS_OS}
     ${PAL_MAC}       # esp_err.h stub

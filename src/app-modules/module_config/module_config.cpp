@@ -21,10 +21,12 @@
 #include "msg_config_get_cloud.h"
 #include "msg_config_get_mqtt.h"
 #include "msg_config_get_dt.h"
+#include "msg_config_get_ota.h"
 #include "msg_config_wifi.h"
 #include "msg_config_cloud.h"
 #include "msg_config_mqtt.h"
 #include "msg_config_dt.h"
+#include "msg_config_ota.h"
 
 #include "app_rootca.h"
 #include "pal_logger.h"
@@ -53,6 +55,7 @@ void ModuleConfig::init()
     subscribe(MSG_ID_CONFIG_GET_CLOUD);
     subscribe(MSG_ID_CONFIG_GET_MQTT);
     subscribe(MSG_ID_CONFIG_GET_DT);
+    subscribe(MSG_ID_CONFIG_GET_OTA);
     LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "subscribed to SPIFFS_READY + typed config gets");
 }
 
@@ -81,6 +84,10 @@ void ModuleConfig::on_msg_received(const hsys_msg_t &msg)
 
         case MSG_ID_CONFIG_GET_DT:
             _send_config_dt(MsgConfigGetDT::deserialize(msg).source_module_id);
+            break;
+
+        case MSG_ID_CONFIG_GET_OTA:
+            _send_config_ota(MsgConfigGetOta::deserialize(msg).source_module_id);
             break;
 
         default:
@@ -248,5 +255,26 @@ void ModuleConfig::_send_config_dt(hsys_module_id_t requester)
         LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "  stabilize_delay_ms = %u", (unsigned)p.stabilize_delay_ms);
         LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "  printer_url        = \"%s\"", p.printer_url);
         LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "  printer_copy_count = %u", (unsigned)p.printer_copy_count);
+    }
+}
+
+void ModuleConfig::_send_config_ota(hsys_module_id_t requester)
+{
+    const app_config_t *cfg = app_config_get();
+    if (!cfg) return;
+
+    MsgConfigOta::Payload p{};
+    strncpy(p.server_url,  cfg->ota_server_url, sizeof(p.server_url)  - 1);
+    p.root_ca          = root_ca;   // pointer to static PEM string in app_rootca.h
+    p.check_interval_s = cfg->ota_check_interval_s;
+
+    hsys_msg_t *out = MsgConfigOta::create(id(), p);
+    if (out) {
+        out->receiver_id = requester;
+        send(out, requester);
+        LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "MsgConfigOta -> module %u:", (unsigned)requester);
+        LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "  server_url       = \"%s\"", p.server_url);
+        LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "  check_interval_s = %u",     (unsigned)p.check_interval_s);
+        LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "  root_ca          = %s", p.root_ca ? "***" : "(null)");
     }
 }

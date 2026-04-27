@@ -41,6 +41,8 @@
 #include "msg_config_cloud.h"           // MsgConfigCloud         (0x0308)
 #include "msg_config_mqtt.h"            // MsgConfigMqtt          (0x0309)
 #include "msg_config_dt.h"              // MsgConfigDT            (0x030A)
+#include "msg_config_get_ota.h"         // MsgConfigGetOta        (0x030B)
+#include "msg_config_ota.h"             // MsgConfigOta           (0x030C)
 #include "msg_timer_start.h"            // MsgTimerStart          (0x0100)
 #include "msg_timer_stop.h"             // MsgTimerStop           (0x0101)
 #include "msg_timer_start_response.h"   // MsgTimerStartResponse  (0x0102)
@@ -81,10 +83,12 @@
         MsgConfigGetCloud::DESCRIPTOR,                                            \
         MsgConfigGetMqtt::DESCRIPTOR,                                             \
         MsgConfigGetDT::DESCRIPTOR,                                               \
+        MsgConfigGetOta::DESCRIPTOR,                                              \
         MsgConfigWifi::DESCRIPTOR,                                                \
         MsgConfigCloud::DESCRIPTOR,                                               \
         MsgConfigMqtt::DESCRIPTOR,                                                \
         MsgConfigDT::DESCRIPTOR,                                                  \
+        MsgConfigOta::DESCRIPTOR,                                                 \
         MsgTimerStart::DESCRIPTOR,                                                \
         MsgTimerStop::DESCRIPTOR,                                                 \
         MsgTimerStartResponse::DESCRIPTOR,                                        \

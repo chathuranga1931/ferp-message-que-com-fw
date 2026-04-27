@@ -67,12 +67,14 @@ typedef enum : uint16_t
     MSG_ID_CONFIG_GET_CLOUD     = 0x0304,   ///< Any -> ModuleConfig: request Cloud config (DIRECT response)
     MSG_ID_CONFIG_GET_MQTT      = 0x0305,   ///< Any -> ModuleConfig: request MQTT config (DIRECT response)
     MSG_ID_CONFIG_GET_DT        = 0x0306,   ///< Any -> ModuleConfig: request Device/HW config (DIRECT response)
+    MSG_ID_CONFIG_GET_OTA       = 0x030B,   ///< Any -> ModuleConfig: request OTA config (DIRECT response)
 
     // Typed domain config responses (sent DIRECT back to the requester)
     MSG_ID_CONFIG_WIFI          = 0x0307,   ///< ModuleConfig -> ModuleWifi:  WiFi credentials
     MSG_ID_CONFIG_CLOUD         = 0x0308,   ///< ModuleConfig -> ModuleCloud: cloud parameters
     MSG_ID_CONFIG_MQTT          = 0x0309,   ///< ModuleConfig -> ModuleMqtt:  MQTT broker settings
     MSG_ID_CONFIG_DT            = 0x030A,   ///< ModuleConfig -> ModuleFuel:  display-type / HW settings
+    MSG_ID_CONFIG_OTA           = 0x030C,   ///< ModuleConfig -> ModuleWebClientOta: OTA server config
 
     // ------------------------------------------------------------------
     // Fuel / dispenser  (0x0800 – 0x08FF)
