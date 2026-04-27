@@ -71,8 +71,9 @@
 #endif
 
 static const ota_source_desc_t k_ota_sources[] = {
-    // source_module_id    priority  _pad  timeout_ms
-    { MODULE_MQTT_ID,      0,        0,    60000 },
+    // source_module_id      priority  _pad  timeout_ms
+    { MODULE_MQTT_ID,        0,        0,    60000  },
+    { MODULE_WEB_SERVER_ID,  0,        0,    120000 },  ///< simulator web OTA (port 8080)
 };
 
 static ota_esp32_ctx_t s_esp32_ota_ctx = {};

@@ -7,15 +7,20 @@
  * module registered in pal_mac_system.cpp.
  *
  * Endpoints:
- *   GET  /            → HTML configuration UI
- *   GET  /api/config  → current config as JSON
- *   POST /api/config  → merge JSON patch into config file;
- *                       triggers ModuleConfig hot-reload via MsgSpiffsReady
- *   GET  /api/status  → {"running":true,"port":8080}
+ *   GET  /                     → HTML configuration UI
+ *   GET  /api/config           → current config as JSON
+ *   POST /api/config           → merge JSON patch into config file;
+ *                                triggers ModuleConfig hot-reload via MsgSpiffsReady
+ *   GET  /api/status           → {"running":true,"port":8080}
+ *   GET  /api/ota/status       → {"state":"idle|uploading","bytes":N}
+ *   POST /updateFirmwareBin    → multipart/form-data firmware upload (same as old app)
  *
  * Shell usage:
- *   # Read current config
- *   curl http://localhost:8080/api/config
+ *   # Upload firmware (old-app compatible)
+ *   curl -F "file=@firmware.bin" http://localhost:8080/updateFirmwareBin
+ *
+ *   # Poll OTA status
+ *   curl http://localhost:8080/api/ota/status
  *
  *   # Update one or more fields (partial patch)
  *   curl -X POST http://localhost:8080/api/config \
@@ -65,4 +70,21 @@ private:
 
     /** Handle one HTTP connection (called from _listener_thread) */
     static void  _handle_connection(int client_fd);
+
+    // ── OTA session helpers ───────────────────────────────────────────────────
+    // Each wraps a protected send() / publish() call so it can be invoked from
+    // the static HTTP listener pthread context (same pattern as publish_reload).
+    static bool send_ota_start_request(uint8_t target_idx, const char *version);
+    static bool send_ota_request_driver();
+    static bool publish_ota_progress(uint8_t target_idx,
+                                     uint32_t bytes_written, uint32_t total_bytes);
+    static bool send_ota_complete_notify(bool success);
+
+    // ── Additional HTTP handlers ──────────────────────────────────────────────
+    /** Handle POST /updateFirmwareBin — streams multipart binary through OtaModule */
+    static void _handle_post_firmware(int fd, int content_length,
+                                      const char *content_type_hdr);
+
+    /** Handle GET /api/ota/status */
+    static void _handle_get_ota_status(int fd);
 };
