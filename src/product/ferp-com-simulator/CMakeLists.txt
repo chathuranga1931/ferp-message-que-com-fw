@@ -68,6 +68,8 @@ add_library(pal_mac STATIC
     ${PAL_MAC_DRV}/mac_driver.cpp
     # Sim bridge — HSYS module that serialises app messages to the UI
     ${PAL_MAC_DRV}/module_sim_bridge.cpp
+    # HTTP config web server — serves config UI + REST API on port 8080
+    ${PAL_MAC_DRV}/module_web_server.cpp
     # Sim message injector — receives SIM_MSG_INJECT and injects into HSYS bus
     ${PAL_MAC_DRV}/sim_msg_inject.cpp
     # Simulator implementations of DT board comms APIs

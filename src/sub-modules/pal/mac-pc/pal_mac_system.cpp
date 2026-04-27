@@ -12,6 +12,7 @@
 #include "pal_power.h"
 #include "driver/mac_driver.h"
 #include "driver/module_sim_bridge.h"
+#include "driver/module_web_server.h"
 #include "app.h"
 #include <cstdlib>
 
@@ -31,6 +32,13 @@ extern "C" void pal_system_init(void)
         "sim_brdg_t", 4096, 2, 0, { SIM_BRIDGE_MODULE_ID, 0 }
     };
     app_register_extra_module(ModuleSimBridge::instance(), &sim_bridge_task);
+
+    // 3. Register the HTTP config web server (port 8080).
+    //    Serves the configuration UI and REST API for browser + curl access.
+    static const hsys_task_desc_t web_server_task = {
+        "web_srv_t", 4096, 2, 0, { MODULE_WEB_SERVER_ID, 0 }
+    };
+    app_register_extra_module(ModuleWebServer::instance(), &web_server_task);
 }
 
 extern "C" void pal_power_reset(void)

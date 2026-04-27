@@ -17,7 +17,7 @@
 #endif
 
 #ifndef HSYS_MAX_MODULES
-#define HSYS_MAX_MODULES    24   ///< 16 shared + OtaModule + ModuleSimBridge (sim) + headroom
+#define HSYS_MAX_MODULES    24   ///< 17 shared + OtaModule + ModuleSimBridge + ModuleWebServer (sim) + headroom
 #endif
 
 #ifndef HSYS_MAX_MSG_IDS
@@ -49,6 +49,7 @@
 #define SIM_MAIN_LOG_EN     true    // main.cpp
 #define SIM_INIT_LOG_EN     true    // sim_init.cpp
 #define SIM_BRDG_LOG_EN     true    // module_sim_bridge.cpp
+#define WEB_SRV_LOG_EN      true    // module_web_server.cpp
 
 // Middleware
 #define HSYS_CFG_LOG_EN     true    // hsys_config.cpp

@@ -390,6 +390,7 @@ static esp_err_t upload_handler_wrapper(httpd_req_t* req) {
     return ESP_OK;
 }
 
+//TODO Memory Leak is available, FIX ASAP
 int32_t pal_http_server_register_uri(
     pal_http_server_handle_t server_handle,
     const char* uri,
