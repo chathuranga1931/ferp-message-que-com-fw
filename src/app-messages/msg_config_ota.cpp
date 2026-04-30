@@ -2,6 +2,7 @@
 
 #include "msg_config_ota.h"
 #include "pal_logger.h"
+#include <ArduinoJson.h>
 #include <string.h>
 
 #define __TAG__ "MSG_COTA"
@@ -34,4 +35,15 @@ MsgConfigOta::Payload MsgConfigOta::deserialize(const hsys_msg_t &msg)
         memcpy(&p, msg.payload, sizeof(Payload));
     }
     return p;
+}
+
+int32_t MsgConfigOta::mqtt_encode(const hsys_msg_t *msg, char *data_json, uint32_t buf_len)
+{
+    auto p = deserialize(*msg);
+    StaticJsonDocument<256> doc;
+    doc["server_url"]        = p.server_url;
+    doc["check_interval_s"] = p.check_interval_s;
+    // root_ca is intentionally omitted (sensitive, potentially large)
+    size_t w = serializeJson(doc, data_json, buf_len);
+    return (w > 0) ? 0 : -2;
 }

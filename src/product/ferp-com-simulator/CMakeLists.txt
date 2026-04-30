@@ -75,6 +75,8 @@ add_library(pal_mac STATIC
     # Simulator implementations of DT board comms APIs
     ${PAL_MAC_DRV}/mac_com_distap.cpp
     ${PAL_MAC_DRV}/mac_cmd_distap.cpp
+    # MQTT client (POSIX sockets, MQTT 3.1.1)
+    ${PAL_MAC}/pal_mac_mqtt.cpp
     # HTTP client (libcurl), crypto (CommonCrypto), and eFuse MAC — needed by cube_sphere_api
     ${PAL_MAC}/pal_mac_http_client.cpp
     ${PAL_MAC}/pal_mac_crypto.cpp
@@ -99,6 +101,7 @@ target_include_directories(pal_mac PUBLIC
     ${APP_MODS}/module_config   # app_config.h (needed by app.h transitively)
     ${APP_MODS}/module_fuel                        # module_fuel.h
     ${APP_MODS}/module_fuel/pumps                  # nozzle_event.h
+    ${APP_MODS}/module_mqtt                        # ModuleMqtt.h (needed by pal_mac_system.cpp)
     ${APP_MODS}/module_ota/targets  # ota_driver_esp32_main.h
     ${DISTAP_LIB}   # display_types.h, com_distap.h, cmd_distap.h
     ${ARDUINOJSON}      # ArduinoJson.h (root)
@@ -120,6 +123,7 @@ target_link_libraries(hsys_framework PRIVATE hsys_os pal_mac)
 
 # ── 4. app-messages ───────────────────────────────────────────────────────────
 add_library(app_messages STATIC
+    ${APP_MSGS}/app_msg_codec.cpp
     ${APP_MSGS}/msg_sensor_data.cpp
     ${APP_MSGS}/msg_tick_1000ms.cpp
     ${APP_MSGS}/msg_spiffs_ready.cpp
@@ -160,6 +164,7 @@ add_library(app_messages STATIC
     ${APP_MSGS}/msg_ota_complete_notify.cpp
     ${APP_MSGS}/msg_ota_event.cpp
     ${APP_MSGS}/msg_ota_progress.cpp
+    ${APP_MSGS}/msg_mqtt_status.cpp
 )
 target_include_directories(app_messages PUBLIC
     ${APP_MSGS}
@@ -225,6 +230,8 @@ add_library(app_modules STATIC
     ${APP_MODS}/module_timemgr/module_timemgr.cpp
     # DS1307 hardware driver
     ${DRIVERS}/DS1307/ds1307.cpp
+    # MQTT module
+    ${APP_MODS}/module_mqtt/ModuleMqtt.cpp
     # OTA module
     ${APP_MODS}/module_ota/OtaModule.cpp
     # Cloud-polling OTA source module
@@ -251,6 +258,7 @@ target_include_directories(app_modules PUBLIC
     ${APP_MODS}/module_buzzer
     ${APP_MODS}/module_cloud
     ${APP_MODS}/module_internet
+    ${APP_MODS}/module_mqtt
     ${APP_MODS}/module_wifi
     ${APP_MODS}/module_sd
     ${APP_MODS}/module_timemgr
@@ -291,6 +299,7 @@ target_include_directories(app_product PUBLIC
     ${APP_MODS}/module_buzzer
     ${APP_MODS}/module_cloud
     ${APP_MODS}/module_internet
+    ${APP_MODS}/module_mqtt
     ${APP_MODS}/module_wifi
     ${APP_MODS}/module_sd
     ${APP_MODS}/module_timemgr

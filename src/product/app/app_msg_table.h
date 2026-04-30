@@ -64,6 +64,7 @@
 #include "msg_ota_complete_notify.h"    // MsgOtaCompleteNotify   (0x0A08)
 #include "msg_ota_event.h"              // MsgOtaEvent            (0x0A09)
 #include "msg_ota_progress.h"           // MsgOtaProgress         (0x0A0A)
+#include "msg_mqtt_status.h"            // MsgMqttStatus          (0x0A0B)
 
 // ---------------------------------------------------------------------------
 // Descriptor table macro
@@ -111,6 +112,7 @@
         MsgOtaCompleteNotify::DESCRIPTOR,                                         \
         MsgOtaEvent::DESCRIPTOR,                                                  \
         MsgOtaProgress::DESCRIPTOR,                                               \
+        MsgMqttStatus::DESCRIPTOR,                                                \
     };                                                                            \
     static const uint16_t k_msg_table_count =                                     \
         (uint16_t)(sizeof(k_msg_table) / sizeof(k_msg_table[0]))

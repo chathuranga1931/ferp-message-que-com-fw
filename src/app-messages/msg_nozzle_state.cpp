@@ -2,6 +2,7 @@
 
 #include "msg_nozzle_state.h"
 #include "pal_logger.h"
+#include <ArduinoJson.h>
 #include <string.h>
 
 #define __TAG__ "MSG_NOZ "
@@ -32,15 +33,12 @@ MsgNozzleState::Payload MsgNozzleState::deserialize(const hsys_msg_t &msg)
     return p;
 }
 
-#ifdef FERP_SIMULATOR
-#include <ArduinoJson.h>
-hsys_msg_t *MsgNozzleState::from_json(const char *payload_json, hsys_module_id_t sender_id)
+int32_t MsgNozzleState::mqtt_encode(const hsys_msg_t *msg, char *data_json, uint32_t buf_len)
 {
-    JsonDocument doc;
-    deserializeJson(doc, payload_json);
-    Payload p{};
-    p.nozzle_idx = doc["nozzle_idx"].as<uint8_t>();
-    p.state      = (nozzle_state_t)doc["state"].as<uint8_t>();
-    return create(sender_id, p);
+    auto p = deserialize(*msg);
+    StaticJsonDocument<64> doc;
+    doc["nozzle_idx"] = p.nozzle_idx;
+    doc["state"]      = (int)p.state;
+    size_t w = serializeJson(doc, data_json, buf_len);
+    return (w > 0) ? 0 : -2;
 }
-#endif

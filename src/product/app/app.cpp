@@ -66,6 +66,24 @@
 #include "hsys_config.h"
 #include "hsys_type.h"
 
+// Codec registry
+#include "app_msg_codec.h"
+#include "msg_config_get_mqtt.h"
+#include "msg_config_get_wifi.h"
+#include "msg_config_get_cloud.h"
+#include "msg_config_get_ota.h"
+#include "msg_config_set.h"
+#include "msg_config_mqtt.h"
+#include "msg_config_wifi.h"
+#include "msg_fuel_pumped.h"
+#include "msg_nozzle_state.h"
+#include "msg_sensor_data.h"
+#include "msg_internet_status.h"
+#include "msg_ota_event.h"
+#include "msg_ota_progress.h"
+#include "msg_config_cloud.h"
+#include "msg_config_ota.h"
+
 // ============================================================================
 // Device configuration — single in-memory instance
 // ============================================================================
@@ -83,7 +101,7 @@ void app_config_load_defaults(app_config_t *cfg)
     cfg->ota_check_interval_s        = 30;   /* 30 s default — clamp enforced in ModuleWebClientOta */
     cfg->cloud_hb_enabled            = true;
     cfg->cloud_hb_interval_s         = 60;
-    strncpy(cfg->mqtt_host,          "mqtt.example.com",     sizeof(cfg->mqtt_host)           - 1);
+    strncpy(cfg->mqtt_host,          "broker.emqx.io",      sizeof(cfg->mqtt_host)           - 1);
     cfg->mqtt_port                   = 1883;
     strncpy(cfg->mqtt_user,          "",                     sizeof(cfg->mqtt_user)           - 1);
     strncpy(cfg->mqtt_password,      "",                     sizeof(cfg->mqtt_password)       - 1);
@@ -139,6 +157,31 @@ config_t *app_config_get_table(uint16_t *out_size)
     if (out_size) *out_size = (uint16_t)CONFIG_TABLE_SIZE;
     return k_config_table;
 }
+
+// ============================================================================
+// Codec table — messages exposed over JSON transport (MQTT, sim bridge, etc.)
+// Add a row here when a new message needs to be reachable over the wire.
+// The encode/decode implementations live in each message's own .cpp file.
+// ============================================================================
+
+static const app_msg_codec_entry_t k_codec_table[] = {
+    //  msg_name                msg_id                      dest_module               decode                              encode                            multicast_resp
+    { "MsgConfigGetMqtt",   MSG_ID_CONFIG_GET_MQTT,   MODULE_CONFIG_ID,         MsgConfigGetMqtt::mqtt_decode,   nullptr,                          false },
+    { "MsgConfigGetWifi",   MSG_ID_CONFIG_GET_WIFI,   MODULE_CONFIG_ID,         MsgConfigGetWifi::mqtt_decode,   nullptr,                          false },
+    { "MsgConfigGetCloud",  MSG_ID_CONFIG_GET_CLOUD,  MODULE_CONFIG_ID,         MsgConfigGetCloud::mqtt_decode,  nullptr,                          false },
+    { "MsgConfigGetOta",    MSG_ID_CONFIG_GET_OTA,    MODULE_CONFIG_ID,         MsgConfigGetOta::mqtt_decode,    nullptr,                          false },
+    { "MsgConfigSet",       MSG_ID_CONFIG_SET,        (hsys_module_id_t)0,      MsgConfigSet::mqtt_decode,       nullptr,                          true  }, // broadcast — apply on all matching devices
+    { "MsgConfigMqtt",      MSG_ID_CONFIG_MQTT,       (hsys_module_id_t)0,      nullptr,                         MsgConfigMqtt::mqtt_encode,       false },
+    { "MsgConfigWifi",      MSG_ID_CONFIG_WIFI,       (hsys_module_id_t)0,      nullptr,                         MsgConfigWifi::mqtt_encode,       false },
+    { "MsgConfigCloud",     MSG_ID_CONFIG_CLOUD,      (hsys_module_id_t)0,      nullptr,                         MsgConfigCloud::mqtt_encode,      false },
+    { "MsgConfigOta",       MSG_ID_CONFIG_OTA,        (hsys_module_id_t)0,      nullptr,                         MsgConfigOta::mqtt_encode,        false },
+    { "MsgFuelPumped",      MSG_ID_FUEL_PUMPED,       (hsys_module_id_t)0,      nullptr,                         MsgFuelPumped::mqtt_encode,       false },
+    { "MsgNozzleState",     MSG_ID_NOZZLE_STATE,      (hsys_module_id_t)0,      nullptr,                         MsgNozzleState::mqtt_encode,      false },
+    { "MsgSensorData",      MSG_ID_SENSOR_DATA,       (hsys_module_id_t)0,      nullptr,                         MsgSensorData::mqtt_encode,       false },
+    { "MsgInternetStatus",  MSG_ID_INTERNET_STATUS,   (hsys_module_id_t)0,      nullptr,                         MsgInternetStatus::mqtt_encode,   false },
+    { "MsgOtaEvent",        MSG_ID_OTA_EVENT,         (hsys_module_id_t)0,      nullptr,                         MsgOtaEvent::mqtt_encode,         false },
+    { "MsgOtaProgress",     MSG_ID_OTA_PROGRESS,      (hsys_module_id_t)0,      nullptr,                         MsgOtaProgress::mqtt_encode,      false },
+};
 
 // ============================================================================
 // Pool class table
@@ -263,6 +306,10 @@ extern "C" void app_init(void)
 
     // 0b. Platform-specific setup + extra module registration
     app_platform_pre_init();
+
+    // 0c. Register the JSON message codec table
+    app_msg_codec_register(k_codec_table,
+                           (uint8_t)(sizeof(k_codec_table) / sizeof(k_codec_table[0])));
 
     // Wire the concrete cloud backend before modules are initialised.
     // The cube_sphere driver singleton is defined in cube_sphere_cloud_driver.cpp.

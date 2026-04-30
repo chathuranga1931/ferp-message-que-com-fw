@@ -59,5 +59,6 @@
 // ------------------------------------------------------------------
 #define MODULE_SIM_BRIDGE_ID      ((hsys_module_id_t) 20)   ///< ModuleSimBridge — TCP UI bridge (sim only)
 #define MODULE_WEB_SERVER_ID      ((hsys_module_id_t) 21)   ///< ModuleWebServer — HTTP config server (sim only, port 8080)
+#define MODULE_MQTT_ID            ((hsys_module_id_t) 22)   ///< ModuleMqtt      — MQTT broker client
 
 #endif // APP_MODULE_IDS_H

@@ -13,6 +13,7 @@
 #include "driver/mac_driver.h"
 #include "driver/module_sim_bridge.h"
 #include "driver/module_web_server.h"
+#include "ModuleMqtt.h"
 #include "app.h"
 #include <cstdlib>
 
@@ -39,6 +40,13 @@ extern "C" void pal_system_init(void)
         "web_srv_t", 4096, 2, 0, { MODULE_WEB_SERVER_ID, 0 }
     };
     app_register_extra_module(ModuleWebServer::instance(), &web_server_task);
+
+    // 4. Register the MQTT broker client module.
+    //    Bridges the HSYS message bus to the configured MQTT broker.
+    static const hsys_task_desc_t mqtt_task = {
+        "mqtt_task", 8192, 4, 0, { MODULE_MQTT_ID, 0 }
+    };
+    app_register_extra_module(ModuleMqtt::instance(), &mqtt_task);
 }
 
 extern "C" void pal_power_reset(void)

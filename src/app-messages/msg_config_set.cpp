@@ -4,13 +4,13 @@
 
 #include "msg_config_set.h"
 #include "pal_logger.h"
+#include <ArduinoJson.h>
+#include <string.h>
 
 #define __TAG__ "MSG_CFGS"
 #ifndef MSG_CFGS_LOG_EN
 #define MSG_CFGS_LOG_EN true
 #endif
-
-#include <string.h>
 
 // ---------------------------------------------------------------------------
 // IHsysMsg::serialize
@@ -98,42 +98,28 @@ MsgConfigSet::Payload MsgConfigSet::deserialize(const hsys_msg_t &msg)
     return p;
 }
 
-#ifdef FERP_SIMULATOR
-#include <ArduinoJson.h>
-hsys_msg_t *MsgConfigSet::from_json(const char *payload_json, hsys_module_id_t sender_id)
+hsys_msg_t *MsgConfigSet::mqtt_decode(const char *data_json, hsys_module_id_t sender_id)
 {
-    JsonDocument doc;
-    deserializeJson(doc, payload_json);
+    StaticJsonDocument<256> doc;
+    if (deserializeJson(doc, data_json) != DeserializationError::Ok) return nullptr;
+
     Payload p{};
+    const char *key   = doc["key"]   | "";
+    const char *type  = doc["type"]  | "string";
+    const char *value = doc["value"] | "";
 
-    // key
-    const char *key = doc["key"].as<const char *>();
-    if (key) {
-        strncpy(p.key, key, KEY_MAX_LEN - 1);
-        p.key[KEY_MAX_LEN - 1] = '\0';
-    }
+    strncpy(p.key, key, KEY_MAX_LEN - 1);
 
-    // type: 0=UINT32, 1=STRING, 2=BOOL  (matches hsys_type_t enum)
-    p.type = static_cast<hsys_type_t>(doc["type"].as<uint8_t>());
-
-    // value — always arrives as a string from the UI
-    const char *val = doc["value"].as<const char *>();
-    if (val) {
-        switch (p.type) {
-            case HSYS_TYPE_UINT32:
-                p.value.as_uint32 = static_cast<uint32_t>(strtoul(val, nullptr, 0));
-                break;
-            case HSYS_TYPE_BOOL:
-                p.value.as_bool = (strcmp(val, "true") == 0 || strcmp(val, "1") == 0);
-                break;
-            case HSYS_TYPE_STRING:
-            default:
-                strncpy(p.value.as_str, val, STR_MAX_LEN - 1);
-                p.value.as_str[STR_MAX_LEN - 1] = '\0';
-                break;
-        }
+    if (strncmp(type, "bool", 4) == 0) {
+        p.type          = HSYS_TYPE_BOOL;
+        p.value.as_bool = (strncmp(value, "true", 4) == 0) || (strncmp(value, "1", 1) == 0);
+    } else if (strncmp(type, "uint32", 6) == 0) {
+        p.type             = HSYS_TYPE_UINT32;
+        p.value.as_uint32  = (uint32_t)strtoul(value, nullptr, 10);
+    } else {
+        p.type = HSYS_TYPE_STRING;
+        strncpy(p.value.as_str, value, STR_MAX_LEN - 1);
     }
 
     return create(sender_id, p);
 }
-#endif

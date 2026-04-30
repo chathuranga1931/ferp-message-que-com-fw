@@ -2,6 +2,7 @@
 
 #include "msg_fuel_pumped.h"
 #include "pal_logger.h"
+#include <ArduinoJson.h>
 #include <string.h>
 
 #define __TAG__ "MSG_FUEL"
@@ -32,17 +33,14 @@ MsgFuelPumped::Payload MsgFuelPumped::deserialize(const hsys_msg_t &msg)
     return p;
 }
 
-#ifdef FERP_SIMULATOR
-#include <ArduinoJson.h>
-hsys_msg_t *MsgFuelPumped::from_json(const char *payload_json, hsys_module_id_t sender_id)
+int32_t MsgFuelPumped::mqtt_encode(const hsys_msg_t *msg, char *data_json, uint32_t buf_len)
 {
-    JsonDocument doc;
-    deserializeJson(doc, payload_json);
-    Payload p{};
-    p.nozzle_idx      = doc["nozzle_idx"].as<uint8_t>();
-    p.vol_lx1000      = doc["vol_lx1000"].as<uint32_t>();
-    p.unit_pricex100  = doc["unit_pricex100"].as<uint32_t>();
-    p.total_pricex100 = doc["total_pricex100"].as<uint32_t>();
-    return create(sender_id, p);
+    auto p = deserialize(*msg);
+    StaticJsonDocument<128> doc;
+    doc["nozzle_idx"]      = p.nozzle_idx;
+    doc["vol_lx1000"]      = p.vol_lx1000;
+    doc["unit_pricex100"]  = p.unit_pricex100;
+    doc["total_pricex100"] = p.total_pricex100;
+    size_t w = serializeJson(doc, data_json, buf_len);
+    return (w > 0) ? 0 : -2;
 }
-#endif

@@ -46,6 +46,7 @@
 #include "msg_wifi_event.h"
 #include "msg_internet_status.h"
 #include "msg_cloud_status.h"
+#include "msg_mqtt_status.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -89,6 +90,7 @@ void ModuleSimBridge::init()
     subscribe(MSG_ID_WIFI_EVENT);
     subscribe(MSG_ID_INTERNET_STATUS);
     subscribe(MSG_ID_CLOUD_STATUS);
+    subscribe(MSG_ID_MQTT_STATUS);
 
     mac_driver_set_connect_cb(&ModuleSimBridge::on_ui_connected);
 
@@ -356,6 +358,15 @@ void ModuleSimBridge::on_msg_received(const hsys_msg_t &msg)
                      _cs_str(p.event), (unsigned)p.nozzle_idx);
             _send_json("MSG_CLOUD_STATUS", data);
             strncpy(_last_cloud_json, data, sizeof(_last_cloud_json) - 1);
+            break;
+        }
+
+        case MSG_ID_MQTT_STATUS: {
+            auto p = MsgMqttStatus::deserialize(msg);
+            snprintf(data, sizeof(data),
+                     "{\"event\":\"%s\"}",
+                     p.connected ? "CONNECTED" : "DISCONNECTED");
+            _send_json("MSG_MQTT_EVENT", data);
             break;
         }
 

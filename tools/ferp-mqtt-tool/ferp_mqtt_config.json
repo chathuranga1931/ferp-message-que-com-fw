@@ -1,0 +1,17 @@
+{
+  "brokers": [
+    "broker.emqx.io",
+    "localhost"
+  ],
+  "ports": [
+    1883,
+    8883
+  ],
+  "devices": [
+    {
+      "id": "00000000-0000-0000-0000-000000000000",
+      "dev_type": "ferp-com",
+      "group": "default"
+    }
+  ]
+}

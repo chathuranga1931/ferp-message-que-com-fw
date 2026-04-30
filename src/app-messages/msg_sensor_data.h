@@ -98,12 +98,9 @@ public:
      * too small — the caller should check msg.payload_size before use if
      * defensive validation is needed.
      */
-    static Payload deserialize(const hsys_msg_t &msg);
-
-#ifdef FERP_SIMULATOR
-    /** Simulator only — parse a flat JSON payload and return a ready-to-publish message. */
-    static hsys_msg_t *from_json(const char *payload_json, hsys_module_id_t sender_id);
-#endif
+    static Payload  deserialize(const hsys_msg_t &msg);
+    static hsys_msg_t *mqtt_decode(const char *data_json, hsys_module_id_t sender_id);
+    static int32_t      mqtt_encode(const hsys_msg_t *msg, char *data_json, uint32_t buf_len);
 
 private:
     Payload m_payload;

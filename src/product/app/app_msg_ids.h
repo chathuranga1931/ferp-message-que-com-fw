@@ -107,10 +107,12 @@ typedef enum : uint16_t
     MSG_ID_OTA_EVENT            = 0x0A09,   ///< OtaModule -> all:     session lifecycle events
     MSG_ID_OTA_PROGRESS         = 0x0A0A,   ///< Source -> all:        write progress update
 
+    MSG_ID_MQTT_STATUS          = 0x0A0B,   ///< ModuleMqtt -> all: MQTT broker connection state change
+
     // ------------------------------------------------------------------
     // Sentinel — keep one above the highest assigned ID
     // ------------------------------------------------------------------
-    MSG_ID_MAX              = 0x0A0B,
+    MSG_ID_MAX              = 0x0A0C,
 
 } app_msg_id_e;
 

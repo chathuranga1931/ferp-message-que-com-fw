@@ -4,6 +4,7 @@
 
 #include "msg_sensor_data.h"
 #include "pal_logger.h"
+#include <ArduinoJson.h>
 
 #define __TAG__ "MSG_SENS"
 #ifndef MSG_SENS_LOG_EN
@@ -53,15 +54,22 @@ MsgSensorData::Payload MsgSensorData::deserialize(const hsys_msg_t &msg)
     return p;
 }
 
-#ifdef FERP_SIMULATOR
-#include <ArduinoJson.h>
-hsys_msg_t *MsgSensorData::from_json(const char *payload_json, hsys_module_id_t sender_id)
+int32_t MsgSensorData::mqtt_encode(const hsys_msg_t *msg, char *data_json, uint32_t buf_len)
 {
-    JsonDocument doc;
-    deserializeJson(doc, payload_json);
+    auto p = deserialize(*msg);
+    StaticJsonDocument<64> doc;
+    doc["counter"]     = p.counter;
+    doc["temperature"] = p.temperature;
+    size_t w = serializeJson(doc, data_json, buf_len);
+    return (w > 0) ? 0 : -2;
+}
+
+hsys_msg_t *MsgSensorData::mqtt_decode(const char *data_json, hsys_module_id_t sender_id)
+{
+    StaticJsonDocument<64> doc;
+    if (deserializeJson(doc, data_json) != DeserializationError::Ok) return nullptr;
     Payload p{};
-    p.counter     = doc["counter"].as<uint32_t>();
-    p.temperature = doc["temperature"].as<float>();
+    p.counter     = doc["counter"]     | (uint32_t)0;
+    p.temperature = doc["temperature"] | 0.0f;
     return create(sender_id, p);
 }
-#endif

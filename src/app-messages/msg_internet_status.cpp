@@ -2,6 +2,7 @@
 
 #include "msg_internet_status.h"
 #include "pal_logger.h"
+#include <ArduinoJson.h>
 #include <string.h>
 
 #define __TAG__ "MSG_INET"
@@ -32,14 +33,20 @@ MsgInternetStatus::Payload MsgInternetStatus::deserialize(const hsys_msg_t &msg)
     return p;
 }
 
-#ifdef FERP_SIMULATOR
-#include <ArduinoJson.h>
-hsys_msg_t *MsgInternetStatus::from_json(const char *payload_json, hsys_module_id_t sender_id)
+int32_t MsgInternetStatus::mqtt_encode(const hsys_msg_t *msg, char *data_json, uint32_t buf_len)
 {
-    JsonDocument doc;
-    deserializeJson(doc, payload_json);
+    auto p = deserialize(*msg);
+    StaticJsonDocument<32> doc;
+    doc["connected"] = p.connected;
+    size_t w = serializeJson(doc, data_json, buf_len);
+    return (w > 0) ? 0 : -2;
+}
+
+hsys_msg_t *MsgInternetStatus::mqtt_decode(const char *data_json, hsys_module_id_t sender_id)
+{
+    StaticJsonDocument<32> doc;
+    if (deserializeJson(doc, data_json) != DeserializationError::Ok) return nullptr;
     Payload p{};
     p.connected = doc["connected"] | false;
-    return MsgInternetStatus::create(sender_id, p);
+    return create(sender_id, p);
 }
-#endif

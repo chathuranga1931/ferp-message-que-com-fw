@@ -48,6 +48,7 @@ idf_component_register(
         "${D_SUB}/utils/crc32.cpp"
 
         # ── App messages ──────────────────────────────────────────────────
+        "${D_MSGS}/app_msg_codec.cpp"
         "${D_MSGS}/msg_sensor_data.cpp"
         "${D_MSGS}/msg_tick_1000ms.cpp"
         "${D_MSGS}/msg_spiffs_ready.cpp"
@@ -87,6 +88,7 @@ idf_component_register(
         "${D_MSGS}/msg_ota_complete_notify.cpp"
         "${D_MSGS}/msg_ota_event.cpp"
         "${D_MSGS}/msg_ota_progress.cpp"
+        "${D_MSGS}/msg_mqtt_status.cpp"
 
         # ── App peripherals ───────────────────────────────────────────────
         "${D_PHER}/app_spiffs.cpp"

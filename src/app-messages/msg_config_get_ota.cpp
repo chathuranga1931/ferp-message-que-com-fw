@@ -36,14 +36,9 @@ MsgConfigGetOta::Payload MsgConfigGetOta::deserialize(const hsys_msg_t &msg)
     return p;
 }
 
-#ifdef FERP_SIMULATOR
-#include <ArduinoJson.h>
-hsys_msg_t *MsgConfigGetOta::from_json(const char *payload_json, hsys_module_id_t sender_id)
+hsys_msg_t *MsgConfigGetOta::mqtt_decode(const char * /*data_json*/, hsys_module_id_t sender_id)
 {
-    JsonDocument doc;
-    deserializeJson(doc, payload_json);
     Payload p{};
-    p.source_module_id = doc["source_module_id"].as<uint16_t>();
+    p.source_module_id = sender_id;
     return create(sender_id, p);
 }
-#endif

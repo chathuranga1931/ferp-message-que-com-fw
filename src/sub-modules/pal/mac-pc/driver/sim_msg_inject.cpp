@@ -126,7 +126,7 @@ void sim_msg_inject_handle(const char *cmd_json)
 
         // ── Sensor ───────────────────────────────────────────────────────────
         case MSG_ID_SENSOR_DATA:
-            _publish(MsgSensorData::from_json(payload_buf, src), msg_id);
+            _publish(MsgSensorData::mqtt_decode(payload_buf, src), msg_id);
             break;
 
         // ── System ───────────────────────────────────────────────────────────
@@ -148,19 +148,19 @@ void sim_msg_inject_handle(const char *cmd_json)
             break;
 
         case MSG_ID_CONFIG_SET:
-            _publish(MsgConfigSet::from_json(payload_buf, src), msg_id);
+            _publish(MsgConfigSet::mqtt_decode(payload_buf, src), msg_id);
             break;
 
         case MSG_ID_CONFIG_GET_WIFI:
-            _publish(MsgConfigGetWifi::from_json(payload_buf, src), msg_id);
+            _publish(MsgConfigGetWifi::mqtt_decode(payload_buf, src), msg_id);
             break;
 
         case MSG_ID_CONFIG_GET_CLOUD:
-            _publish(MsgConfigGetCloud::from_json(payload_buf, src), msg_id);
+            _publish(MsgConfigGetCloud::mqtt_decode(payload_buf, src), msg_id);
             break;
 
         case MSG_ID_CONFIG_GET_MQTT:
-            _publish(MsgConfigGetMqtt::from_json(payload_buf, src), msg_id);
+            _publish(MsgConfigGetMqtt::mqtt_decode(payload_buf, src), msg_id);
             break;
 
         case MSG_ID_CONFIG_GET_DT:
@@ -195,7 +195,7 @@ void sim_msg_inject_handle(const char *cmd_json)
             break;
 
         case MSG_ID_INTERNET_STATUS:
-            _publish(MsgInternetStatus::from_json(payload_buf, src), msg_id);
+            _publish(MsgInternetStatus::mqtt_decode(payload_buf, src), msg_id);
             break;
 
         case MSG_ID_CLOUD_STATUS:
