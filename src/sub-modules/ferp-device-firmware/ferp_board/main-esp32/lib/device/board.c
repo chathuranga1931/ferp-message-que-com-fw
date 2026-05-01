@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <driver/gpio.h>
 #include <driver/uart.h>
-#include "board_inf.h"
+#include "board.h"
 
 
 inline bool gpio_get_input1() { return gpio_get_level(INPUT1); }
@@ -43,6 +43,10 @@ void gpio_reset_io0_distap()
 
 esp_err_t board_init()
 {
+    printf("======================\r\n");
+    printf("Starting board init...\r\n");
+    printf("======================\r\n");
+    
     esp_err_t ret = ESP_OK;
     //Set Inputs
     gpio_reset_pin(INPUT1);

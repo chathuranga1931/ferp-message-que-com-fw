@@ -15,14 +15,12 @@
 #include "esp_system.h"
 #include "esp_netif.h"
 #include "esp_event.h"
+#include "esp_log.h"
 #include "board.h"   // BSP board_init() — GPIO + UART2 setup (selected by FERP_COM_2602)
 
 extern "C" void pal_system_init(void)
 {
-    /* Initialise board hardware (UART2 driver, GPIOs) before any task starts.
-     * distap_send_cmd() / serial_receive_task both use UART_NUM_2 and will
-     * get "uart driver error" if the driver is not installed first. */
-    board_init();
+    esp_log_level_set("wifi", ESP_LOG_ERROR);
 
     /* Initialise the TCP/IP stack once, before any task that may open a
      * socket (httpd, MQTT, HTTP client).  The WiFi PAL guards against a

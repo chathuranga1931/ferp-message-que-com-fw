@@ -30,7 +30,7 @@
 #include <Arduino.h>
 #endif
 #include "cmd_distap.h"
-#include "board_inf.h"
+#include "board.h"
 #include "com_distap.h"
 
 #if defined(DISTAP_ESP07)
@@ -59,15 +59,21 @@ void start_serial_flash(bool skip_version_check)
 {
     example_binaries_t bin = {
         .boot = {
+            .data = nullptr,
             .file_name = FIRMWARE_BASE_PATH BOOTLOADER_NAME,
+            .size = 0,
             .addr = BOOTLOADER_ADDRESS,
         },
         .part = {
+            .data = nullptr,
             .file_name = FIRMWARE_BASE_PATH PARTITION_TABLE,
+            .size = 0,
             .addr = PARTITION_ADDRESS,
         },
         .app = {
+            .data = nullptr,
             .file_name = FIRMWARE_BASE_PATH APP_NAME,
+            .size = 0,
             .addr = APP_ADDRESS,
         }};
     esp_app_desc_t app_desc = {};

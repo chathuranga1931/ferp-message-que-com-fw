@@ -29,6 +29,7 @@
 
 #include "app.h"
 #include "pal_system.h"
+#include "pal_logger.h"
 
 /* HSYS architecture */
 #include "hsys_pool.h"
@@ -298,11 +299,20 @@ extern "C" void app_config_init(void)
 // app_init
 // ============================================================================
 
+#include "board.h"
 extern "C" void app_init(void)
 {
+    logger.init();
+
+    // this is for displaytap library only. 
+    // but this sets other GPIOs, as inputs output
+    // this firmware will overide these settings as per needed. 
+    board_init();
+
     // 0a. PAL system init — platform-level boot (TCP server on simulator, no-op on ESP-IDF)
     //     Must run before anything else so the UI port is open from the very first log line.
     pal_system_init();
+
 
     // 0b. Platform-specific setup + extra module registration
     app_platform_pre_init();

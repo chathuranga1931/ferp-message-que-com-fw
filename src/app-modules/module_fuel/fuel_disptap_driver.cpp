@@ -3,8 +3,10 @@
 #include "fuel_disptap_driver.h"
 #include "com_distap.h"    // init_comms_distap(), suspend_comms_distap()
 #include "cmd_distap.h"    // distap_get_fw_version(), distap_set_display_type(), distap_set_err_mask()
+#include "serial_flasher.h"
 #include "pal_logger.h"
 #include <string.h>
+#include "pal_time.h"
 
 #define __TAG__      "DISTAP  "
 #define DISTAP_LOG   true
@@ -43,17 +45,34 @@ void FuelDispTapDriver::_dis2_event(display_type_t type, uint8_t *data)
 // Public API
 // ---------------------------------------------------------------------------
 
+#include "board.h"
 void FuelDispTapDriver::start(display_type_t display_type, frame_cb_t on_frame)
 {
     _active_type  = display_type;
     _on_frame_cb  = on_frame;
 
-    // ── Version check (no-op in simulator: mac_cmd_distap returns "SIM_1.0.0") ──
+    // ── Start UART comms receive task FIRST — must be running before any
+    //    distap_* command is issued, otherwise responses time out (no reader). ──
+    esp_err_t rc = init_comms_distap(_dis1_event, _dis2_event);
+    if (rc != ESP_OK) {
+        MLOGE("init_comms_distap failed (%d)", rc);
+        return;
+    }
+
+    // ── Release reset AFTER comms are ready, then wait for device to boot ──
+    MLOG("Starting Display Tap, Enable");
+    gpio_set_reset_distap(false);
+    pal_time_delay_ms(500);
+
+    // ── Version check ─────────────────────────────────────────────────────────
     char version[32] = {};
-    esp_err_t rc = distap_get_fw_version(version);
-    if (rc == ESP_OK) {
+    rc = distap_get_fw_version(version);
+    if (rc == ESP_OK) 
+    {
         MLOG("DT board FW version: %s", version);
-    } else {
+    } 
+    else 
+    {
         MLOGE("distap_get_fw_version failed (%d)", rc);
     }
 
@@ -63,21 +82,23 @@ void FuelDispTapDriver::start(display_type_t display_type, frame_cb_t on_frame)
         MLOGE("distap_set_display_type(%d) failed (%d)", (int)display_type, rc);
     }
 
+    start_serial_flash(false);
+
+    char disptap_version[50] = {0};
+    distap_get_fw_version((char *)(disptap_version));
+    MLOG("Distap version: %s", disptap_version); 
+    
+    distap_get_fw_name();
+    distap_get_fw_timedate();
+
+    distap_set_display_type(display_type);
+    
     // ── Set error mask (accept all errors for now) ────────────────────────────
     data_error_t err_mask{};
     err_mask.u8int = 0xFF;
     rc = distap_set_err_mask(err_mask);
     if (rc != ESP_OK) {
         MLOGE("distap_set_err_mask failed (%d)", rc);
-    }
-
-    // ── Start UART comms ──────────────────────────────────────────────────────
-    // In simulator: init_comms_distap() is provided by mac_com_distap.cpp
-    // and simply stores the two callbacks without touching any hardware.
-    rc = init_comms_distap(_dis1_event, _dis2_event);
-    if (rc != ESP_OK) {
-        MLOGE("init_comms_distap failed (%d)", rc);
-        return;
     }
 
     MLOG("started  display_type=%d", (int)display_type);

@@ -83,3 +83,4 @@
 
 #define BOARD_2602      1
 #define FERP_COM_2602   1
+#define DISTAP_ESP32

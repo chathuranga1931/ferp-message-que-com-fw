@@ -7,7 +7,6 @@ set(D_MODS "${CMAKE_CURRENT_SOURCE_DIR}/../../../../app-modules")
 set(D_MSGS "${CMAKE_CURRENT_SOURCE_DIR}/../../../../app-messages")
 set(D_PHER "${CMAKE_CURRENT_SOURCE_DIR}/../../../../app-pheripherals")
 set(D_SUB  "${CMAKE_CURRENT_SOURCE_DIR}/../../../../sub-modules")
-set(D_BSP  "${D_SUB}/bsp")
 
 idf_component_register(
     SRCS
@@ -137,13 +136,19 @@ idf_component_register(
         "${D_SUB}/pal/esp-idf/pal_esp_idf_crypto.cpp"
         "${D_SUB}/pal/esp-idf/pal_esp_idf_fw_update.cpp"
 
-        # ── BSP (board support package) ───────────────────────────────────
-        "${D_BSP}/board.cpp"
-        "${D_BSP}/com-boards/2602/board_2602.cpp"
-
         # ── DISTAP device library (protocol only, from ferp_board) ───────
+        "${D_SUB}/ferp-device-firmware/ferp_board/main-esp32/lib/device/board.c"
         "${D_SUB}/ferp-device-firmware/ferp_board/main-esp32/lib/device/com_distap.c"
         "${D_SUB}/ferp-device-firmware/ferp_board/main-esp32/lib/device/cmd_distap.c"
+
+        "${D_SUB}/ferp-device-firmware/ferp_board/main-esp32/lib/serial_flasher/serial_flasher.cpp"
+        "${D_SUB}/ferp-device-firmware/ferp_board/main-esp32/lib/serial_flasher/esp_loader.c"
+        "${D_SUB}/ferp-device-firmware/ferp_board/main-esp32/lib/serial_flasher/esp32_port.c"
+        "${D_SUB}/ferp-device-firmware/ferp_board/main-esp32/lib/serial_flasher/esp_targets.c"
+        "${D_SUB}/ferp-device-firmware/ferp_board/main-esp32/lib/serial_flasher/md5_hash.c"
+        "${D_SUB}/ferp-device-firmware/ferp_board/main-esp32/lib/serial_flasher/protocol_common.c"
+        "${D_SUB}/ferp-device-firmware/ferp_board/main-esp32/lib/serial_flasher/protocol_uart.c"
+        "${D_SUB}/ferp-device-firmware/ferp_board/main-esp32/lib/serial_flasher/slip.c"
 
         # ── External drivers ──────────────────────────────────────────────
         "${D_SUB}/drivers/DS1307/ds1307.cpp"
@@ -199,11 +204,9 @@ idf_component_register(
         # PAL esp-idf impls + root for pal/pal_uart.h style includes
         "${D_SUB}/pal/esp-idf"
         "${D_SUB}"
-        # BSP (board support package)
-        "${D_BSP}"
-        "${D_BSP}/com-boards/2602"
         # DISTAP device library (pin defs in board_inf.h also used by com_distap)
         "${D_SUB}/ferp-device-firmware/ferp_board/main-esp32/lib/device"
+        "${D_SUB}/ferp-device-firmware/ferp_board/main-esp32/lib/serial_flasher"
         # DS1307 driver
         "${D_SUB}/drivers/DS1307"
         # CubeSphere cloud driver

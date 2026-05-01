@@ -3,7 +3,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include <driver/uart.h>
-#include "board_inf.h"
+#include "board.h"
 #include "com_distap.h"
 
 #define UART0_BUFF 256 + 1
