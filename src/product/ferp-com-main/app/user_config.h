@@ -49,7 +49,7 @@
 #define SIM_MAIN_LOG_EN     true    // main.cpp
 #define SIM_INIT_LOG_EN     true    // sim_init.cpp
 #define SIM_BRDG_LOG_EN     true    // module_sim_bridge.cpp
-#define WEB_SRV_LOG_EN      true    // module_web_server.cpp
+#define WEB_SRV_LOG_EN      true    // ModuleWebServer.cpp
 
 // Middleware
 #define HSYS_CFG_LOG_EN     true    // hsys_config.cpp

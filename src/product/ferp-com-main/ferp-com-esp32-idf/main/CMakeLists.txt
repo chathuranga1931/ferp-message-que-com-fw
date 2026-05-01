@@ -40,6 +40,8 @@ idf_component_register(
 
         # ── HTTP configuration / OTA web server (common, PAL-backed) ──────
         "${D_MODS}/module_web_server/ModuleWebServer.cpp"
+        # ── MQTT broker client (common, PAL-backed) ───────────────────────
+        "${D_MODS}/module_mqtt/ModuleMqtt.cpp"
 
         # ── Cloud-polling OTA source module ───────────────────────────────
         "${D_MODS}/module_web_client_ota/ModuleWebClientOta.cpp"
@@ -169,6 +171,7 @@ idf_component_register(
         "${D_MODS}/module_ota"
         "${D_MODS}/module_ota/targets"
         "${D_MODS}/module_web_server"
+        "${D_MODS}/module_mqtt"
         "${D_MODS}/module_web_client_ota"
         # App messages and peripherals
         "${D_MSGS}"
