@@ -9,10 +9,10 @@ cmake_minimum_required(VERSION 3.16)
 # All application sources are compiled as part of the "main" component.
 # To add/remove sources, edit main/CMakeLists.txt.
 set(EXTRA_COMPONENT_DIRS
-    "../../sub-modules/hsys-os"
-    "../../sub-modules/hsys-framework"
-    "../../sub-modules/pal"
-    "../../../src/managed_components"
+    "../../../sub-modules/hsys-os"
+    "../../../sub-modules/hsys-framework"
+    "../../../sub-modules/pal"
+    "../../../managed_components"
 )
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)

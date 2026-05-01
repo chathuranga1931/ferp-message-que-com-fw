@@ -5,12 +5,12 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
-set(ROOT       "${CMAKE_CURRENT_SOURCE_DIR}/../..")   # src/
+set(ROOT       "${CMAKE_CURRENT_SOURCE_DIR}/../../..")   # src/
 
 set(APP_MSGS   "${ROOT}/app-messages")
 set(APP_MODS   "${ROOT}/app-modules")
 set(APP_PHR    "${ROOT}/app-pheripherals")
-set(APP        "${ROOT}/product/app")
+set(APP        "${ROOT}/product/ferp-com-main/app")
 
 set(ARDUINOJSON "${ROOT}/managed_components/bblanchon__arduinojson")
 
@@ -202,8 +202,6 @@ target_link_libraries(app_pheripherals PRIVATE pal_mac hsys_os)
 # ── 6. app-modules ────────────────────────────────────────────────────────────
 add_library(app_modules STATIC
     ${APP_MODS}/ticker/ticker.cpp
-    ${APP_MODS}/module_a/module_a.cpp
-    ${APP_MODS}/module_b/module_b.cpp
     ${APP_MODS}/module_sysmon/module_sysmon.cpp
     ${APP_MODS}/module_spiffs/module_spiffs.cpp
     ${APP_MODS}/module_config/module_config.cpp
@@ -243,8 +241,6 @@ add_library(app_modules STATIC
 target_include_directories(app_modules PUBLIC
     ${APP_MODS}
     ${APP_MODS}/ticker
-    ${APP_MODS}/module_a
-    ${APP_MODS}/module_b
     ${APP_MODS}/module_sysmon
     ${APP_MODS}/module_spiffs
     ${APP_MODS}/module_config
@@ -286,8 +282,6 @@ target_include_directories(app_product PUBLIC
     ${APP}
     ${APP_MODS}
     ${APP_MODS}/ticker
-    ${APP_MODS}/module_a
-    ${APP_MODS}/module_b
     ${APP_MODS}/module_sysmon
     ${APP_MODS}/module_spiffs
     ${APP_MODS}/module_config

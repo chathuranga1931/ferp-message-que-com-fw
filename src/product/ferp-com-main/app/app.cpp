@@ -38,8 +38,6 @@
 
 /* Application modules */
 #include "ticker.h"
-#include "module_a.h"
-#include "module_b.h"
 #include "module_sysmon.h"
 #include "module_spiffs.h"
 #include "module_config.h"
@@ -204,8 +202,6 @@ static const hsys_pool_class_cfg_t k_pool_table[] = {
 
 static HsysModule *k_module_table[] = {
     ticker_instance(),
-    // module_a_instance(),   // demo module — disabled (Sprint 12 cleanup)
-    // module_b_instance(),   // demo module — disabled (Sprint 12 cleanup)
     module_sysmon_instance(),
     ModuleSpiffs::instance(),
     ModuleConfig::instance(),

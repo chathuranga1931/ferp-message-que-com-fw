@@ -3,10 +3,10 @@
 # Path roots relative to this file (src/product/ferp-com-esp32-idf/main/).
 # =============================================================================
 set(D_APP  "${CMAKE_CURRENT_SOURCE_DIR}/../../app")
-set(D_MODS "${CMAKE_CURRENT_SOURCE_DIR}/../../../app-modules")
-set(D_MSGS "${CMAKE_CURRENT_SOURCE_DIR}/../../../app-messages")
-set(D_PHER "${CMAKE_CURRENT_SOURCE_DIR}/../../../app-pheripherals")
-set(D_SUB  "${CMAKE_CURRENT_SOURCE_DIR}/../../../sub-modules")
+set(D_MODS "${CMAKE_CURRENT_SOURCE_DIR}/../../../../app-modules")
+set(D_MSGS "${CMAKE_CURRENT_SOURCE_DIR}/../../../../app-messages")
+set(D_PHER "${CMAKE_CURRENT_SOURCE_DIR}/../../../../app-pheripherals")
+set(D_SUB  "${CMAKE_CURRENT_SOURCE_DIR}/../../../../sub-modules")
 
 idf_component_register(
     SRCS
@@ -18,8 +18,6 @@ idf_component_register(
 
         # ── App modules ───────────────────────────────────────────────────
         "${D_MODS}/ticker/ticker.cpp"
-        "${D_MODS}/module_a/module_a.cpp"
-        "${D_MODS}/module_b/module_b.cpp"
         "${D_MODS}/module_sysmon/module_sysmon.cpp"
         "${D_MODS}/module_spiffs/module_spiffs.cpp"
         "${D_MODS}/module_config/module_config.cpp"
@@ -140,8 +138,6 @@ idf_component_register(
         # App modules
         "${D_MODS}"
         "${D_MODS}/ticker"
-        "${D_MODS}/module_a"
-        "${D_MODS}/module_b"
         "${D_MODS}/module_sysmon"
         "${D_MODS}/module_spiffs"
         "${D_MODS}/module_config"

@@ -13,7 +13,7 @@
 //
 // ID assignments:
 //   0        — reserved (HSYS_MODULE_ID_INVALID)
-//   1  – 2   — demo / test modules (compiled out in production)
+//   1  – 2   — reserved (formerly demo/test modules; removed)
 //   3  – 16  — shared application modules
 //   17 – 19  — reserved for future shared modules
 //   20+      — simulator-only / platform-specific modules
@@ -22,12 +22,6 @@
 #define APP_MODULE_IDS_H
 
 #include "hsys_types.h"   // hsys_module_id_t
-
-// ------------------------------------------------------------------
-// Demo / test  (1 – 2)  — not used in production builds
-// ------------------------------------------------------------------
-#define MODULE_A_ID               ((hsys_module_id_t)  1)   ///< ModuleA  — demo
-#define MODULE_B_ID               ((hsys_module_id_t)  2)   ///< ModuleB  — demo
 
 // ------------------------------------------------------------------
 // Shared application modules  (3 – 16)
