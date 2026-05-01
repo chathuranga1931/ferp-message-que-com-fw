@@ -49,6 +49,11 @@
 #define MODULE_WEB_CLIENT_OTA_ID  ((hsys_module_id_t) 19)   ///< ModuleWebClientOta  — cloud-polling OTA source
 
 // ------------------------------------------------------------------
+// Shared application modules  (23+)
+// ------------------------------------------------------------------
+#define MODULE_MSG_TRANSLATOR_ID  ((hsys_module_id_t) 23)   ///< ModuleMsgTranslator — message translation and routing
+
+// ------------------------------------------------------------------
 // Simulator-only / platform-specific  (20+)
 // ------------------------------------------------------------------
 #define MODULE_SIM_BRIDGE_ID      ((hsys_module_id_t) 20)   ///< ModuleSimBridge — TCP UI bridge (sim only)

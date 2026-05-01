@@ -59,6 +59,9 @@
 #include "app_ota_config.h"
 #include "app_web_ota_config.h"  /* k_web_ota_targets[] + ModuleWebClientOta singleton */
 
+#include "ModuleMsgTranslator.h"
+#include "msg_translators.h"
+
 #include "app_msg_table.h"
 #include "app_config.h"
 #include "hsys_config.h"
@@ -162,6 +165,27 @@ config_t *app_config_get_table(uint16_t *out_size)
 // The encode/decode implementations live in each message's own .cpp file.
 // ============================================================================
 
+// ============================================================================
+// Message translator table
+// Add one entry per (incoming message, outgoing message) translation rule.
+// Translator functions are declared in msg_translators.h and implemented in
+// msg_translators.cpp.  The table is loaded into ModuleMsgTranslator via
+// set_table() inside app_init().
+// ============================================================================
+
+static const msg_translator_entry_t k_translator_table[] = {
+    // { in_msg_id,  in_src (0=any),  out_msg_id,  out_dest (0=bcast),  translator_fn,  delayed,  delay_ms }
+    // Example (uncomment and adapt once translator functions are implemented):
+    // { MSG_ID_FUEL_PUMPED, 0, MSG_ID_CLOUD_STATUS, 0, xlat_fuel_pumped_to_cloud_status, false, 0 },
+};
+#define TRANSLATOR_TABLE_SIZE  (sizeof(k_translator_table) / sizeof(k_translator_table[0]))
+
+// ============================================================================
+// Codec table — messages exposed over JSON transport (MQTT, sim bridge, etc.)
+// Add a row here when a new message needs to be reachable over the wire.
+// The encode/decode implementations live in each message's own .cpp file.
+// ============================================================================
+
 static const app_msg_codec_entry_t k_codec_table[] = {
     //  msg_name                msg_id                      dest_module               decode                              encode                            multicast_resp
     { "MsgConfigGetMqtt",   MSG_ID_CONFIG_GET_MQTT,   MODULE_CONFIG_ID,         MsgConfigGetMqtt::mqtt_decode,   nullptr,                          false },
@@ -218,6 +242,7 @@ static HsysModule *k_module_table[] = {
     ModuleTimeMgr::instance(),
     OtaModule::instance(),
     ModuleWebClientOta::instance(),
+    ModuleMsgTranslator::instance(),
 };
 #define MODULE_TABLE_SIZE  (sizeof(k_module_table) / sizeof(k_module_table[0]))
 
@@ -246,6 +271,7 @@ static const hsys_task_desc_t k_task_table[] = {
     { "timemgr_task",       3072,  5,  0,   { MODULE_TIMEMGR_ID,                                                 0 } },
     { "ota_task",           4096,  5,  0,   { MODULE_OTA_ID,                                                     0 } },
     { "web_ota_task",       8192,  4,  0,   { MODULE_WEB_CLIENT_OTA_ID,                                          0 } },
+    { "xlat_task",          3072,  5,  0,   { MODULE_MSG_TRANSLATOR_ID,                                          0 } },
 };
 #define TASK_TABLE_SIZE  (sizeof(k_task_table) / sizeof(k_task_table[0]))
 
@@ -313,6 +339,9 @@ extern "C" void app_init(void)
 
     // 1. Config — load defaults and initialise the config handle
     app_config_init();
+
+    // 1a. Load the translation table into the translator module before init() runs.
+    ModuleMsgTranslator::instance()->set_table(k_translator_table, (uint16_t)TRANSLATOR_TABLE_SIZE);
 
     // 2. Memory pool
     hsys_pool_init(k_pool_table, POOL_TABLE_SIZE);
