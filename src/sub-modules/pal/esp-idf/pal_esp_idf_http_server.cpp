@@ -38,15 +38,34 @@ static const esp_partition_t* s_update_partition = NULL;
 static bool s_ota_in_progress = false;
 static const char* s_ota_status = "Idle";
 
-/*===========================================================================*/
-/*                        UPLOAD HANDLER CONTEXT                             */
-/*===========================================================================*/
+/**
+ * @brief Static wrapper pools — sized at compile time, no heap needed.
+ *
+ * PAL_HTTP_MAX_URI_HANDLERS must be >= the number of URIs registered by
+ * all callers of pal_http_server_register_uri[_with_upload]() combined.
+ * Keep in sync with pal_http_server_config_t::max_uri_handlers passed
+ * to pal_http_server_start().
+ */
+#ifndef PAL_HTTP_MAX_URI_HANDLERS
+#define PAL_HTTP_MAX_URI_HANDLERS  16
+#endif
 
 typedef struct {
-    pal_http_uri_handler_t completion_handler;
+    pal_http_uri_handler_t handler;
+    void                  *user_ctx;
+} esp_uri_wrapper_t;
+
+typedef struct {
+    pal_http_uri_handler_t    completion_handler;
     pal_http_upload_handler_t upload_handler;
-    void* user_ctx;
+    void                     *user_ctx;
 } upload_handler_ctx_t;
+
+static esp_uri_wrapper_t    s_uri_wrappers[PAL_HTTP_MAX_URI_HANDLERS];
+static uint8_t               s_uri_wrapper_count = 0;
+
+static upload_handler_ctx_t  s_upload_wrappers[PAL_HTTP_MAX_URI_HANDLERS];
+static uint8_t               s_upload_wrapper_count = 0;
 
 /*===========================================================================*/
 /*                          HELPER FUNCTIONS                                 */
@@ -153,18 +172,16 @@ int32_t pal_http_server_stop(pal_http_server_handle_t server_handle) {
 }
 
 /**
- * @brief Internal wrapper for URI handlers
+ * @brief Single dispatcher used as the httpd handler for every registered URI.
+ *        Looks up the real PAL handler from user_ctx (esp_uri_wrapper_t*).
  */
 static esp_err_t uri_handler_wrapper(httpd_req_t* req) {
-    pal_http_uri_handler_t handler = (pal_http_uri_handler_t)req->user_ctx;
-    
-    if(handler == NULL) {
+    esp_uri_wrapper_t *w = (esp_uri_wrapper_t *)req->user_ctx;
+    if (!w || !w->handler) {
         httpd_resp_send_404(req);
         return ESP_FAIL;
     }
-    
-    int32_t result = handler((pal_http_request_t)req, req->user_ctx);
-    
+    int32_t result = w->handler((pal_http_request_t)req, w->user_ctx);
     return (result == PAL_OK) ? ESP_OK : ESP_FAIL;
 }
 
@@ -390,77 +407,45 @@ static esp_err_t upload_handler_wrapper(httpd_req_t* req) {
     return ESP_OK;
 }
 
-//TODO Memory Leak is available, FIX ASAP
 int32_t pal_http_server_register_uri(
     pal_http_server_handle_t server_handle,
     const char* uri,
     pal_http_method_t method,
     pal_http_uri_handler_t handler,
     void* user_ctx) {
-    
+
     if(server_handle == NULL || uri == NULL || handler == NULL) {
         return PAL_ERROR_INVALID;
     }
-    
-    httpd_handle_t server = (httpd_handle_t)server_handle;
-    
-    httpd_uri_t uri_handler = {
-        .uri = uri,
-        .method = pal_method_to_esp_method(method),
-        .handler = uri_handler_wrapper,
-        .user_ctx = (void*)handler
-    };
-    
-    // Store user context in a way that can be retrieved
-    // For simplicity, using the handler function pointer directly
-    // In production, you might want a context map
-    uri_handler.user_ctx = user_ctx;
-    uri_handler.handler = [](httpd_req_t* req) -> esp_err_t {
-        pal_http_uri_handler_t hdlr = (pal_http_uri_handler_t)req->user_ctx;
-        if(hdlr == NULL) return ESP_FAIL;
-        return (hdlr((pal_http_request_t)req, req->user_ctx) == PAL_OK) ? ESP_OK : ESP_FAIL;
-    };
-    
-    // Actually, let's use a proper approach with stored context
-    uri_handler.user_ctx = user_ctx;
-    uri_handler.handler = [](httpd_req_t* req) -> esp_err_t {
-        // Get the actual handler from somewhere - this needs proper context storage
-        // For now, simplified approach
-        return ESP_OK;
-    };
-    
-    // Simplified: store handler as user_ctx (works for stateless handlers)
-    httpd_uri_t* uri_cfg = (httpd_uri_t*)malloc(sizeof(httpd_uri_t));
-    if(uri_cfg == NULL) {
+    if(s_uri_wrapper_count >= PAL_HTTP_MAX_URI_HANDLERS) {
+        LOG_MSG_ERROR(HTTP_ERROR_LOG_EN,
+                      "URI wrapper pool full (max %d); increase PAL_HTTP_MAX_URI_HANDLERS",
+                      PAL_HTTP_MAX_URI_HANDLERS);
         return PAL_ERROR_NO_MEMORY;
     }
-    
-    uri_cfg->uri = strdup(uri);
-    uri_cfg->method = pal_method_to_esp_method(method);
-    uri_cfg->user_ctx = user_ctx;
-    
-    // Create wrapper that calls the handler
-    uri_cfg->handler = [](httpd_req_t* req) -> esp_err_t {
-        // Extract handler from URI config
-        // This is a limitation - we'll use a global map or pass differently
-        return ESP_OK;
+
+    httpd_handle_t server = (httpd_handle_t)server_handle;
+
+    esp_uri_wrapper_t *wrapper = &s_uri_wrappers[s_uri_wrapper_count++];
+    wrapper->handler  = handler;
+    wrapper->user_ctx = user_ctx;
+
+    httpd_uri_t uri_cfg = {
+        .uri      = uri,
+        .method   = pal_method_to_esp_method(method),
+        .handler  = uri_handler_wrapper,
+        .user_ctx = wrapper,
     };
-    
-    // Actually, let's use the proper httpd approach with direct function pointer casting
-    httpd_uri_t final_uri = {
-        .uri = uri,
-        .method = pal_method_to_esp_method(method),
-        .handler = (esp_err_t (*)(httpd_req_t*))handler,  // Direct cast (works if signatures compatible)
-        .user_ctx = user_ctx
-    };
-    
-    esp_err_t ret = httpd_register_uri_handler(server, &final_uri);
-    
+
+    esp_err_t ret = httpd_register_uri_handler(server, &uri_cfg);
     if(ret != ESP_OK) {
-        LOG_MSG_ERROR(HTTP_ERROR_LOG_EN, "Failed to register URI handler for %s: %s", uri, esp_err_to_name(ret));
+        s_uri_wrapper_count--;  /* roll back the slot */
+        LOG_MSG_ERROR(HTTP_ERROR_LOG_EN,
+                      "Failed to register URI handler for %s: %s",
+                      uri, esp_err_to_name(ret));
         return PAL_ERROR;
     }
-    
+
     LOG_MSG_DEBUG(HTTP_ERROR_LOG_EN, "Registered URI handler: %s", uri);
     return PAL_OK;
 }
@@ -471,38 +456,40 @@ int32_t pal_http_server_register_uri_with_upload(
     pal_http_uri_handler_t handler,
     pal_http_upload_handler_t upload_handler,
     void* user_ctx) {
-    
+
     if(server_handle == NULL || uri == NULL || upload_handler == NULL) {
         return PAL_ERROR_INVALID;
     }
-    
-    httpd_handle_t server = (httpd_handle_t)server_handle;
-    
-    // Allocate context for upload handler
-    upload_handler_ctx_t* ctx = (upload_handler_ctx_t*)malloc(sizeof(upload_handler_ctx_t));
-    if(ctx == NULL) {
+    if(s_upload_wrapper_count >= PAL_HTTP_MAX_URI_HANDLERS) {
+        LOG_MSG_ERROR(HTTP_ERROR_LOG_EN,
+                      "Upload wrapper pool full (max %d); increase PAL_HTTP_MAX_URI_HANDLERS",
+                      PAL_HTTP_MAX_URI_HANDLERS);
         return PAL_ERROR_NO_MEMORY;
     }
-    
+
+    httpd_handle_t server = (httpd_handle_t)server_handle;
+
+    upload_handler_ctx_t *ctx = &s_upload_wrappers[s_upload_wrapper_count++];
     ctx->completion_handler = handler;
-    ctx->upload_handler = upload_handler;
-    ctx->user_ctx = user_ctx;
-    
-    httpd_uri_t uri_handler = {
-        .uri = uri,
-        .method = HTTP_POST,
-        .handler = upload_handler_wrapper,
-        .user_ctx = ctx
+    ctx->upload_handler     = upload_handler;
+    ctx->user_ctx           = user_ctx;
+
+    httpd_uri_t uri_cfg = {
+        .uri      = uri,
+        .method   = HTTP_POST,
+        .handler  = upload_handler_wrapper,
+        .user_ctx = ctx,
     };
-    
-    esp_err_t ret = httpd_register_uri_handler(server, &uri_handler);
-    
+
+    esp_err_t ret = httpd_register_uri_handler(server, &uri_cfg);
     if(ret != ESP_OK) {
-        LOG_MSG_ERROR(HTTP_ERROR_LOG_EN, "Failed to register upload handler for %s: %s", uri, esp_err_to_name(ret));
-        free(ctx);
+        s_upload_wrapper_count--;  /* roll back the slot */
+        LOG_MSG_ERROR(HTTP_ERROR_LOG_EN,
+                      "Failed to register upload handler for %s: %s",
+                      uri, esp_err_to_name(ret));
         return PAL_ERROR;
     }
-    
+
     LOG_MSG_DEBUG(HTTP_ERROR_LOG_EN, "Registered upload handler: %s", uri);
     return PAL_OK;
 }

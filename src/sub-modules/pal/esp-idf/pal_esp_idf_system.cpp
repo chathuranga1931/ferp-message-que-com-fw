@@ -1,14 +1,21 @@
 /**
  * @file pal_esp_idf_system.cpp
- * @brief ESP-IDF implementation of pal_system_init() — intentionally empty.
+ * @brief ESP-IDF implementation of pal_system_init().
  *
- * On the ESP32 target the IDF bootloader, app_main(), and FreeRTOS are
- * already fully initialised before our app_init() runs.  There is nothing
- * extra to do here.
+ * All HSYS modules (including ModuleWebServer) are registered in the
+ * shared app.cpp module table.  There are no ESP32-only extras.
  */
 #include "pal_system.h"
+#include "pal_power.h"
+#include "esp_system.h"
 
 extern "C" void pal_system_init(void)
 {
-    /* nothing — ESP-IDF handles all system-level init */
+    /* nothing — all modules registered in the shared app.cpp table */
 }
+
+extern "C" void pal_power_reset(void)
+{
+    esp_restart();
+}
+

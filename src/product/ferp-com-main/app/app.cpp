@@ -55,6 +55,7 @@
 #include "module_timemgr.h"
 #include "module_ota.h"
 #include "ModuleWebClientOta.h"
+#include "ModuleWebServer.h"
 
 #include "app_ota_config.h"
 #include "app_web_ota_config.h"  /* k_web_ota_targets[] + ModuleWebClientOta singleton */
@@ -216,6 +217,7 @@ static HsysModule *k_module_table[] = {
     ModuleTimeMgr::instance(),
     OtaModule::instance(),
     ModuleWebClientOta::instance(),
+    ModuleWebServer::instance(),
 };
 #define MODULE_TABLE_SIZE  (sizeof(k_module_table) / sizeof(k_module_table[0]))
 
@@ -244,6 +246,7 @@ static const hsys_task_desc_t k_task_table[] = {
     { "timemgr_task",       3072,  5,  0,   { MODULE_TIMEMGR_ID,                                                 0 } },
     { "ota_task",           4096,  5,  0,   { MODULE_OTA_ID,                                                     0 } },
     { "web_ota_task",       8192,  4,  0,   { MODULE_WEB_CLIENT_OTA_ID,                                          0 } },
+    { "web_srv_t",          8192,  4,  0,   { MODULE_WEB_SERVER_ID,                                              0 } },
 };
 #define TASK_TABLE_SIZE  (sizeof(k_task_table) / sizeof(k_task_table[0]))
 

@@ -38,6 +38,9 @@ idf_component_register(
         "${D_MODS}/module_ota/targets/ota_driver_esp32_main.c"
         "${D_MODS}/module_ota/targets/ota_driver_esp32_dt.c"
 
+        # ── HTTP configuration / OTA web server (common, PAL-backed) ──────
+        "${D_MODS}/module_web_server/ModuleWebServer.cpp"
+
         # ── Cloud-polling OTA source module ───────────────────────────────
         "${D_MODS}/module_web_client_ota/ModuleWebClientOta.cpp"
         "${D_MODS}/module_web_client_ota/hsys_ota.cpp"
@@ -125,6 +128,7 @@ idf_component_register(
         "${D_SUB}/pal/esp-idf/pal_esp_idf_power.cpp"
         "${D_SUB}/pal/esp-idf/pal_esp_idf_mqtt.cpp"
         "${D_SUB}/pal/esp-idf/pal_esp_idf_http_client.cpp"
+        "${D_SUB}/pal/esp-idf/pal_esp_idf_http_server.cpp"
         "${D_SUB}/pal/esp-idf/pal_esp_idf_uart.cpp"
         "${D_SUB}/pal/esp-idf/pal_esp_idf_efuse.cpp"
         "${D_SUB}/pal/esp-idf/pal_esp_idf_crypto.cpp"
@@ -164,6 +168,7 @@ idf_component_register(
         "${D_MODS}/module_timemgr"
         "${D_MODS}/module_ota"
         "${D_MODS}/module_ota/targets"
+        "${D_MODS}/module_web_server"
         "${D_MODS}/module_web_client_ota"
         # App messages and peripherals
         "${D_MSGS}"
@@ -215,6 +220,7 @@ idf_component_register(
         sdmmc
         mqtt
         esp_http_client
+        esp_http_server
         esp-tls
         lwip
         nvs_flash

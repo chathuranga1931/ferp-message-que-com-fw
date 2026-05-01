@@ -68,8 +68,8 @@ add_library(pal_mac STATIC
     ${PAL_MAC_DRV}/mac_driver.cpp
     # Sim bridge — HSYS module that serialises app messages to the UI
     ${PAL_MAC_DRV}/module_sim_bridge.cpp
-    # HTTP config web server — serves config UI + REST API on port 8080
-    ${PAL_MAC_DRV}/module_web_server.cpp
+    # PAL HTTP server — POSIX socket implementation of pal_http_server.h
+    ${PAL_MAC_DRV}/pal_mac_http_server.cpp
     # Sim message injector — receives SIM_MSG_INJECT and injects into HSYS bus
     ${PAL_MAC_DRV}/sim_msg_inject.cpp
     # Simulator implementations of DT board comms APIs
@@ -260,6 +260,8 @@ add_library(app_modules STATIC
     # Cloud-polling OTA source module
     ${APP_MODS}/module_web_client_ota/ModuleWebClientOta.cpp
     ${APP_MODS}/module_web_client_ota/hsys_ota.cpp
+    # HTTP config/OTA web server module (common, PAL-backed)
+    ${APP_MODS}/module_web_server/ModuleWebServer.cpp
     # Utilities
     ${SUB_MODS}/utils/crc32.cpp
 )
@@ -285,6 +287,7 @@ target_include_directories(app_modules PUBLIC
     ${APP_MODS}/module_timemgr
     ${APP_MODS}/module_ota          # OtaModule.h, module_ota.h
     ${APP_MODS}/module_web_client_ota  # ModuleWebClientOta.h, hsys_ota.h
+    ${APP_MODS}/module_web_server      # ModuleWebServer.h
     ${SUB_MODS}/utils               # crc32.h
     ${DRIVERS}/DS1307
     ${DRIVERS}/cube_sphere  # cube_sphere_api.h, cube_sphere_config.h
@@ -325,6 +328,7 @@ target_include_directories(app_product PUBLIC
     ${APP_MODS}/module_ota          # module_ota.h (OtaModule)
     ${APP_MODS}/module_ota/targets  # ota_driver_esp32_main.h
     ${APP_MODS}/module_web_client_ota  # ModuleWebClientOta.h
+    ${APP_MODS}/module_web_server      # ModuleWebServer.h
     ${SUB_MODS}/utils               # crc32.h (transitively needed)
     ${APP_MSGS}
     ${HSYS_OS}

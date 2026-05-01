@@ -7,12 +7,13 @@
  *      send data, so the UI port is ready from the very first log line.
  *   2. Register ModuleSimBridge as an extra HSYS module + task — kept here
  *      so main.cpp has zero knowledge of simulator-specific modules.
+ *   3. Register ModuleMqtt — MQTT is a simulator-only extra (ESP32 handles
+ *      MQTT via its own IDF component registration path).
  */
 #include "pal_system.h"
 #include "pal_power.h"
 #include "driver/mac_driver.h"
 #include "driver/module_sim_bridge.h"
-#include "driver/module_web_server.h"
 #include "ModuleMqtt.h"
 #include "app.h"
 #include <cstdlib>
@@ -34,14 +35,7 @@ extern "C" void pal_system_init(void)
     };
     app_register_extra_module(ModuleSimBridge::instance(), &sim_bridge_task);
 
-    // 3. Register the HTTP config web server (port 8080).
-    //    Serves the configuration UI and REST API for browser + curl access.
-    static const hsys_task_desc_t web_server_task = {
-        "web_srv_t", 4096, 2, 0, { MODULE_WEB_SERVER_ID, 0 }
-    };
-    app_register_extra_module(ModuleWebServer::instance(), &web_server_task);
-
-    // 4. Register the MQTT broker client module.
+    // 3. Register the MQTT broker client module.
     //    Bridges the HSYS message bus to the configured MQTT broker.
     static const hsys_task_desc_t mqtt_task = {
         "mqtt_task", 8192, 4, 0, { MODULE_MQTT_ID, 0 }
