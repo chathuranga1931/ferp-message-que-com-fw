@@ -1,0 +1,12 @@
+{
+  "msg_id": "0x0A0B",
+  "fields": [
+    {
+      "name": "connected",
+      "label": "Connected",
+      "type": "bool",
+      "default": 1
+    }
+  ],
+  "direction": "resp"
+}

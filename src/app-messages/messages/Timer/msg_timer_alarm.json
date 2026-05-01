@@ -2,16 +2,17 @@
   "msg_id": "0x0104",
   "fields": [
     {
-      "name":    "source_module_id",
-      "label":   "Source module ID",
-      "type":    "uint8",
+      "name": "source_module_id",
+      "label": "Source module ID",
+      "type": "uint8",
       "default": 0
     },
     {
-      "name":    "elapsed_ms",
-      "label":   "Elapsed (ms)",
-      "type":    "uint32",
+      "name": "elapsed_ms",
+      "label": "Elapsed (ms)",
+      "type": "uint32",
       "default": 0
     }
-  ]
+  ],
+  "direction": "resp"
 }

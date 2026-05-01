@@ -75,7 +75,6 @@
 #include "msg_config_wifi.h"
 #include "msg_fuel_pumped.h"
 #include "msg_nozzle_state.h"
-#include "msg_sensor_data.h"
 #include "msg_internet_status.h"
 #include "msg_ota_event.h"
 #include "msg_ota_progress.h"
@@ -175,7 +174,6 @@ static const app_msg_codec_entry_t k_codec_table[] = {
     { "MsgConfigOta",       MSG_ID_CONFIG_OTA,        (hsys_module_id_t)0,      nullptr,                         MsgConfigOta::mqtt_encode,        false },
     { "MsgFuelPumped",      MSG_ID_FUEL_PUMPED,       (hsys_module_id_t)0,      nullptr,                         MsgFuelPumped::mqtt_encode,       false },
     { "MsgNozzleState",     MSG_ID_NOZZLE_STATE,      (hsys_module_id_t)0,      nullptr,                         MsgNozzleState::mqtt_encode,      false },
-    { "MsgSensorData",      MSG_ID_SENSOR_DATA,       (hsys_module_id_t)0,      nullptr,                         MsgSensorData::mqtt_encode,       false },
     { "MsgInternetStatus",  MSG_ID_INTERNET_STATUS,   (hsys_module_id_t)0,      nullptr,                         MsgInternetStatus::mqtt_encode,   false },
     { "MsgOtaEvent",        MSG_ID_OTA_EVENT,         (hsys_module_id_t)0,      nullptr,                         MsgOtaEvent::mqtt_encode,         false },
     { "MsgOtaProgress",     MSG_ID_OTA_PROGRESS,      (hsys_module_id_t)0,      nullptr,                         MsgOtaProgress::mqtt_encode,      false },

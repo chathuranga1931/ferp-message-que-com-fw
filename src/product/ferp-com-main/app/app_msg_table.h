@@ -25,7 +25,6 @@
 
 #include "hsys_msg.h"                   // hsys_msg_desc_t
 #include "app_msg_ids.h"                // MSG_ID_* — single source of truth for IDs
-#include "msg_sensor_data.h"            // MsgSensorData
 #include "msg_tick_1000ms.h"            // MsgTick1000ms
 #include "msg_spiffs_ready.h"           // MsgSpiffsReady         (0x0201)
 #include "msg_sd_ready.h"               // MsgSdReady             (0x0202)
@@ -73,7 +72,6 @@
 
 #define APP_MSG_TABLE_INIT                                                        \
     static const hsys_msg_desc_t k_msg_table[] = {                                \
-        MsgSensorData::DESCRIPTOR,                                                \
         MsgTick1000ms::DESCRIPTOR,                                                \
         MsgSpiffsReady::DESCRIPTOR,                                               \
         MsgSdReady::DESCRIPTOR,                                                   \

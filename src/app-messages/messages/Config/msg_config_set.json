@@ -2,26 +2,36 @@
   "msg_id": "0x0301",
   "fields": [
     {
-      "name":    "key",
-      "label":   "Key",
-      "type":    "string",
+      "name": "key",
+      "label": "Key",
+      "type": "string",
       "default": ""
     },
     {
-      "name":  "type",
+      "name": "type",
       "label": "Value type",
-      "type":  "enum",
+      "type": "enum",
       "options": [
-        {"label": "uint32", "value": 0},
-        {"label": "string", "value": 1},
-        {"label": "bool",   "value": 2}
+        {
+          "label": "uint32",
+          "value": 0
+        },
+        {
+          "label": "string",
+          "value": 1
+        },
+        {
+          "label": "bool",
+          "value": 2
+        }
       ]
     },
     {
-      "name":    "value",
-      "label":   "Value",
-      "type":    "string",
+      "name": "value",
+      "label": "Value",
+      "type": "string",
       "default": ""
     }
-  ]
+  ],
+  "direction": "cmd"
 }

@@ -25,7 +25,6 @@
 #include "app_msg_ids.h"
 #include "msg_default_btn.h"
 #include "msg_printer_btn.h"
-#include "msg_sensor_data.h"
 #include "msg_tick_1000ms.h"
 #include "msg_spiffs_ready.h"
 #include "msg_config_ready.h"
@@ -122,11 +121,6 @@ void sim_msg_inject_handle(const char *cmd_json)
 
         case MSG_ID_PRINTER_BTN:
             _publish(MsgPrinterBtn::from_json(payload_buf, src), msg_id);
-            break;
-
-        // ── Sensor ───────────────────────────────────────────────────────────
-        case MSG_ID_SENSOR_DATA:
-            _publish(MsgSensorData::mqtt_decode(payload_buf, src), msg_id);
             break;
 
         // ── System ───────────────────────────────────────────────────────────

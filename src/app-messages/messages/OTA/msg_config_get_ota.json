@@ -1,0 +1,12 @@
+{
+  "msg_id": "0x030B",
+  "fields": [
+    {
+      "name": "source_module_id",
+      "label": "Source Module ID",
+      "type": "uint8",
+      "default": 0
+    }
+  ],
+  "direction": "cmd"
+}

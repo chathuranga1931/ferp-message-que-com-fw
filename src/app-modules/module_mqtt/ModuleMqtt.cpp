@@ -17,12 +17,21 @@
 #include "msg_internet_status.h"
 #include "msg_fuel_pumped.h"
 #include "msg_nozzle_state.h"
-#include "msg_sensor_data.h"
 #include "msg_ota_event.h"
 #include "msg_ota_progress.h"
 #include "msg_config_cloud.h"
 #include "msg_config_ota.h"
 #include "msg_mqtt_status.h"
+
+// OTA source messages
+#include "msg_ota_start_request.h"
+#include "msg_ota_start_response.h"
+#include "msg_ota_request_driver.h"
+#include "msg_ota_driver_response.h"
+#include "msg_ota_complete_notify.h"
+#include "msg_ota_abort_request.h"
+
+#include "crc32.h"
 
 #include <ArduinoJson.h>
 #include <stdio.h>
@@ -53,6 +62,22 @@ static void uuid_to_topic_id(const char *uuid, char *out, size_t out_len)
     out[j] = '\0';
 }
 
+/** Map OTA target name string to target_idx.  Returns 0xFF on failure. */
+static uint8_t resolve_ota_target(const char *name)
+{
+    if (!name || name[0] == '\0') return 0xFF;
+    // Accept numeric string directly
+    char *end;
+    long v = strtol(name, &end, 10);
+    if (*end == '\0' && end != name && v >= 0 && v < 255) return (uint8_t)v;
+    // Named targets
+    if (strcmp(name, "main") == 0 || strcmp(name, "esp32-main") == 0) return 0;
+    if (strcmp(name, "dt-boot") == 0 || strcmp(name, "esp32-dt-boot") == 0) return 1;
+    if (strcmp(name, "dt-part") == 0 || strcmp(name, "esp32-dt-part") == 0) return 2;
+    if (strcmp(name, "dt-fw")   == 0 || strcmp(name, "esp32-dt-fw")   == 0) return 3;
+    return 0xFF;
+}
+
 // ---------------------------------------------------------------------------
 // init
 // ---------------------------------------------------------------------------
@@ -72,9 +97,12 @@ void ModuleMqtt::init()
     subscribe(MsgConfigOta::ID);     // DIRECT response from ModuleConfig
     subscribe(MsgFuelPumped::ID);    // NOTIFICATION → evt
     subscribe(MsgNozzleState::ID);   // NOTIFICATION → evt
-    subscribe(MsgSensorData::ID);    // NOTIFICATION → evt
     subscribe(MsgOtaEvent::ID);      // NOTIFICATION → evt
     subscribe(MsgOtaProgress::ID);   // NOTIFICATION → evt
+
+    // OTA source — responses from OtaModule
+    subscribe(MsgOtaStartResponse::ID);  // DIRECT from OtaModule
+    subscribe(MsgOtaDriverResponse::ID); // DIRECT from OtaModule
 
     LOG_MSG_INFO(MQTT_LOG, "init — state=WAIT_CONFIG");
 }
@@ -132,13 +160,113 @@ void ModuleMqtt::on_msg_received(const hsys_msg_t &msg)
         // ── Outbound NOTIFICATION events ───────────────────────────────────
         case MsgFuelPumped::ID:
         case MsgNozzleState::ID:
-        case MsgSensorData::ID:
-        case MsgOtaEvent::ID:
         case MsgOtaProgress::ID:
             if (_state == STATE_CONNECTED) {
                 _on_outbound_msg(msg, true /*evt*/);
             }
             break;
+
+        case MsgOtaEvent::ID:
+            if (_state == STATE_CONNECTED) {
+                _on_outbound_msg(msg, true /*evt*/);
+            }
+            // If we are waiting for OtaModule to confirm ota_complete, respond now
+            if (_ota_state == MQTT_OTA_COMPLETING) {
+                auto ep = MsgOtaEvent::deserialize(msg);
+                char resp[MODULE_MQTT_OTA_RESP_MAX];
+                if (ep.event == OTA_EVENT_COMPLETE) {
+                    snprintf(resp, sizeof(resp),
+                             "{\"seq\":%u,\"cmd\":\"ota_complete\",\"status\":\"ok\"}",
+                             (unsigned)_ota_seq);
+                    _publish_ota_resp(resp);
+                    LOG_MSG_INFO(MQTT_LOG, "OTA: complete confirmed by OtaModule");
+                } else if (ep.event == OTA_EVENT_SESSION_ABORTED ||
+                           ep.event == OTA_EVENT_TIMEOUT) {
+                    snprintf(resp, sizeof(resp),
+                             "{\"seq\":%u,\"cmd\":\"ota_complete\",\"status\":\"error\","
+                             "\"code\":\"aborted\"}",
+                             (unsigned)_ota_seq);
+                    _publish_ota_resp(resp);
+                    LOG_MSG_WARNING(MQTT_LOG, "OTA: complete aborted by OtaModule (event=%d)",
+                                    (int)ep.event);
+                }
+                _ota_reset();
+            }
+            break;
+
+        // ── OTA source: responses from OtaModule ──────────────────────────
+        case MsgOtaStartResponse::ID: {
+            if (_ota_state != MQTT_OTA_REQUESTING_SESSION) break;
+            auto p = MsgOtaStartResponse::deserialize(msg);
+            if (p.result == OTA_START_ACCEPTED) {
+                hsys_msg_t *req = MsgOtaRequestDriver::create(id());
+                if (req) {
+                    send(req, MODULE_OTA_ID);
+                    _ota_state = MQTT_OTA_REQUESTING_DRIVER;
+                    LOG_MSG_INFO(MQTT_LOG, "OTA: session accepted → requesting driver");
+                } else {
+                    LOG_MSG_ERROR(MQTT_LOG, "OTA: pool full — can't send MsgOtaRequestDriver");
+                    char resp[MODULE_MQTT_OTA_RESP_MAX];
+                    snprintf(resp, sizeof(resp),
+                             "{\"seq\":%u,\"cmd\":\"ota_start\",\"status\":\"error\","
+                             "\"code\":\"internal\"}",
+                             (unsigned)_ota_seq);
+                    _publish_ota_resp(resp);
+                    _ota_reset();
+                }
+            } else {
+                const char *code = (p.result == OTA_START_REJECTED_BUSY) ? "busy" :
+                                   (p.result == OTA_START_REJECTED_UNKNOWN_TARGET) ? "unknown_target" :
+                                   "rejected";
+                char resp[MODULE_MQTT_OTA_RESP_MAX];
+                snprintf(resp, sizeof(resp),
+                         "{\"seq\":%u,\"cmd\":\"ota_start\",\"status\":\"error\","
+                         "\"code\":\"%s\"}",
+                         (unsigned)_ota_seq, code);
+                _publish_ota_resp(resp);
+                LOG_MSG_INFO(MQTT_LOG, "OTA: session rejected result=%d", (int)p.result);
+                _ota_reset();
+            }
+            break;
+        }
+
+        case MsgOtaDriverResponse::ID: {
+            if (_ota_state != MQTT_OTA_REQUESTING_DRIVER) break;
+            auto p = MsgOtaDriverResponse::deserialize(msg);
+            _ota_driver = p.driver;
+            _ota_ctx    = p.ctx;
+
+            // Open write session on the driver
+            ota_fs_err_t err = _ota_driver->fopen(_ota_ctx, nullptr, OTA_FS_OPEN_WRITE);
+            if (err != OTA_FS_OK) {
+                LOG_MSG_ERROR(MQTT_LOG, "OTA: fopen failed err=%d", (int)err);
+                MsgOtaAbortRequest::Payload ap{ OTA_ABORT_WRITE_ERROR, {} };
+                hsys_msg_t *am = MsgOtaAbortRequest::create(id(), ap);
+                if (am) send(am, MODULE_OTA_ID);
+                char resp[MODULE_MQTT_OTA_RESP_MAX];
+                snprintf(resp, sizeof(resp),
+                         "{\"seq\":%u,\"cmd\":\"ota_start\",\"status\":\"error\","
+                         "\"code\":\"driver_fopen\"}",
+                         (unsigned)_ota_seq);
+                _publish_ota_resp(resp);
+                _ota_reset();
+                break;
+            }
+            _ota_fopen_done     = true;
+            _ota_state          = MQTT_OTA_ACTIVE;
+            _ota_expected_offset = 0;
+            _ota_bytes_written  = 0;
+            _ota_running_crc    = 0xFFFFFFFF;
+
+            char resp[MODULE_MQTT_OTA_RESP_MAX];
+            snprintf(resp, sizeof(resp),
+                     "{\"seq\":%u,\"cmd\":\"ota_start\",\"status\":\"ok\"}",
+                     (unsigned)_ota_seq);
+            _publish_ota_resp(resp);
+            LOG_MSG_INFO(MQTT_LOG, "OTA: driver ready target=%u size=%lu → ACTIVE",
+                         (unsigned)_ota_target_idx, (unsigned long)_ota_total_size);
+            break;
+        }
 
         default:
             break;
@@ -257,8 +385,12 @@ void ModuleMqtt::_on_pal_connected()
     // (e.g. ferp/ferp-com/{group}/broadcast/cmd) that does NOT overlap with the
     // device-specific cmd topic.
     pal_mqtt_client_subscribe(_client, _cmd_topic, PAL_MQTT_QOS_1);
+    pal_mqtt_client_subscribe(_client, _ota_ctrl_topic, PAL_MQTT_QOS_1);
+    pal_mqtt_client_subscribe(_client, _ota_data_topic, PAL_MQTT_QOS_1);
 
     LOG_MSG_INFO(MQTT_LOG, "cmd topic: %s", _cmd_topic);
+    LOG_MSG_INFO(MQTT_LOG, "ota/ctrl:  %s", _ota_ctrl_topic);
+    LOG_MSG_INFO(MQTT_LOG, "ota/data:  %s", _ota_data_topic);
 }
 
 // ---------------------------------------------------------------------------
@@ -276,6 +408,20 @@ void ModuleMqtt::_on_pal_disconnected()
         hsys_msg_t *m = MsgMqttStatus::create(id(), sp);
         if (m) publish(m);
     }
+
+    // Abort any in-progress OTA session
+    if (_ota_state != MQTT_OTA_IDLE) {
+        LOG_MSG_WARNING(MQTT_LOG, "OTA: MQTT disconnected — aborting OTA session");
+        if (_ota_state == MQTT_OTA_ACTIVE || _ota_state == MQTT_OTA_COMPLETING) {
+            if (_ota_fopen_done && _ota_driver) {
+                _ota_driver->ferase(_ota_ctx);
+            }
+            MsgOtaAbortRequest::Payload ap{ OTA_ABORT_SOURCE_DISCONNECTED, {} };
+            hsys_msg_t *am = MsgOtaAbortRequest::create(id(), ap);
+            if (am) send(am, MODULE_OTA_ID);
+        }
+        _ota_reset();
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -285,6 +431,18 @@ void ModuleMqtt::_on_pal_disconnected()
 void ModuleMqtt::_on_pal_data(const pal_mqtt_message_t *m)
 {
     if (!m || !m->data || m->data_len == 0) return;
+
+    // Route OTA topics before JSON envelope parsing
+    if (m->topic_len == strlen(_ota_ctrl_topic) &&
+        strncmp(m->topic, _ota_ctrl_topic, m->topic_len) == 0) {
+        _handle_ota_ctrl(m);
+        return;
+    }
+    if (m->topic_len == strlen(_ota_data_topic) &&
+        strncmp(m->topic, _ota_data_topic, m->topic_len) == 0) {
+        _handle_ota_data(m);
+        return;
+    }
 
     // Parse envelope: { "seq": N, "msg": "...", "data": {...} }
     StaticJsonDocument<MODULE_MQTT_ENV_MAX> doc;
@@ -370,12 +528,18 @@ void ModuleMqtt::_on_outbound_msg(const hsys_msg_t &msg, bool is_evt)
 void ModuleMqtt::_build_topics(const char *dev_type, const char *group,
                                  const char *device_id)
 {
-    snprintf(_cmd_topic,  sizeof(_cmd_topic),
-             "ferp/%s/%s/%s/cmd",  dev_type, group, device_id);
-    snprintf(_resp_topic, sizeof(_resp_topic),
-             "ferp/%s/%s/%s/resp", dev_type, group, device_id);
-    snprintf(_evt_topic,  sizeof(_evt_topic),
-             "ferp/%s/%s/%s/evt",  dev_type, group, device_id);
+    snprintf(_cmd_topic,      sizeof(_cmd_topic),
+             "ferp/%s/%s/%s/cmd",      dev_type, group, device_id);
+    snprintf(_resp_topic,     sizeof(_resp_topic),
+             "ferp/%s/%s/%s/resp",     dev_type, group, device_id);
+    snprintf(_evt_topic,      sizeof(_evt_topic),
+             "ferp/%s/%s/%s/evt",      dev_type, group, device_id);
+    snprintf(_ota_ctrl_topic, sizeof(_ota_ctrl_topic),
+             "ferp/%s/%s/%s/ota/ctrl", dev_type, group, device_id);
+    snprintf(_ota_data_topic, sizeof(_ota_data_topic),
+             "ferp/%s/%s/%s/ota/data", dev_type, group, device_id);
+    snprintf(_ota_resp_topic, sizeof(_ota_resp_topic),
+             "ferp/%s/%s/%s/ota/resp", dev_type, group, device_id);
 }
 
 // ---------------------------------------------------------------------------
@@ -422,4 +586,284 @@ void ModuleMqtt::s_pal_event_cb(pal_mqtt_event_data_t *ev)
         default:
             break;
     }
+}
+
+// ---------------------------------------------------------------------------
+// _ota_reset  — return OTA source state to IDLE
+// ---------------------------------------------------------------------------
+
+void ModuleMqtt::_ota_reset()
+{
+    _ota_state           = MQTT_OTA_IDLE;
+    _ota_driver          = nullptr;
+    _ota_ctx             = nullptr;
+    _ota_target_idx      = 0;
+    _ota_total_size      = 0;
+    _ota_expected_offset = 0;
+    _ota_bytes_written   = 0;
+    _ota_running_crc     = 0xFFFFFFFF;
+    _ota_seq             = 0;
+    _ota_fopen_done      = false;
+}
+
+// ---------------------------------------------------------------------------
+// _publish_ota_resp  — publish raw JSON string to ota/resp topic
+// ---------------------------------------------------------------------------
+
+void ModuleMqtt::_publish_ota_resp(const char *json)
+{
+    if (!_client || !json) return;
+    size_t len = strlen(json);
+    pal_mqtt_client_publish(_client, _ota_resp_topic,
+                            json, len, PAL_MQTT_QOS_1, false);
+    LOG_MSG_INFO(MQTT_LOG, "ota/resp: %s", json);
+}
+
+// ---------------------------------------------------------------------------
+// _handle_ota_ctrl  — OTA control JSON on .../ota/ctrl
+// ---------------------------------------------------------------------------
+
+void ModuleMqtt::_handle_ota_ctrl(const pal_mqtt_message_t *m)
+{
+    // Parse: { "seq": N, "cmd": "ota_start|ota_abort|ota_complete", "data": {...} }
+    StaticJsonDocument<512> doc;
+    DeserializationError err = deserializeJson(doc, m->data, m->data_len);
+    if (err) {
+        LOG_MSG_WARNING(MQTT_LOG, "OTA ctrl parse error: %s", err.c_str());
+        return;
+    }
+
+    uint32_t    seq = doc["seq"] | (uint32_t)0;
+    const char *cmd = doc["cmd"] | "";
+    if (cmd[0] == '\0') {
+        LOG_MSG_WARNING(MQTT_LOG, "OTA ctrl: missing 'cmd' field");
+        return;
+    }
+
+    LOG_MSG_INFO(MQTT_LOG, "OTA ctrl seq=%u cmd='%s'", (unsigned)seq, cmd);
+
+    // ── ota_start ────────────────────────────────────────────────────────────
+    if (strcmp(cmd, "ota_start") == 0) {
+        if (_ota_state != MQTT_OTA_IDLE) {
+            char resp[MODULE_MQTT_OTA_RESP_MAX];
+            snprintf(resp, sizeof(resp),
+                     "{\"seq\":%u,\"cmd\":\"ota_start\",\"status\":\"error\","
+                     "\"code\":\"busy\"}", (unsigned)seq);
+            _publish_ota_resp(resp);
+            return;
+        }
+
+        const char *target  = doc["data"]["target"]  | "main";
+        uint32_t    size    = doc["data"]["size"]    | (uint32_t)0;
+        const char *version = doc["data"]["version"] | "";
+
+        uint8_t target_idx = resolve_ota_target(target);
+        if (target_idx == 0xFF) {
+            char resp[MODULE_MQTT_OTA_RESP_MAX];
+            snprintf(resp, sizeof(resp),
+                     "{\"seq\":%u,\"cmd\":\"ota_start\",\"status\":\"error\","
+                     "\"code\":\"unknown_target\"}", (unsigned)seq);
+            _publish_ota_resp(resp);
+            return;
+        }
+
+        _ota_seq        = seq;
+        _ota_target_idx = target_idx;
+        _ota_total_size = size;
+        _ota_state      = MQTT_OTA_REQUESTING_SESSION;
+
+        MsgOtaStartRequest::Payload req{};
+        req.target_idx = target_idx;
+        strncpy(req.incoming_version, version, sizeof(req.incoming_version) - 1);
+        hsys_msg_t *msg = MsgOtaStartRequest::create(id(), req);
+        if (msg) {
+            send(msg, MODULE_OTA_ID);
+            LOG_MSG_INFO(MQTT_LOG, "OTA: MsgOtaStartRequest target=%u ver=%s → REQUESTING_SESSION",
+                         (unsigned)target_idx, version);
+        } else {
+            LOG_MSG_ERROR(MQTT_LOG, "OTA: pool full — can't send MsgOtaStartRequest");
+            char resp[MODULE_MQTT_OTA_RESP_MAX];
+            snprintf(resp, sizeof(resp),
+                     "{\"seq\":%u,\"cmd\":\"ota_start\",\"status\":\"error\","
+                     "\"code\":\"internal\"}", (unsigned)seq);
+            _publish_ota_resp(resp);
+            _ota_reset();
+        }
+        return;
+    }
+
+    // ── ota_abort ────────────────────────────────────────────────────────────
+    if (strcmp(cmd, "ota_abort") == 0) {
+        if (_ota_state == MQTT_OTA_IDLE) {
+            char resp[MODULE_MQTT_OTA_RESP_MAX];
+            snprintf(resp, sizeof(resp),
+                     "{\"seq\":%u,\"cmd\":\"ota_abort\",\"status\":\"error\","
+                     "\"code\":\"not_active\"}", (unsigned)seq);
+            _publish_ota_resp(resp);
+            return;
+        }
+        if (_ota_fopen_done && _ota_driver) {
+            _ota_driver->ferase(_ota_ctx);
+        }
+        MsgOtaAbortRequest::Payload ap{ OTA_ABORT_SOURCE_CANCELLED, {} };
+        hsys_msg_t *am = MsgOtaAbortRequest::create(id(), ap);
+        if (am) send(am, MODULE_OTA_ID);
+
+        char resp[MODULE_MQTT_OTA_RESP_MAX];
+        snprintf(resp, sizeof(resp),
+                 "{\"seq\":%u,\"cmd\":\"ota_abort\",\"status\":\"ok\"}", (unsigned)seq);
+        _publish_ota_resp(resp);
+        _ota_reset();
+        return;
+    }
+
+    // ── ota_complete ─────────────────────────────────────────────────────────
+    if (strcmp(cmd, "ota_complete") == 0) {
+        if (_ota_state != MQTT_OTA_ACTIVE) {
+            char resp[MODULE_MQTT_OTA_RESP_MAX];
+            snprintf(resp, sizeof(resp),
+                     "{\"seq\":%u,\"cmd\":\"ota_complete\",\"status\":\"error\","
+                     "\"code\":\"not_active\"}", (unsigned)seq);
+            _publish_ota_resp(resp);
+            return;
+        }
+
+        // Optional CRC32 verification
+        const char *crc_str   = doc["data"]["crc32"] | "";
+        bool        do_crc    = (crc_str[0] != '\0');
+        uint32_t    host_crc  = do_crc ? (uint32_t)strtoul(crc_str, nullptr, 16) : 0;
+        uint32_t    local_crc = _ota_running_crc ^ 0xFFFFFFFFU;
+
+        if (do_crc && host_crc != local_crc) {
+            LOG_MSG_ERROR(MQTT_LOG, "OTA: CRC mismatch got=0x%08X expected=0x%08X",
+                          (unsigned)local_crc, (unsigned)host_crc);
+            if (_ota_driver) _ota_driver->ferase(_ota_ctx);
+            MsgOtaCompleteNotify::Payload np{ false, {}, OTA_FS_ERR_WRITE_FAIL };
+            hsys_msg_t *nm = MsgOtaCompleteNotify::create(id(), np);
+            if (nm) send(nm, MODULE_OTA_ID);
+            char resp[MODULE_MQTT_OTA_RESP_MAX];
+            snprintf(resp, sizeof(resp),
+                     "{\"seq\":%u,\"cmd\":\"ota_complete\",\"status\":\"error\","
+                     "\"code\":\"crc_mismatch\"}", (unsigned)seq);
+            _publish_ota_resp(resp);
+            _ota_reset();
+            return;
+        }
+
+        // Commit the written image
+        ota_fs_err_t close_err = _ota_driver->fclose(_ota_ctx);
+        _ota_fopen_done = false;
+        if (close_err != OTA_FS_OK) {
+            LOG_MSG_ERROR(MQTT_LOG, "OTA: fclose failed err=%d", (int)close_err);
+            MsgOtaCompleteNotify::Payload np{ false, {}, close_err };
+            hsys_msg_t *nm = MsgOtaCompleteNotify::create(id(), np);
+            if (nm) send(nm, MODULE_OTA_ID);
+            char resp[MODULE_MQTT_OTA_RESP_MAX];
+            snprintf(resp, sizeof(resp),
+                     "{\"seq\":%u,\"cmd\":\"ota_complete\",\"status\":\"error\","
+                     "\"code\":\"commit_failed\"}", (unsigned)seq);
+            _publish_ota_resp(resp);
+            _ota_reset();
+            return;
+        }
+
+        // Notify OtaModule — response will come via MsgOtaEvent
+        MsgOtaCompleteNotify::Payload np{ true, {}, OTA_FS_OK };
+        hsys_msg_t *nm = MsgOtaCompleteNotify::create(id(), np);
+        if (nm) {
+            send(nm, MODULE_OTA_ID);
+            _ota_seq   = seq;
+            _ota_state = MQTT_OTA_COMPLETING;
+            LOG_MSG_INFO(MQTT_LOG, "OTA: fclose ok — waiting for MsgOtaEvent(COMPLETE)");
+        } else {
+            LOG_MSG_ERROR(MQTT_LOG, "OTA: pool full — can't send MsgOtaCompleteNotify");
+            char resp[MODULE_MQTT_OTA_RESP_MAX];
+            snprintf(resp, sizeof(resp),
+                     "{\"seq\":%u,\"cmd\":\"ota_complete\",\"status\":\"error\","
+                     "\"code\":\"internal\"}", (unsigned)seq);
+            _publish_ota_resp(resp);
+            _ota_reset();
+        }
+        return;
+    }
+
+    LOG_MSG_WARNING(MQTT_LOG, "OTA ctrl: unknown cmd '%s'", cmd);
+}
+
+// ---------------------------------------------------------------------------
+// _handle_ota_data  — binary chunk on .../ota/data
+// ---------------------------------------------------------------------------
+
+void ModuleMqtt::_handle_ota_data(const pal_mqtt_message_t *m)
+{
+    if (_ota_state != MQTT_OTA_ACTIVE) {
+        LOG_MSG_WARNING(MQTT_LOG, "OTA data: not ACTIVE (state=%d) — dropped", (int)_ota_state);
+        return;
+    }
+    if (m->data_len < 5) {
+        LOG_MSG_WARNING(MQTT_LOG, "OTA data: payload too small (%u bytes)", (unsigned)m->data_len);
+        return;
+    }
+
+    // Extract 4-byte big-endian offset prefix
+    const uint8_t *raw    = (const uint8_t *)m->data;
+    uint32_t       offset = ((uint32_t)raw[0] << 24) |
+                            ((uint32_t)raw[1] << 16) |
+                            ((uint32_t)raw[2] <<  8) |
+                             (uint32_t)raw[3];
+    const uint8_t *chunk  = raw + 4;
+    uint32_t       len    = (uint32_t)(m->data_len - 4);
+
+    // Reject out-of-order chunks
+    if (offset != _ota_expected_offset) {
+        char resp[MODULE_MQTT_OTA_RESP_MAX];
+        snprintf(resp, sizeof(resp),
+                 "{\"cmd\":\"ota_chunk\",\"status\":\"error\","
+                 "\"offset_expecting\":%u}", (unsigned)_ota_expected_offset);
+        _publish_ota_resp(resp);
+        LOG_MSG_WARNING(MQTT_LOG, "OTA chunk: out of order got=%u expected=%u",
+                        (unsigned)offset, (unsigned)_ota_expected_offset);
+        return;
+    }
+
+    // Write chunk to driver
+    ota_fs_err_t err = _ota_driver->fwrite(_ota_ctx, chunk, len);
+    if (err != OTA_FS_OK) {
+        LOG_MSG_ERROR(MQTT_LOG, "OTA chunk: fwrite failed at offset=%u err=%d",
+                      (unsigned)offset, (int)err);
+        _ota_driver->ferase(_ota_ctx);
+        MsgOtaAbortRequest::Payload ap{ OTA_ABORT_WRITE_ERROR, {} };
+        hsys_msg_t *am = MsgOtaAbortRequest::create(id(), ap);
+        if (am) send(am, MODULE_OTA_ID);
+        char resp[MODULE_MQTT_OTA_RESP_MAX];
+        snprintf(resp, sizeof(resp),
+                 "{\"cmd\":\"ota_chunk\",\"status\":\"error\","
+                 "\"offset_expecting\":%u}", (unsigned)offset);
+        _publish_ota_resp(resp);
+        _ota_reset();
+        return;
+    }
+
+    // Update running CRC32 and counters
+    _ota_running_crc     = crc32_update(_ota_running_crc, chunk, len);
+    _ota_expected_offset += len;
+    _ota_bytes_written   += len;
+
+    // Publish progress notification (resets OtaModule inactivity timer)
+    MsgOtaProgress::Payload pp{};
+    pp.target_idx    = _ota_target_idx;
+    pp.bytes_written = _ota_bytes_written;
+    pp.total_bytes   = _ota_total_size;
+    pp.percent       = (_ota_total_size > 0)
+                       ? (uint8_t)((_ota_bytes_written * 100U) / _ota_total_size)
+                       : 0;
+    hsys_msg_t *pm = MsgOtaProgress::create(id(), pp);
+    if (pm) publish(pm);
+
+    // Respond with next expected offset
+    char resp[MODULE_MQTT_OTA_RESP_MAX];
+    snprintf(resp, sizeof(resp),
+             "{\"cmd\":\"ota_chunk\",\"status\":\"ok\",\"offset_next\":%u}",
+             (unsigned)_ota_expected_offset);
+    _publish_ota_resp(resp);
 }

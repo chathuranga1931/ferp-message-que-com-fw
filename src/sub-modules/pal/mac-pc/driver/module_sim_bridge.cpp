@@ -18,8 +18,6 @@
 #include "hsys_msg.h"
 #include "hsys_type.h"
 #include "pal_time.h"
-// ── Sensor / data ──
-#include "msg_sensor_data.h"
 // ── Timer ──
 #include "msg_timer_start.h"
 #include "msg_timer_stop.h"
@@ -62,8 +60,6 @@ ModuleSimBridge *ModuleSimBridge::instance() { return &s_instance; }
 
 void ModuleSimBridge::init()
 {
-    // ── Sensor / data ──
-    subscribe(MSG_ID_SENSOR_DATA);
     // ── Timer (notifications only; responses/alarms are DIRECT) ──
     subscribe(MSG_ID_TIMER_START);
     subscribe(MSG_ID_TIMER_STOP);
@@ -114,17 +110,6 @@ void ModuleSimBridge::on_msg_received(const hsys_msg_t &msg)
 
     switch (msg.msg_id)
     {
-        // ── Sensor / data ─────────────────────────────────────────────────
-
-        case MSG_ID_SENSOR_DATA: {
-            auto p = MsgSensorData::deserialize(msg);
-            snprintf(data, sizeof(data),
-                     "{\"counter\":%u,\"temperature\":%.2f}",
-                     (unsigned)p.counter, (double)p.temperature);
-            _send_json("MSG_SENSOR_DATA", data);
-            break;
-        }
-
         // ── Timer ─────────────────────────────────────────────────────────
 
         case MSG_ID_TIMER_START: {

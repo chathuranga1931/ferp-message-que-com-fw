@@ -2,13 +2,20 @@
   "msg_id": "0x0900",
   "fields": [
     {
-      "name":  "status",
+      "name": "status",
       "label": "Status",
-      "type":  "enum",
+      "type": "enum",
       "options": [
-        {"label": "short_press", "value": 0},
-        {"label": "long_press",  "value": 1}
+        {
+          "label": "short_press",
+          "value": 0
+        },
+        {
+          "label": "long_press",
+          "value": 1
+        }
       ]
     }
-  ]
+  ],
+  "direction": "resp"
 }

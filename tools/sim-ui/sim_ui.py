@@ -44,6 +44,7 @@ from widgets.config_widget         import ConfigWidget
 from widgets.spiffs_widget         import SpiffsWidget
 from widgets.sdcard_widget         import SdCardWidget
 from widgets.message_inject_widget import MessageInjectWidget
+from widgets.mqtt_widget           import MqttWidget
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -221,6 +222,12 @@ class App(tk.Tk):
         notebook.add(sdcard_frame, text="SDCard")
         self._sdcard = SdCardWidget(sdcard_frame)
         self._sdcard.pack(fill=tk.BOTH, expand=True)
+
+        # ── Tab: MQTT ─────────────────────────────────────────────────────────
+        mqtt_frame = tk.Frame(notebook, bg="#1e1e2e")
+        notebook.add(mqtt_frame, text="MQTT")
+        self._mqtt_widget = MqttWidget(mqtt_frame, send_fn=self._send_cmd)
+        self._mqtt_widget.pack(fill=tk.BOTH, expand=True)
 
         # ── Tab: Message Injector ─────────────────────────────────────────────
         msg_frame = tk.Frame(notebook, bg="#1e1e2e")
@@ -429,9 +436,10 @@ class App(tk.Tk):
 
         elif msg_id == "MSG_MQTT_EVENT":
             self._led_mqtt.set_on(data.get("event") == "CONNECTED")
+            self._mqtt_widget.on_event(data)
 
         elif msg_id == "MSG_MQTT_RX_MESSAGE":
-            pass  # already captured by the generic log handler above
+            self._mqtt_widget.on_rx(data)
 
         elif msg_id == "MSG_OTA_EVENT":
             self._ota.on_event(data)

@@ -1,0 +1,18 @@
+{
+  "msg_id": "0x0A04",
+  "fields": [
+    {
+      "name": "granted",
+      "label": "Granted",
+      "type": "bool",
+      "default": 1
+    },
+    {
+      "name": "target_idx",
+      "label": "Target Index",
+      "type": "uint8",
+      "default": 0
+    }
+  ],
+  "direction": "resp"
+}

@@ -1,0 +1,18 @@
+{
+  "msg_id": "0x0A03",
+  "fields": [
+    {
+      "name": "target_idx",
+      "label": "Target Index",
+      "type": "uint8",
+      "default": 0
+    },
+    {
+      "name": "incoming_version",
+      "label": "Firmware Version",
+      "type": "string",
+      "default": "1.0.0"
+    }
+  ],
+  "direction": "cmd"
+}

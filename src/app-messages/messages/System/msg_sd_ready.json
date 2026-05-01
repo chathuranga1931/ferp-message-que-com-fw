@@ -1,4 +1,5 @@
 {
   "msg_id": "0x0202",
-  "fields": []
+  "fields": [],
+  "direction": "resp"
 }

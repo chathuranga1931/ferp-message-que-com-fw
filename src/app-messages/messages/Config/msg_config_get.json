@@ -1,4 +1,5 @@
 {
   "msg_id": "0x0302",
-  "fields": []
+  "fields": [],
+  "direction": "cmd"
 }

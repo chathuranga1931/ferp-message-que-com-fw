@@ -98,6 +98,15 @@ target_include_directories(pal_mac PUBLIC
     ${PERIPHERAL}   # hsys_type.h
     ${APP}          # app.h, app_msg_ids.h, user_config.h
     ${APP_MSGS}     # msg_tick_1000ms.h etc.
+    ${APP_MSGS}/buttons
+    ${APP_MSGS}/cloud
+    ${APP_MSGS}/configs
+    ${APP_MSGS}/fuel
+    ${APP_MSGS}/mqtt
+    ${APP_MSGS}/ota
+    ${APP_MSGS}/system
+    ${APP_MSGS}/timer
+    ${APP_MSGS}/wifi
     ${APP_MODS}/module_config   # app_config.h (needed by app.h transitively)
     ${APP_MODS}/module_fuel                        # module_fuel.h
     ${APP_MODS}/module_fuel/pumps                  # nozzle_event.h
@@ -124,50 +133,66 @@ target_link_libraries(hsys_framework PRIVATE hsys_os pal_mac)
 # ── 4. app-messages ───────────────────────────────────────────────────────────
 add_library(app_messages STATIC
     ${APP_MSGS}/app_msg_codec.cpp
-    ${APP_MSGS}/msg_sensor_data.cpp
-    ${APP_MSGS}/msg_tick_1000ms.cpp
-    ${APP_MSGS}/msg_spiffs_ready.cpp
-    ${APP_MSGS}/msg_sd_ready.cpp
-    ${APP_MSGS}/msg_sd_status.cpp
-    ${APP_MSGS}/msg_config_ready.cpp
-    ${APP_MSGS}/msg_config_set.cpp
-    ${APP_MSGS}/msg_config_get.cpp
-    ${APP_MSGS}/msg_config_get_wifi.cpp
-    ${APP_MSGS}/msg_config_get_cloud.cpp
-    ${APP_MSGS}/msg_config_get_mqtt.cpp
-    ${APP_MSGS}/msg_config_get_dt.cpp
-    ${APP_MSGS}/msg_config_wifi.cpp
-    ${APP_MSGS}/msg_config_cloud.cpp
-    ${APP_MSGS}/msg_config_mqtt.cpp
-    ${APP_MSGS}/msg_config_dt.cpp
-    ${APP_MSGS}/msg_config_get_ota.cpp
-    ${APP_MSGS}/msg_config_ota.cpp
-    ${APP_MSGS}/msg_timer_start.cpp
-    ${APP_MSGS}/msg_timer_stop.cpp
-    ${APP_MSGS}/msg_timer_start_response.cpp
-    ${APP_MSGS}/msg_timer_stop_response.cpp
-    ${APP_MSGS}/msg_timer_alarm.cpp
-    ${APP_MSGS}/msg_default_btn.cpp
-    ${APP_MSGS}/msg_printer_btn.cpp
-    ${APP_MSGS}/msg_fuel_pumped.cpp
-    ${APP_MSGS}/msg_nozzle_state.cpp
-    ${APP_MSGS}/msg_wifi_event.cpp
-    ${APP_MSGS}/msg_internet_status.cpp
-    ${APP_MSGS}/msg_cloud_status.cpp
-    ${APP_MSGS}/msg_time_status.cpp
+    # System messages
+    ${APP_MSGS}/system/msg_spiffs_ready.cpp
+    ${APP_MSGS}/system/msg_sd_ready.cpp
+    ${APP_MSGS}/system/msg_sd_status.cpp
+    # Config messages
+    ${APP_MSGS}/configs/msg_config_ready.cpp
+    ${APP_MSGS}/configs/msg_config_set.cpp
+    ${APP_MSGS}/configs/msg_config_get.cpp
+    # WiFi messages
+    ${APP_MSGS}/wifi/msg_config_get_wifi.cpp
+    ${APP_MSGS}/wifi/msg_config_wifi.cpp
+    ${APP_MSGS}/wifi/msg_wifi_event.cpp
+    # Cloud messages
+    ${APP_MSGS}/cloud/msg_config_get_cloud.cpp
+    ${APP_MSGS}/cloud/msg_config_cloud.cpp
+    ${APP_MSGS}/cloud/msg_internet_status.cpp
+    ${APP_MSGS}/cloud/msg_cloud_status.cpp
+    # MQTT messages
+    ${APP_MSGS}/mqtt/msg_config_get_mqtt.cpp
+    ${APP_MSGS}/mqtt/msg_config_mqtt.cpp
+    ${APP_MSGS}/mqtt/msg_mqtt_status.cpp
+    # Timer messages
+    ${APP_MSGS}/timer/msg_tick_1000ms.cpp
+    ${APP_MSGS}/timer/msg_timer_start.cpp
+    ${APP_MSGS}/timer/msg_timer_stop.cpp
+    ${APP_MSGS}/timer/msg_timer_start_response.cpp
+    ${APP_MSGS}/timer/msg_timer_stop_response.cpp
+    ${APP_MSGS}/timer/msg_timer_alarm.cpp
+    ${APP_MSGS}/timer/msg_time_status.cpp
+    # Button messages
+    ${APP_MSGS}/buttons/msg_default_btn.cpp
+    # Fuel messages
+    ${APP_MSGS}/fuel/msg_config_get_dt.cpp
+    ${APP_MSGS}/fuel/msg_config_dt.cpp
+    ${APP_MSGS}/fuel/msg_fuel_pumped.cpp
+    ${APP_MSGS}/fuel/msg_nozzle_state.cpp
+    ${APP_MSGS}/fuel/msg_printer_btn.cpp
     # OTA messages
-    ${APP_MSGS}/msg_ota_start_request.cpp
-    ${APP_MSGS}/msg_ota_start_response.cpp
-    ${APP_MSGS}/msg_ota_request_driver.cpp
-    ${APP_MSGS}/msg_ota_driver_response.cpp
-    ${APP_MSGS}/msg_ota_abort_request.cpp
-    ${APP_MSGS}/msg_ota_complete_notify.cpp
-    ${APP_MSGS}/msg_ota_event.cpp
-    ${APP_MSGS}/msg_ota_progress.cpp
-    ${APP_MSGS}/msg_mqtt_status.cpp
+    ${APP_MSGS}/ota/msg_config_get_ota.cpp
+    ${APP_MSGS}/ota/msg_config_ota.cpp
+    ${APP_MSGS}/ota/msg_ota_start_request.cpp
+    ${APP_MSGS}/ota/msg_ota_start_response.cpp
+    ${APP_MSGS}/ota/msg_ota_request_driver.cpp
+    ${APP_MSGS}/ota/msg_ota_driver_response.cpp
+    ${APP_MSGS}/ota/msg_ota_abort_request.cpp
+    ${APP_MSGS}/ota/msg_ota_complete_notify.cpp
+    ${APP_MSGS}/ota/msg_ota_event.cpp
+    ${APP_MSGS}/ota/msg_ota_progress.cpp
 )
 target_include_directories(app_messages PUBLIC
     ${APP_MSGS}
+    ${APP_MSGS}/buttons
+    ${APP_MSGS}/cloud
+    ${APP_MSGS}/configs
+    ${APP_MSGS}/fuel
+    ${APP_MSGS}/mqtt
+    ${APP_MSGS}/ota
+    ${APP_MSGS}/system
+    ${APP_MSGS}/timer
+    ${APP_MSGS}/wifi
     ${APP}           # app_msg_ids.h
     ${APP_MODS}/module_config
     ${APP_MODS}/module_fuel/pumps   # nozzle_event.h (needed by msg_nozzle_state.h)

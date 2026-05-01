@@ -1,0 +1,12 @@
+{
+  "msg_id": "0x0A07",
+  "fields": [
+    {
+      "name": "target_idx",
+      "label": "Target Index",
+      "type": "uint8",
+      "default": 0
+    }
+  ],
+  "direction": "cmd"
+}
