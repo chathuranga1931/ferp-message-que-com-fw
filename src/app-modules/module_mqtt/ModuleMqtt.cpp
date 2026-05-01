@@ -371,7 +371,7 @@ void ModuleMqtt::_on_pal_connected()
 
     // Notify other modules (e.g. sim bridge → UI LED)
     {
-        MsgMqttStatus::Payload sp{ .connected = true };
+        MsgMqttStatus::Payload sp{}; sp.connected = true;
         hsys_msg_t *m = MsgMqttStatus::create(id(), sp);
         if (m) publish(m);
     }
@@ -404,7 +404,7 @@ void ModuleMqtt::_on_pal_disconnected()
         LOG_MSG_INFO(MQTT_LOG, "MQTT disconnected — waiting for reconnect");
 
         // Notify other modules (e.g. sim bridge → UI LED)
-        MsgMqttStatus::Payload sp{ .connected = false };
+        MsgMqttStatus::Payload sp{}; sp.connected = false;
         hsys_msg_t *m = MsgMqttStatus::create(id(), sp);
         if (m) publish(m);
     }

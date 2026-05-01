@@ -44,7 +44,6 @@ static bool uart_initialized = false;
 **/
 
 logger_uart::logger_uart(){
-#if defined(LOG_ENABLED) && (LOG_ENABLED == TRUE)
 	if (!uart_initialized) {
 		// Configure PAL UART
 		pal_uart_config_t uart_config = {
@@ -67,7 +66,6 @@ logger_uart::logger_uart(){
 			uart_initialized = true;
 		}
 	}
-#endif
 }
 
 /**

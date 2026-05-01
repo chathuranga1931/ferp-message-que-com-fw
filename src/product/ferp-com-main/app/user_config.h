@@ -69,3 +69,17 @@
 #ifndef LOG_EN
 #define LOG_EN               true
 #endif
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Logger UART configuration (used by pal_esp_idf_logger_uart.cpp)
+// ─────────────────────────────────────────────────────────────────────────────
+#ifndef LOG_ENABLED
+#define LOG_ENABLED          1       ///< Enable PAL UART logger (0 = disable)
+#endif
+
+#ifndef LOG_UART_BAUDRATE
+#define LOG_UART_BAUDRATE    115200  ///< Baud rate for UART0 log output
+#endif
+
+#define BOARD_2602      1
+#define FERP_COM_2602   1

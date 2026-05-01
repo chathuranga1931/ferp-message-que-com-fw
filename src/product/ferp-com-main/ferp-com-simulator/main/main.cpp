@@ -49,13 +49,6 @@ extern "C" void app_platform_pre_init(void)
                                 ds1307_i2c_emulator_get());
 }
 
-// ── Run loop (overrides weak default in app.cpp) ─────────────────────────────
-
-extern "C" void app_run(void)
-{
-    struct timespec ts = { 0, 10000000 };   // 10 ms
-    nanosleep(&ts, nullptr);
-}
 
 // ── Entry point ───────────────────────────────────────────────────────────────
 

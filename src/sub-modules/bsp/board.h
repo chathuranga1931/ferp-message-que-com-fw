@@ -3,6 +3,7 @@
 #define _FERP_BSP_BOARD_H_
 
 #include <time.h>
+#include "esp_err.h"
 
 /* GPIO Configs */
 
@@ -13,7 +14,6 @@
     // #error "Including board configuration for COM 2404"
     #include "com-boards/2404/board_2404_wrap.h"
 #elif defined(FERP_COM_2602)
-    #error "Including board configuration for COM 2602"
     #include "com-boards/2602/board_2602_wrap.h"
 #endif
 
@@ -45,6 +45,8 @@ typedef struct {
 
 void board_ini(void);
 void board_process(void * arg);
+
+esp_err_t board_init(void);
 
 bool is_i2c_device_connected(uint8_t address);
 

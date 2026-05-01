@@ -65,6 +65,7 @@
 #include "app_config.h"
 #include "hsys_config.h"
 #include "hsys_type.h"
+#include "hsys_task.h"
 
 // Codec registry
 #include "app_msg_codec.h"
@@ -281,7 +282,6 @@ extern "C" void app_register_extra_module(HsysModule             *module,
 // ============================================================================
 
 extern "C" __attribute__((weak)) void app_platform_pre_init(void) {}
-extern "C" __attribute__((weak)) void app_run(void) {}
 
 // ============================================================================
 // app_config_init
@@ -343,5 +343,11 @@ extern "C" void app_init(void)
             all_tasks[TASK_TABLE_SIZE + i] = *s_extra_tasks[i];
         hsys_task_mgr_init(all_tasks, (uint8_t)(TASK_TABLE_SIZE + s_extra_count));
     }
+}
+
+
+extern "C" void app_run(void)
+{
+   hsys_task_delay(1000);
 }
 

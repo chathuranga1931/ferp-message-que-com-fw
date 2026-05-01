@@ -33,7 +33,7 @@ static hsys_queue_handle_t button_event_queue;
 // void gpio_set_led1(const bool level) { pal_gpio_write(LED1, level); }
 // void gpio_set_led2(const bool level) { pal_gpio_write(LED2, level); }
 // void gpio_set_en4g(const bool level) { pal_gpio_write(EN_4G, level); }
-// void gpio_set_reset_distap(const bool level) { pal_gpio_write(RESET_DISTAP, level); }
+extern "C" void gpio_set_reset_distap(const bool level) { pal_gpio_write(RESET_DISTAP, level); }
 
 // void gpio_set_io0_distap(const bool level) 
 // { 
@@ -45,8 +45,6 @@ static hsys_queue_handle_t button_event_queue;
 //     pal_gpio_set_direction(IO0_DISTAP, PAL_GPIO_MODE_OUTPUT);
 //     pal_gpio_write(IO0_DISTAP, false);
 // }
-
-dasfdas
 
 void gpio_reset_io0_distap()
 {

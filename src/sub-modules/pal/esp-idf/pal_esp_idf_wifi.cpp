@@ -175,17 +175,16 @@ int32_t pal_wifi_init(const pal_wifi_init_config_t* config,
         return ret;
     }
     
-    // Initialize network interface if not already done
+    // Initialize network interface if not already done.
+    // esp_netif_init() is called once at startup from pal_system_init() before
+    // tasks start; the guard here prevents a second init if WiFi is reconfigured.
     if (!s_netif_initialized) {
-        ret = esp_netif_init();
-        if (ret != ESP_OK) {
-            LOG_MSG_ERROR(P_WIFI_DEBUG_LOG_EN, "Failed to initialize netif: %s", esp_err_to_name(ret));
-            return ret;
-        }
-        
+        // esp_netif_init() is idempotent in IDF 5.x (reference-counted).
+        esp_netif_init();
+
         ret = esp_event_loop_create_default();
         if (ret != ESP_OK && ret != ESP_ERR_INVALID_STATE) {
-            // ESP_ERR_INVALID_STATE means already created, which is OK
+            // ESP_ERR_INVALID_STATE means already created by pal_system_init(), which is OK
             LOG_MSG_ERROR(P_WIFI_DEBUG_LOG_EN, "Failed to create event loop: %s", esp_err_to_name(ret));
             return ret;
         }
