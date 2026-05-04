@@ -110,11 +110,19 @@ void app_config_load_defaults(app_config_t *cfg)
     strncpy(cfg->device_group,       "default",              sizeof(cfg->device_group)        - 1);
     cfg->display_type                = 0;
     cfg->stabilize_delay_ms          = 500;
+    cfg->en_retx                     = false;
+    cfg->nozzle_swap                 = false;
+    cfg->tot_cnt                     = 3;
+    cfg->tot_dur                     = 1000;
     strncpy(cfg->printer_url,        "http://printer.local", sizeof(cfg->printer_url)         - 1);
     cfg->printer_copy_count          = 1;
     cfg->log_udp_enabled             = false;
     strncpy(cfg->log_udp_server_ip,  "192.168.1.100",        sizeof(cfg->log_udp_server_ip)   - 1);
     cfg->log_udp_port                = 4444;
+    cfg->dt_log_rate                 = 1;
+    cfg->print_delay_ms              = 0;
+    cfg->enable_nid_print            = false;
+    cfg->enable_nid_cloud            = false;
 }
 
 static config_t k_config_table[] = {
@@ -138,6 +146,15 @@ static config_t k_config_table[] = {
     { "en_udp_ser",    HSYS_TYPE_BOOL,   &_app_config.log_udp_enabled,    sizeof(_app_config.log_udp_enabled)     },
     { "udp_srvr_ip",   HSYS_TYPE_STRING, _app_config.log_udp_server_ip,   sizeof(_app_config.log_udp_server_ip)   },
     { "udp_srvr_port", HSYS_TYPE_UINT32, &_app_config.log_udp_port,       sizeof(_app_config.log_udp_port)        },
+    { "hb_enabled",    HSYS_TYPE_BOOL,   &_app_config.cloud_hb_enabled,   sizeof(_app_config.cloud_hb_enabled)    },
+    { "en_nid_prnt",   HSYS_TYPE_BOOL,   &_app_config.enable_nid_print,   sizeof(_app_config.enable_nid_print)    },
+    { "en_nid_cloud",  HSYS_TYPE_BOOL,   &_app_config.enable_nid_cloud,   sizeof(_app_config.enable_nid_cloud)    },
+    { "dt_log_rate",   HSYS_TYPE_UINT32, &_app_config.dt_log_rate,        sizeof(_app_config.dt_log_rate)         },
+    { "prnt_delay",    HSYS_TYPE_UINT32, &_app_config.print_delay_ms,     sizeof(_app_config.print_delay_ms)      },
+    { "en_retx",       HSYS_TYPE_BOOL,   &_app_config.en_retx,            sizeof(_app_config.en_retx)             },
+    { "nzle_swap",     HSYS_TYPE_BOOL,   &_app_config.nozzle_swap,        sizeof(_app_config.nozzle_swap)         },
+    { "tot_cnt",       HSYS_TYPE_UINT32, &_app_config.tot_cnt,            sizeof(_app_config.tot_cnt)             },
+    { "tot_dur",       HSYS_TYPE_UINT32, &_app_config.tot_dur,            sizeof(_app_config.tot_dur)             },
 };
 #define CONFIG_TABLE_SIZE  (sizeof(k_config_table) / sizeof(k_config_table[0]))
 

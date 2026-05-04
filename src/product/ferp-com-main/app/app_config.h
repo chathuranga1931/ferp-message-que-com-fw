@@ -62,15 +62,25 @@ typedef struct {
     // Hardware
     uint32_t display_type;
     uint32_t stabilize_delay_ms;
+    bool     en_retx;               ///< Enable display tap retransmission
+    bool     nozzle_swap;           ///< Swap nozzle 1 and 2 assignment
+    uint32_t tot_cnt;               ///< Totalizer stabilisation count
+    uint32_t tot_dur;               ///< Totalizer stabilisation duration (ms)
 
     // Printer
     char     printer_url[128];
     uint32_t printer_copy_count;
+    uint32_t print_delay_ms;        ///< Delay between print trigger and print send (ms)
 
     // Logging
     bool     log_udp_enabled;
     char     log_udp_server_ip[16];
     uint32_t log_udp_port;
+    uint32_t dt_log_rate;           ///< Data transaction log rate (every N transactions)
+
+    // Application feature flags
+    bool     enable_nid_print;      ///< Enable NID on printed receipts
+    bool     enable_nid_cloud;      ///< Enable NID in cloud uploads
 
 } app_config_t;
 
