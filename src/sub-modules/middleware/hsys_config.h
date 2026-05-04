@@ -24,6 +24,7 @@
 #define CONFIG_BUFFER_TOO_SMALL  (ERR_CONFIG_OFFSET + 2)
 
 typedef struct{
+	uint16_t key;           ///< Unique 16-bit identifier for this config field (CFG_KEY_*)
 	char name[32];
 	hsys_type_t type;
 	void * p_global_value;

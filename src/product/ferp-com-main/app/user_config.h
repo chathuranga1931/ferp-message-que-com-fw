@@ -65,6 +65,10 @@
 #define ERR_CONFIG_OFFSET   -100
 #endif
 
+#ifndef ERR_DEV_INFO_OFFSET
+#define ERR_DEV_INFO_OFFSET  -110
+#endif
+
 // Legacy alias used in middleware LOG_MSG_* calls
 #ifndef LOG_EN
 #define LOG_EN               true

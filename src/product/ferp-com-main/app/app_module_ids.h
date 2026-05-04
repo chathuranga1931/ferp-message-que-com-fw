@@ -52,6 +52,7 @@
 // Shared application modules  (23+)
 // ------------------------------------------------------------------
 #define MODULE_MSG_TRANSLATOR_ID  ((hsys_module_id_t) 23)   ///< ModuleMsgTranslator — message translation and routing
+#define MODULE_DEVICE_INFO_ID     ((hsys_module_id_t) 24)   ///< ModuleDeviceInfo    — runtime device identity
 
 // ------------------------------------------------------------------
 // Simulator-only / platform-specific  (20+)

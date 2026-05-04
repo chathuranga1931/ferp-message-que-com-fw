@@ -105,9 +105,16 @@ typedef enum : uint16_t
     MSG_ID_MQTT_STATUS          = 0x0A0B,   ///< ModuleMqtt -> all: MQTT broker connection state change
 
     // ------------------------------------------------------------------
+    // Device info  (0x0B00 – 0x0BFF)
+    // ------------------------------------------------------------------
+    MSG_ID_DEV_INFO_READ        = 0x0B00,   ///< Any -> ModuleDeviceInfo: read a field by key (DIRECT response)
+    MSG_ID_DEV_INFO_WRITE       = 0x0B01,   ///< Permitted -> ModuleDeviceInfo: write a field by key
+    MSG_ID_DEV_INFO_VALUE       = 0x0B02,   ///< ModuleDeviceInfo -> requester: field value response (DIRECT)
+
+    // ------------------------------------------------------------------
     // Sentinel — keep one above the highest assigned ID
     // ------------------------------------------------------------------
-    MSG_ID_MAX              = 0x0A0C,
+    MSG_ID_MAX              = 0x0B03,
 
 } app_msg_id_e;
 

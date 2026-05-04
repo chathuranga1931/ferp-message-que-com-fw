@@ -38,6 +38,9 @@ idf_component_register(
         "${D_MODS}/module_ota/targets/ota_driver_esp32_main.c"
         "${D_MODS}/module_ota/targets/ota_driver_esp32_dt.c"
 
+        # ── Device info module ────────────────────────────────────────────
+        "${D_MODS}/module_device_info/module_device_info.cpp"
+
         # ── HTTP configuration / OTA web server (common, PAL-backed) ──────
         "${D_MODS}/module_web_server/ModuleWebServer.cpp"
         # ── MQTT broker client (common, PAL-backed) ───────────────────────
@@ -46,6 +49,9 @@ idf_component_register(
         # ── Cloud-polling OTA source module ───────────────────────────────
         "${D_MODS}/module_web_client_ota/ModuleWebClientOta.cpp"
         "${D_MODS}/module_web_client_ota/hsys_ota.cpp"
+
+        # ── Device info module ───────────────────────────────────────────────
+        "${D_MODS}/module_device_info/module_device_info.cpp"
 
         # ── Utilities ────────────────────────────────────────────────────
         "${D_SUB}/utils/crc32.cpp"
@@ -89,6 +95,10 @@ idf_component_register(
         "${D_MSGS}/fuel/msg_fuel_pumped.cpp"
         "${D_MSGS}/fuel/msg_nozzle_state.cpp"
         "${D_MSGS}/fuel/msg_printer_btn.cpp"
+        # Device info messages
+        "${D_MSGS}/messages/msg_dev_info_read.cpp"
+        "${D_MSGS}/messages/msg_dev_info_write.cpp"
+        "${D_MSGS}/messages/msg_dev_info_value.cpp"
         # OTA messages
         "${D_MSGS}/ota/msg_config_get_ota.cpp"
         "${D_MSGS}/ota/msg_config_ota.cpp"
@@ -100,6 +110,11 @@ idf_component_register(
         "${D_MSGS}/ota/msg_ota_complete_notify.cpp"
         "${D_MSGS}/ota/msg_ota_event.cpp"
         "${D_MSGS}/ota/msg_ota_progress.cpp"
+
+        # Device info messages
+        "${D_MSGS}/messages/msg_dev_info_read.cpp"
+        "${D_MSGS}/messages/msg_dev_info_write.cpp"
+        "${D_MSGS}/messages/msg_dev_info_value.cpp"
 
         # ── App peripherals ───────────────────────────────────────────────
         "${D_PHER}/app_spiffs.cpp"
@@ -113,6 +128,7 @@ idf_component_register(
 
         # ── Middleware ────────────────────────────────────────────────────
         "${D_SUB}/middleware/hsys_config.cpp"
+        "${D_SUB}/middleware/hsys_device_info.cpp"
         "${D_SUB}/middleware/list-manager/list_manager.cpp"
 
         # ── PAL ESP-IDF implementations ───────────────────────────────────
@@ -182,6 +198,7 @@ idf_component_register(
         "${D_MODS}/module_web_server"
         "${D_MODS}/module_mqtt"
         "${D_MODS}/module_web_client_ota"
+        "${D_MODS}/module_device_info"
         # App messages and peripherals
         "${D_MSGS}"
         "${D_MSGS}/buttons"
@@ -193,6 +210,7 @@ idf_component_register(
         "${D_MSGS}/system"
         "${D_MSGS}/timer"
         "${D_MSGS}/wifi"
+        "${D_MSGS}/messages"
         "${D_PHER}"
         # Generic peripheral
         "${D_SUB}/peripheral"

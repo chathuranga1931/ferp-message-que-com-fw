@@ -55,10 +55,6 @@ typedef struct {
     char     mqtt_user[32];
     char     mqtt_password[64];
 
-    // Device identity
-    char     device_uuid[40];
-    char     device_group[32];
-
     // Hardware
     uint32_t display_type;
     uint32_t stabilize_delay_ms;
@@ -83,6 +79,66 @@ typedef struct {
     bool     enable_nid_cloud;      ///< Enable NID in cloud uploads
 
 } app_config_t;
+
+// ---------------------------------------------------------------------------
+// Config keys — 16-bit identifiers organised by section.
+//
+// Ranges:
+//   0x1000–0x10FF  WiFi
+//   0x2000–0x20FF  Cloud / HTTP
+//   0x3000–0x30FF  OTA
+//   0x4000–0x40FF  MQTT
+//   0x5000–0x50FF  Device identity
+//   0x6000–0x60FF  Hardware
+//   0x7000–0x70FF  Printer
+//   0x8000–0x80FF  Logging
+//   0x9000–0x90FF  Application feature flags
+//
+// Modules will use these keys to fetch individual config values in Phase 2.
+// ---------------------------------------------------------------------------
+
+// WiFi
+#define CFG_KEY_WIFI_SSID              0x1001u
+#define CFG_KEY_WIFI_PASSWORD          0x1002u
+
+// Cloud / HTTP
+#define CFG_KEY_CLOUD_URL              0x2001u
+#define CFG_KEY_CLOUD_SECRET           0x2002u
+#define CFG_KEY_CLOUD_HB_ENABLED       0x2003u
+#define CFG_KEY_CLOUD_HB_INTERVAL_S    0x2004u
+
+// OTA
+#define CFG_KEY_OTA_SERVER_URL         0x3001u
+#define CFG_KEY_OTA_CHECK_INTERVAL_S   0x3002u
+
+// MQTT
+#define CFG_KEY_MQTT_HOST              0x4001u
+#define CFG_KEY_MQTT_PORT              0x4002u
+#define CFG_KEY_MQTT_USER              0x4003u
+#define CFG_KEY_MQTT_PASSWORD          0x4004u
+
+// Hardware
+#define CFG_KEY_DISPLAY_TYPE           0x6001u
+#define CFG_KEY_STABILIZE_DELAY_MS     0x6002u
+#define CFG_KEY_EN_RETX                0x6003u
+#define CFG_KEY_NOZZLE_SWAP            0x6004u
+#define CFG_KEY_TOT_CNT                0x6005u
+#define CFG_KEY_TOT_DUR                0x6006u
+
+// Printer
+#define CFG_KEY_PRINTER_URL            0x7001u
+#define CFG_KEY_PRINTER_COPY_COUNT     0x7002u
+#define CFG_KEY_PRINT_DELAY_MS         0x7003u
+
+// Logging
+#define CFG_KEY_LOG_UDP_ENABLED        0x8001u
+#define CFG_KEY_LOG_UDP_SERVER_IP      0x8002u
+#define CFG_KEY_LOG_UDP_PORT           0x8003u
+#define CFG_KEY_DT_LOG_RATE            0x8004u
+
+// Application feature flags
+#define CFG_KEY_ENABLE_NID_PRINT       0x9001u
+#define CFG_KEY_ENABLE_NID_CLOUD       0x9002u
 
 #ifdef __cplusplus
 extern "C" {

@@ -1,22 +1,8 @@
-// module_config.h
-//
-// ModuleConfig — HSYS module that owns the device configuration lifecycle.
-//
-// Lifecycle:
-//   init()              — subscribe to MSG_ID_SPIFFS_READY
-//   on_msg_received()   — on SPIFFS_READY:
-//                           1. Read Configs/DeviceConfigs.json via app_spiffs
-//                           2. Parse JSON → load matching keys into config table
-//                           3. Serialise config table back → overwrite the file
-//                           4. Publish MsgConfigReady with pointer to live config
-//
-// Subscribers (e.g. ModuleWifi, ModuleMqtt) receive MsgConfigReady and
-// copy the fields they need during their own on_msg_received().
-
 #pragma once
 
 #include "hsys_module.h"
-#include "hsys_config.h"     // config_handle_t
+#include "hsys_config.h"     // config_handle_t, config_t
+#include "hsys_pool.h"       // hsys_pool_alloc / hsys_pool_free
 
 // ---------------------------------------------------------------------------
 // Module identity
@@ -45,9 +31,16 @@ private:
     static constexpr const char *k_config_dir  = "Configs";
     static constexpr const char *k_config_file = "Configs/DeviceConfigs.json";
 
-    // ── JSON buffer (static — kept off the stack) ────────────────────────────
-    static constexpr size_t k_json_buf_size = 4096;
-    static char s_json_buf[k_json_buf_size];
+    // ── JSON working buffer size (pool-allocated on demand, not static) ──────
+    static constexpr size_t k_json_buf_size = 2048;
+
+    // ── Config handle (owned here; initialised in init()) ───────────────────
+    config_handle_t m_config_handle {};
+
+    // ── JSON working buffer — allocated once in init(), freed after load ─────
+    // Allocated early (before any other module can consume pool blocks) so
+    // _load_and_save() is guaranteed a buffer when SPIFFS_READY fires.
+    char *m_json_buf = nullptr;
 
     // ── Internal helpers ─────────────────────────────────────────────────────
     void _load_and_save();

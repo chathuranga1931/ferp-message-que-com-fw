@@ -2,19 +2,24 @@
 //
 // ModuleConfig implementation.
 //
+// init():
+//   Calls app_config_get_table() to obtain the config field table, then
+//   calls hsys_config_init() to bind it to the module-owned config handle.
+//
 // On MSG_ID_SPIFFS_READY:
-//   1. Read  Configs/DeviceConfigs.json
-//   2. Parse JSON  → hsys_config_load_from_json iterates every key in the
-//                    config table and copies matching values into the live
-//                    app_config_t variables.
-//   3. Serialise   → hsys_config_convert_to_json rebuilds a canonical JSON
-//                    from the (now-updated) config table.
-//   4. Overwrite   → app_spiffs_write_file replaces the file (not append).
-//   5. Publish     → MsgConfigReady carries a const pointer to the live config.
+//   1. Allocate a 2 KB working buffer from the pool.
+//   2. Read  Configs/DeviceConfigs.json into the buffer.
+//   3. Parse JSON  → hsys_config_load_from_json copies matching values into
+//                    the live app_config_t variables.
+//   4. Serialise   → hsys_config_convert_to_json rebuilds canonical JSON
+//                    (reusing the same buffer — parse data is already copied).
+//   5. Overwrite   → app_spiffs_write_file replaces the file (not append).
+//   6. Free        → return the buffer to the pool.
+//   7. Publish     → MsgConfigReady signals that config is ready.
 
 #include "module_config.h"
 #include "app_spiffs.h"
-#include "app.h"                  // app_config_get_handle(), app_config_get()
+#include "app.h"                  // app_config_get_table(), app_config_get()
 #include "msg_spiffs_ready.h"
 #include "msg_config_ready.h"
 #include "msg_config_get_wifi.h"
@@ -42,21 +47,36 @@
 static ModuleConfig s_instance;
 ModuleConfig *ModuleConfig::instance() { return &s_instance; }
 
-// Static JSON buffer shared across _load_and_save() calls — avoids blowing
-// the task stack with a 4 KB local array.
-char ModuleConfig::s_json_buf[ModuleConfig::k_json_buf_size];
-
 // ── Lifecycle ─────────────────────────────────────────────────────────────────
 
 void ModuleConfig::init()
 {
+    // Bind the application config table to our private handle.
+    uint16_t table_size = 0;
+    config_t *table = app_config_get_table(&table_size);
+    config_init_t cfg_init = { table_size, table };
+    int32_t rc = hsys_config_init(cfg_init, &m_config_handle);
+    if (rc != CONFIG_SUCCESS) {
+        LOG_MSG_ERROR(MOD_CONFIG_LOG_EN, "hsys_config_init failed (%ld)", (long)rc);
+    }
+
     subscribe(MSG_ID_SPIFFS_READY);
     subscribe(MSG_ID_CONFIG_GET_WIFI);
     subscribe(MSG_ID_CONFIG_GET_CLOUD);
     subscribe(MSG_ID_CONFIG_GET_MQTT);
     subscribe(MSG_ID_CONFIG_GET_DT);
     subscribe(MSG_ID_CONFIG_GET_OTA);
-    LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "subscribed to SPIFFS_READY + typed config gets");
+
+    // Pre-allocate the JSON working buffer while the pool is fresh.
+    // Doing this here — before any other module's init() runs — guarantees
+    // the 2 K block is reserved. It is freed inside _load_and_save() after
+    // the config file has been read and written back.
+    m_json_buf = static_cast<char *>(hsys_pool_alloc(static_cast<uint16_t>(k_json_buf_size)));
+    if (!m_json_buf) {
+        LOG_MSG_ERROR(MOD_CONFIG_LOG_EN, "JSON buf alloc failed — config will use defaults");
+    }
+
+    LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "config handle initialised, subscribed to SPIFFS_READY + typed config gets");
 }
 
 // ── Message handler ───────────────────────────────────────────────────────────
@@ -99,68 +119,71 @@ void ModuleConfig::on_msg_received(const hsys_msg_t &msg)
 
 void ModuleConfig::_load_and_save()
 {
-    config_handle_t *hndl = app_config_get_handle();
-    if (!hndl || !hndl->is_initialized) {
+    if (!m_config_handle.is_initialized) {
         LOG_MSG_ERROR(MOD_CONFIG_LOG_EN, "config handle not initialised");
-        return;
-    }
-
-    // ── 1. Read file ──────────────────────────────────────────────────────────
-    size_t bytes_read = 0;
-    int32_t rc = app_spiffs_read_file(k_config_file,
-                                      s_json_buf,
-                                      k_json_buf_size,
-                                      &bytes_read,
-                                      5000);
-
-    if (rc != APP_SPIFFS_OK || bytes_read < 10) {
-        if (rc != APP_SPIFFS_OK) {
-            LOG_MSG_WARNING(MOD_CONFIG_LOG_EN,
-                         "config file read failed (%ld) — using defaults", (long)rc);
-        } else {
-            LOG_MSG_WARNING(MOD_CONFIG_LOG_EN,
-                         "config file too small (%zu bytes) — using defaults", bytes_read);
-        }
-        // Fall through: save defaults to create / repair the file.
-    }
-    else {
-        // ── 2. Parse JSON → load matching keys into live config variables ─────
-        s_json_buf[bytes_read] = '\0';   // guarantee null termination
-        LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "read %zu bytes — parsing", bytes_read);
-
-        rc = hsys_config_load_from_json(hndl, s_json_buf, bytes_read);
-        if (rc != CONFIG_SUCCESS) {
-            LOG_MSG_WARNING(MOD_CONFIG_LOG_EN,
-                         "JSON parse failed (%ld) — keeping defaults", (long)rc);
-        } else {
-            LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "config loaded from file");
-        }
-    }
-
-    // ── 3. Serialise config table back to canonical JSON ──────────────────────
-    memset(s_json_buf, 0, k_json_buf_size);
-    size_t json_len = 0;
-
-    rc = hsys_config_convert_to_json(hndl, s_json_buf, k_json_buf_size, &json_len);
-    if (rc != CONFIG_SUCCESS || json_len == 0) {
-        LOG_MSG_ERROR(MOD_CONFIG_LOG_EN,
-                      "convert_to_json failed (%ld) — not saving", (long)rc);
-        goto publish;
-    }
-
-    // ── 4. Overwrite file (write, not append) ─────────────────────────────────
-    LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "saving %zu bytes to %s", json_len, k_config_file);
-
-    rc = app_spiffs_write_file(k_config_file, s_json_buf, 5000);
-    if (rc != APP_SPIFFS_OK) {
-        LOG_MSG_ERROR(MOD_CONFIG_LOG_EN,
-                      "write failed (%ld) — config not persisted", (long)rc);
+    } else if (!m_json_buf) {
+        LOG_MSG_ERROR(MOD_CONFIG_LOG_EN, "no JSON buffer — skipping load, using defaults");
     } else {
-        LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "config saved OK");
+        char *json_buf = m_json_buf;
+        do {
+                // ── 1. Read file ──────────────────────────────────────────────
+                size_t bytes_read = 0;
+                int32_t rc = app_spiffs_read_file(k_config_file,
+                                                  json_buf,
+                                                  k_json_buf_size,
+                                                  &bytes_read,
+                                                  5000);
+                if (rc != APP_SPIFFS_OK || bytes_read < 10) {
+                    if (rc != APP_SPIFFS_OK) {
+                        LOG_MSG_WARNING(MOD_CONFIG_LOG_EN,
+                                        "config read failed (%ld) — using defaults", (long)rc);
+                    } else {
+                        LOG_MSG_WARNING(MOD_CONFIG_LOG_EN,
+                                        "config too small (%zu B) — using defaults", bytes_read);
+                    }
+                    // Fall through: save defaults to create / repair the file.
+                } else {
+                    // ── 2. Parse JSON → copy matching values into live config ─
+                    json_buf[bytes_read] = '\0';
+                    LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "read %zu bytes — parsing", bytes_read);
+                    rc = hsys_config_load_from_json(&m_config_handle, json_buf, bytes_read);
+                    if (rc != CONFIG_SUCCESS) {
+                        LOG_MSG_WARNING(MOD_CONFIG_LOG_EN,
+                                        "JSON parse failed (%ld) — keeping defaults", (long)rc);
+                    } else {
+                        LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "config loaded from file");
+                    }
+                }
+
+                // ── 3. Serialise config table back to canonical JSON ──────────
+                memset(json_buf, 0, k_json_buf_size);
+                size_t json_len = 0;
+                rc = hsys_config_convert_to_json(&m_config_handle, json_buf,
+                                                 k_json_buf_size, &json_len);
+                if (rc != CONFIG_SUCCESS || json_len == 0) {
+                    LOG_MSG_ERROR(MOD_CONFIG_LOG_EN,
+                                  "convert_to_json failed (%ld) — not saving", (long)rc);
+                    break;
+                }
+
+                // ── 4. Overwrite file ─────────────────────────────────────────
+                LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "saving %zu bytes to %s", json_len, k_config_file);
+                rc = app_spiffs_write_file(k_config_file, json_buf, 5000);
+                if (rc != APP_SPIFFS_OK) {
+                    LOG_MSG_ERROR(MOD_CONFIG_LOG_EN,
+                                  "write failed (%ld) — config not persisted", (long)rc);
+                } else {
+                    LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "config saved OK");
+                }
+
+            } while (false);
+
+        // Release the buffer back to the pool — it was a one-shot use.
+        hsys_pool_free(m_json_buf);
+        m_json_buf = nullptr;
     }
 
-publish:
-    // ── 5. Publish MsgConfigReady — always, even if save failed ──────────────
+    // ── 5. Publish MsgConfigReady — always, even if load/save failed ──────────
     hsys_msg_t *out = MsgConfigReady::create(id());
     if (out) {
         publish(out);

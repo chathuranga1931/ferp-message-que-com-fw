@@ -36,12 +36,9 @@ void app_register_extra_module(HsysModule              *module,
 
 // ── Config accessors (for app-layer code only) ────────────────────────────────
 
-/** Load defaults and initialise the config handle.
- *  Called internally by app_init(). Exposed for testing. */
+/** Load defaults into the live config struct.
+ *  Called internally by app_init(). hsys_config_init() is owned by ModuleConfig. */
 void app_config_init(void);
-
-/** Returns a pointer to the live config handle (owned by app.cpp). */
-config_handle_t *app_config_get_handle(void);
 
 /** Returns a pointer to the live app_config_t (owned by app.cpp). */
 const app_config_t *app_config_get(void);

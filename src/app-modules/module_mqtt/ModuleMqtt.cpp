@@ -8,6 +8,7 @@
 #include "app_msg_codec.h"
 #include "hsys_msg.h"
 #include "app_config.h"
+#include "app_device_info.h"
 
 // Messages this module subscribes to
 #include "msg_config_ready.h"
@@ -306,17 +307,16 @@ void ModuleMqtt::_on_config_mqtt(const hsys_msg_t &msg)
     cfg.keepalive            = 60;
     cfg.reconnect_timeout_ms = 5000;
 
-    // Build topic paths — we need device_uuid and device_group from somewhere.
-    // They are baked into the config via app.cpp defaults; we read them from
-    // msg payload context by looking at the broker_uri pattern.
-    // For topic we need the app_config directly — use extern reference.
-    extern app_config_t _app_config;  // defined in app.cpp
+    // Build topic paths using runtime device identity.
+    // device_uuid / device_group are populated by ModuleDeviceInfo after
+    // the cloud module writes them; until then the buffers are empty strings.
+    const app_device_info_t *dev_info = app_device_info_get();
     char dev_id[40];
-    uuid_to_topic_id(_app_config.device_uuid, dev_id, sizeof(dev_id));
-    _build_topics("ferp-com", _app_config.device_group, dev_id);
+    uuid_to_topic_id(dev_info->device_uuid, dev_id, sizeof(dev_id));
+    _build_topics("ferp-com", dev_info->device_group, dev_id);
 
     // Use device_uuid as client ID (truncated to fit)
-    strncpy(cfg.client_id, _app_config.device_uuid, sizeof(cfg.client_id) - 1);
+    strncpy(cfg.client_id, dev_info->device_uuid, sizeof(cfg.client_id) - 1);
 
     if (_client) {
         pal_mqtt_client_destroy(_client);

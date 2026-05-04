@@ -58,12 +58,14 @@
 #include "ModuleWebClientOta.h"
 #include "ModuleWebServer.h"
 #include "ModuleMqtt.h"
+#include "module_device_info.h"
 
 #include "app_ota_config.h"
 #include "app_web_ota_config.h"  /* k_web_ota_targets[] + ModuleWebClientOta singleton */
 
 #include "app_msg_table.h"
 #include "app_config.h"
+#include "app_device_info.h"
 #include "hsys_config.h"
 #include "hsys_type.h"
 #include "hsys_task.h"
@@ -106,8 +108,6 @@ void app_config_load_defaults(app_config_t *cfg)
     cfg->mqtt_port                   = 1883;
     strncpy(cfg->mqtt_user,          "",                     sizeof(cfg->mqtt_user)           - 1);
     strncpy(cfg->mqtt_password,      "",                     sizeof(cfg->mqtt_password)       - 1);
-    strncpy(cfg->device_uuid,        "00000000-0000-0000-0000-000000000000", sizeof(cfg->device_uuid) - 1);
-    strncpy(cfg->device_group,       "default",              sizeof(cfg->device_group)        - 1);
     cfg->display_type                = 0;
     cfg->stabilize_delay_ms          = 500;
     cfg->en_retx                     = false;
@@ -126,44 +126,36 @@ void app_config_load_defaults(app_config_t *cfg)
 }
 
 static config_t k_config_table[] = {
-    { "ssid",          HSYS_TYPE_STRING, _app_config.wifi_ssid,           sizeof(_app_config.wifi_ssid)           },
-    { "password",      HSYS_TYPE_STRING, _app_config.wifi_password,       sizeof(_app_config.wifi_password)       },
-    { "cloud_url",     HSYS_TYPE_STRING, _app_config.cloud_url,           sizeof(_app_config.cloud_url)           },
-    { "cloud_secret",  HSYS_TYPE_STRING, _app_config.cloud_secret,        sizeof(_app_config.cloud_secret)        },
-    { "ota_srvr_url",  HSYS_TYPE_STRING, _app_config.ota_server_url,       sizeof(_app_config.ota_server_url)       },
-    { "ota_chk_int",  HSYS_TYPE_UINT32, &_app_config.ota_check_interval_s, sizeof(_app_config.ota_check_interval_s) },
-    { "display_type",  HSYS_TYPE_UINT32, &_app_config.display_type,       sizeof(_app_config.display_type)        },
-    { "printer_url",   HSYS_TYPE_STRING, _app_config.printer_url,         sizeof(_app_config.printer_url)         },
-    { "p_cpy_cnt",     HSYS_TYPE_UINT32, &_app_config.printer_copy_count, sizeof(_app_config.printer_copy_count)  },
-    { "hb_interval",   HSYS_TYPE_UINT32, &_app_config.cloud_hb_interval_s,sizeof(_app_config.cloud_hb_interval_s) },
-    { "mqtt_host",     HSYS_TYPE_STRING, _app_config.mqtt_host,           sizeof(_app_config.mqtt_host)           },
-    { "mqtt_port",     HSYS_TYPE_UINT32, &_app_config.mqtt_port,          sizeof(_app_config.mqtt_port)           },
-    { "mqtt_user",     HSYS_TYPE_STRING, _app_config.mqtt_user,           sizeof(_app_config.mqtt_user)           },
-    { "mqtt_pass",     HSYS_TYPE_STRING, _app_config.mqtt_password,       sizeof(_app_config.mqtt_password)       },
-    { "device_uuid",   HSYS_TYPE_STRING, _app_config.device_uuid,         sizeof(_app_config.device_uuid)         },
-    { "device_group",  HSYS_TYPE_STRING, _app_config.device_group,        sizeof(_app_config.device_group)        },
-    { "cptr_delay",    HSYS_TYPE_UINT32, &_app_config.stabilize_delay_ms, sizeof(_app_config.stabilize_delay_ms)  },
-    { "en_udp_ser",    HSYS_TYPE_BOOL,   &_app_config.log_udp_enabled,    sizeof(_app_config.log_udp_enabled)     },
-    { "udp_srvr_ip",   HSYS_TYPE_STRING, _app_config.log_udp_server_ip,   sizeof(_app_config.log_udp_server_ip)   },
-    { "udp_srvr_port", HSYS_TYPE_UINT32, &_app_config.log_udp_port,       sizeof(_app_config.log_udp_port)        },
-    { "hb_enabled",    HSYS_TYPE_BOOL,   &_app_config.cloud_hb_enabled,   sizeof(_app_config.cloud_hb_enabled)    },
-    { "en_nid_prnt",   HSYS_TYPE_BOOL,   &_app_config.enable_nid_print,   sizeof(_app_config.enable_nid_print)    },
-    { "en_nid_cloud",  HSYS_TYPE_BOOL,   &_app_config.enable_nid_cloud,   sizeof(_app_config.enable_nid_cloud)    },
-    { "dt_log_rate",   HSYS_TYPE_UINT32, &_app_config.dt_log_rate,        sizeof(_app_config.dt_log_rate)         },
-    { "prnt_delay",    HSYS_TYPE_UINT32, &_app_config.print_delay_ms,     sizeof(_app_config.print_delay_ms)      },
-    { "en_retx",       HSYS_TYPE_BOOL,   &_app_config.en_retx,            sizeof(_app_config.en_retx)             },
-    { "nzle_swap",     HSYS_TYPE_BOOL,   &_app_config.nozzle_swap,        sizeof(_app_config.nozzle_swap)         },
-    { "tot_cnt",       HSYS_TYPE_UINT32, &_app_config.tot_cnt,            sizeof(_app_config.tot_cnt)             },
-    { "tot_dur",       HSYS_TYPE_UINT32, &_app_config.tot_dur,            sizeof(_app_config.tot_dur)             },
+    // key                           name             type               ptr                                         size
+    { CFG_KEY_WIFI_SSID,           "ssid",          HSYS_TYPE_STRING, _app_config.wifi_ssid,            sizeof(_app_config.wifi_ssid)            },
+    { CFG_KEY_WIFI_PASSWORD,       "password",      HSYS_TYPE_STRING, _app_config.wifi_password,        sizeof(_app_config.wifi_password)        },
+    { CFG_KEY_CLOUD_URL,           "cloud_url",     HSYS_TYPE_STRING, _app_config.cloud_url,            sizeof(_app_config.cloud_url)            },
+    { CFG_KEY_CLOUD_SECRET,        "cloud_secret",  HSYS_TYPE_STRING, _app_config.cloud_secret,         sizeof(_app_config.cloud_secret)         },
+    { CFG_KEY_OTA_SERVER_URL,      "ota_srvr_url",  HSYS_TYPE_STRING, _app_config.ota_server_url,       sizeof(_app_config.ota_server_url)       },
+    { CFG_KEY_OTA_CHECK_INTERVAL_S,"ota_chk_int",   HSYS_TYPE_UINT32, &_app_config.ota_check_interval_s,sizeof(_app_config.ota_check_interval_s) },
+    { CFG_KEY_DISPLAY_TYPE,        "display_type",  HSYS_TYPE_UINT32, &_app_config.display_type,        sizeof(_app_config.display_type)         },
+    { CFG_KEY_PRINTER_URL,         "printer_url",   HSYS_TYPE_STRING, _app_config.printer_url,          sizeof(_app_config.printer_url)          },
+    { CFG_KEY_PRINTER_COPY_COUNT,  "p_cpy_cnt",     HSYS_TYPE_UINT32, &_app_config.printer_copy_count,  sizeof(_app_config.printer_copy_count)   },
+    { CFG_KEY_CLOUD_HB_INTERVAL_S, "hb_interval",   HSYS_TYPE_UINT32, &_app_config.cloud_hb_interval_s, sizeof(_app_config.cloud_hb_interval_s)  },
+    { CFG_KEY_MQTT_HOST,           "mqtt_host",     HSYS_TYPE_STRING, _app_config.mqtt_host,            sizeof(_app_config.mqtt_host)            },
+    { CFG_KEY_MQTT_PORT,           "mqtt_port",     HSYS_TYPE_UINT32, &_app_config.mqtt_port,           sizeof(_app_config.mqtt_port)            },
+    { CFG_KEY_MQTT_USER,           "mqtt_user",     HSYS_TYPE_STRING, _app_config.mqtt_user,            sizeof(_app_config.mqtt_user)            },
+    { CFG_KEY_MQTT_PASSWORD,       "mqtt_pass",     HSYS_TYPE_STRING, _app_config.mqtt_password,        sizeof(_app_config.mqtt_password)        },
+    { CFG_KEY_STABILIZE_DELAY_MS,  "cptr_delay",    HSYS_TYPE_UINT32, &_app_config.stabilize_delay_ms,  sizeof(_app_config.stabilize_delay_ms)   },
+    { CFG_KEY_LOG_UDP_ENABLED,     "en_udp_ser",    HSYS_TYPE_BOOL,   &_app_config.log_udp_enabled,     sizeof(_app_config.log_udp_enabled)      },
+    { CFG_KEY_LOG_UDP_SERVER_IP,   "udp_srvr_ip",   HSYS_TYPE_STRING, _app_config.log_udp_server_ip,    sizeof(_app_config.log_udp_server_ip)    },
+    { CFG_KEY_LOG_UDP_PORT,        "udp_srvr_port", HSYS_TYPE_UINT32, &_app_config.log_udp_port,        sizeof(_app_config.log_udp_port)         },
+    { CFG_KEY_CLOUD_HB_ENABLED,    "hb_enabled",    HSYS_TYPE_BOOL,   &_app_config.cloud_hb_enabled,    sizeof(_app_config.cloud_hb_enabled)     },
+    { CFG_KEY_ENABLE_NID_PRINT,    "en_nid_prnt",   HSYS_TYPE_BOOL,   &_app_config.enable_nid_print,    sizeof(_app_config.enable_nid_print)     },
+    { CFG_KEY_ENABLE_NID_CLOUD,    "en_nid_cloud",  HSYS_TYPE_BOOL,   &_app_config.enable_nid_cloud,    sizeof(_app_config.enable_nid_cloud)     },
+    { CFG_KEY_DT_LOG_RATE,         "dt_log_rate",   HSYS_TYPE_UINT32, &_app_config.dt_log_rate,         sizeof(_app_config.dt_log_rate)          },
+    { CFG_KEY_PRINT_DELAY_MS,      "prnt_delay",    HSYS_TYPE_UINT32, &_app_config.print_delay_ms,      sizeof(_app_config.print_delay_ms)       },
+    { CFG_KEY_EN_RETX,             "en_retx",       HSYS_TYPE_BOOL,   &_app_config.en_retx,             sizeof(_app_config.en_retx)              },
+    { CFG_KEY_NOZZLE_SWAP,         "nzle_swap",     HSYS_TYPE_BOOL,   &_app_config.nozzle_swap,         sizeof(_app_config.nozzle_swap)          },
+    { CFG_KEY_TOT_CNT,             "tot_cnt",       HSYS_TYPE_UINT32, &_app_config.tot_cnt,             sizeof(_app_config.tot_cnt)              },
+    { CFG_KEY_TOT_DUR,             "tot_dur",       HSYS_TYPE_UINT32, &_app_config.tot_dur,             sizeof(_app_config.tot_dur)              },
 };
 #define CONFIG_TABLE_SIZE  (sizeof(k_config_table) / sizeof(k_config_table[0]))
-
-static config_handle_t g_config_handle;
-
-config_handle_t *app_config_get_handle(void)
-{
-    return &g_config_handle;
-}
 
 const app_config_t *app_config_get(void)
 {
@@ -174,6 +166,50 @@ config_t *app_config_get_table(uint16_t *out_size)
 {
     if (out_size) *out_size = (uint16_t)CONFIG_TABLE_SIZE;
     return k_config_table;
+}
+
+// ============================================================================
+// Device identity — runtime-only, never persisted to flash
+// ============================================================================
+
+static app_device_info_t s_device_info = {};
+
+const hsys_module_id_t k_dev_info_perm_cloud_write[]    = { MODULE_CLOUD_ID };
+const uint8_t          k_dev_info_perm_cloud_write_count = 1;
+
+static dev_info_entry_t k_dev_info_table[] = {
+    {
+        DEV_INFO_KEY_DEVICE_UUID,
+        "device_uuid",
+        k_dev_info_perm_cloud_write, k_dev_info_perm_cloud_write_count,
+        nullptr, 0,
+        HSYS_TYPE_STRING,
+        s_device_info.device_uuid,
+        sizeof(s_device_info.device_uuid),
+        false
+    },
+    {
+        DEV_INFO_KEY_DEVICE_GROUP,
+        "device_group",
+        k_dev_info_perm_cloud_write, k_dev_info_perm_cloud_write_count,
+        nullptr, 0,
+        HSYS_TYPE_STRING,
+        s_device_info.device_group,
+        sizeof(s_device_info.device_group),
+        false
+    },
+};
+#define DEV_INFO_TABLE_SIZE  (sizeof(k_dev_info_table) / sizeof(k_dev_info_table[0]))
+
+app_device_info_t *app_device_info_get(void)
+{
+    return &s_device_info;
+}
+
+dev_info_entry_t *app_device_info_get_table(uint16_t *out_count)
+{
+    if (out_count) *out_count = (uint16_t)DEV_INFO_TABLE_SIZE;
+    return k_dev_info_table;
 }
 
 // ============================================================================
@@ -205,11 +241,12 @@ static const app_msg_codec_entry_t k_codec_table[] = {
 // ============================================================================
 
 static const hsys_pool_class_cfg_t k_pool_table[] = {
-    {   4,   8 },
-    {  32,  32 },
-    {  64,  32 },
-    { 256,  24 },
-    { 512,   8 },
+    {    4,   8 },
+    {   32,  32 },
+    {   64,  32 },
+    {  256,  24 },
+    {  512,   8 },
+    { 2048,   2 },   ///< JSON config working buffer (load + save cycle)
 };
 #define POOL_TABLE_SIZE  (sizeof(k_pool_table) / sizeof(k_pool_table[0]))
 
@@ -239,6 +276,7 @@ static HsysModule *k_module_table[] = {
     ModuleWebClientOta::instance(),
     ModuleWebServer::instance(),
     ModuleMqtt::instance(),
+    ModuleDeviceInfo::instance(),
 };
 #define MODULE_TABLE_SIZE  (sizeof(k_module_table) / sizeof(k_module_table[0]))
 
@@ -258,17 +296,13 @@ static const hsys_task_desc_t k_task_table[] = {
     //                   Large locals in _process_queues() are static → 4096 is fine.
     //   network_task  : WiFi connect + ICMP ping + HTTPS via esp_http_client + mbedTLS.
     //                   mbedTLS TLS handshake alone ~4-6 KB; ESP-IDF recommends ≥8192 for HTTPS.
-    { "storage_task",       4096,  5,  0,   { MODULE_SPIFFS_ID,      MODULE_SD_ID,           MODULE_CONFIG_ID,   0 } },
-    { "timing_task",        2048,  4,  0,   { TICKER_MODULE_ID,      MODULE_TIMER_ID,                            0 } },
-    { "indicator_task",     2048,  4,  0,   { MODULE_SYSMON_ID,      MODULE_LEDS_ID,         MODULE_BUZZER_ID,   0 } },
-    { "btn_task",           2048,  5,  0,   { MODULE_PRINT_BTN_ID,   MODULE_DEFAULT_BTN_ID,                      0 } },
-    { "fuel_task",          4096,  5,  0,   { MODULE_FUEL_ID,                                                    0 } },
-    { "network_task",       8192,  5,  0,   { MODULE_WIFI_ID,        MODULE_INTERNET_ID,     MODULE_CLOUD_ID,    0 } },
-    { "timemgr_task",       3072,  5,  0,   { MODULE_TIMEMGR_ID,                                                 0 } },
-    { "ota_task",           4096,  5,  0,   { MODULE_OTA_ID,                                                     0 } },
-    { "web_ota_task",       8192,  4,  0,   { MODULE_WEB_CLIENT_OTA_ID,                                          0 } },
-    { "web_srv_t",          8192,  4,  0,   { MODULE_WEB_SERVER_ID,                                              0 } },
-    { "mqtt_task",          8192,  4,  0,   { MODULE_MQTT_ID,                                                    0 } },
+    { "storage_task",       4096,  5,  0,   { MODULE_SPIFFS_ID,      MODULE_SD_ID,             MODULE_CONFIG_ID,     MODULE_DEVICE_INFO_ID,  0 } },
+    { "timing_task",      3*1024,  4,  0,   { TICKER_MODULE_ID,      MODULE_TIMER_ID,          MODULE_TIMEMGR_ID,                            0 } },
+    { "indicator_task",     2048,  4,  0,   { MODULE_SYSMON_ID,      MODULE_LEDS_ID,           MODULE_BUZZER_ID,                             0 } },
+    { "btn_task",           2048,  5,  0,   { MODULE_PRINT_BTN_ID,   MODULE_DEFAULT_BTN_ID,                                                  0 } },
+    { "fuel_task",          4096,  5,  0,   { MODULE_FUEL_ID,                                                                                0 } },
+    { "network_task1",   16*1024,  5,  0,   { MODULE_WIFI_ID,        MODULE_MQTT_ID,           MODULE_INTERNET_ID,                           0 } },
+    { "network_task2",   16*1024,  5,  0,   { MODULE_CLOUD_ID,       MODULE_WEB_CLIENT_OTA_ID, MODULE_WEB_SERVER_ID,  MODULE_OTA_ID,         0 } }
 };
 #define TASK_TABLE_SIZE  (sizeof(k_task_table) / sizeof(k_task_table[0]))
 
@@ -307,9 +341,10 @@ extern "C" __attribute__((weak)) void app_platform_pre_init(void) {}
 
 extern "C" void app_config_init(void)
 {
+    // Load compiled-in defaults into the live config struct.
+    // hsys_config_init() is called later by ModuleConfig::init() so that
+    // the config handle is owned by the module, not global app state.
     app_config_load_defaults(&_app_config);
-    config_init_t cfg_init = { (uint16_t)CONFIG_TABLE_SIZE, k_config_table };
-    hsys_config_init(cfg_init, &g_config_handle);
 }
 
 // ============================================================================
