@@ -53,6 +53,9 @@ idf_component_register(
         # ── Device info module ───────────────────────────────────────────────
         "${D_MODS}/module_device_info/module_device_info.cpp"
 
+        # ── Persistent log module ────────────────────────────────────────────
+        "${D_MODS}/module_plog/module_plog.cpp"
+
         # ── Utilities ────────────────────────────────────────────────────
         "${D_SUB}/utils/crc32.cpp"
 
@@ -62,6 +65,7 @@ idf_component_register(
         "${D_MSGS}/system/msg_spiffs_ready.cpp"
         "${D_MSGS}/system/msg_sd_ready.cpp"
         "${D_MSGS}/system/msg_sd_status.cpp"
+        "${D_MSGS}/system/msg_persist_log.cpp"
         # Config messages
         "${D_MSGS}/configs/msg_config_ready.cpp"
         "${D_MSGS}/configs/msg_config_set.cpp"
@@ -130,7 +134,7 @@ idf_component_register(
         "${D_SUB}/middleware/hsys_config.cpp"
         "${D_SUB}/middleware/hsys_device_info.cpp"
         "${D_SUB}/middleware/list-manager/list_manager.cpp"
-
+        "${D_SUB}/middleware/retransmission-manager/retransmission_manager.cpp"
         # ── PAL ESP-IDF implementations ───────────────────────────────────
         "${D_SUB}/pal/esp-idf/pal_esp_idf_time.cpp"
         "${D_SUB}/pal/esp-idf/pal_esp_idf_logger.cpp"
@@ -199,6 +203,7 @@ idf_component_register(
         "${D_MODS}/module_mqtt"
         "${D_MODS}/module_web_client_ota"
         "${D_MODS}/module_device_info"
+        "${D_MODS}/module_plog"
         # App messages and peripherals
         "${D_MSGS}"
         "${D_MSGS}/buttons"
@@ -218,6 +223,7 @@ idf_component_register(
         # Middleware
         "${D_SUB}/middleware"
         "${D_SUB}/middleware/list-manager"
+        "${D_SUB}/middleware/retransmission-manager"
         "${D_SUB}/utils"
         # PAL esp-idf impls + root for pal/pal_uart.h style includes
         "${D_SUB}/pal/esp-idf"

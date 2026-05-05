@@ -37,7 +37,7 @@ MsgConfigCloud::Payload MsgConfigCloud::deserialize(const hsys_msg_t &msg)
     return p;
 }
 
-int32_t MsgConfigCloud::mqtt_encode(const hsys_msg_t *msg, char *data_json, uint32_t buf_len)
+int32_t MsgConfigCloud::to_json(const hsys_msg_t *msg, char *data_json, uint32_t buf_len)
 {
     auto p = deserialize(*msg);
     StaticJsonDocument<128> doc;
@@ -46,4 +46,15 @@ int32_t MsgConfigCloud::mqtt_encode(const hsys_msg_t *msg, char *data_json, uint
     // root_ca is intentionally omitted (sensitive, potentially large)
     size_t w = serializeJson(doc, data_json, buf_len);
     return (w > 0) ? 0 : -2;
+}
+
+hsys_msg_t *MsgConfigCloud::from_json(const char *payload_json, hsys_module_id_t sender_id)
+{
+    StaticJsonDocument<128> doc;
+    if (deserializeJson(doc, payload_json) != DeserializationError::Ok) return nullptr;
+    Payload p{};
+    p.root_ca       = nullptr;  // can't transfer pointer via JSON
+    p.hb_enabled    = doc["hb_enabled"]    | false;
+    p.hb_interval_s = doc["hb_interval_s"] | (uint32_t)0;
+    return create(sender_id, p);
 }

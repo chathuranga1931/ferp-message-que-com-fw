@@ -4,14 +4,14 @@ config_widget.py — Config JSON viewer tab for the Simulator UI.
 Reads the SPIFFS-emulated DeviceConfigs.json directly from the
 simulator's source directory and displays it as an editable table.
 
-Default file path (relative to this file):
-    src/product/ferp-com-simulator/SPIFFS/spiffs/Configs/DeviceConfigs.json
+File path is read from sim_paths.json (key: device_config).
 """
 
 import json
 import os
 import tkinter as tk
 from tkinter import ttk, messagebox
+from .paths import sim_paths
 
 
 _DARK_BG  = "#1e1e2e"
@@ -23,14 +23,8 @@ _HEADING  = "#313244"
 _MONO     = ("Menlo", 10)
 _MONO_SM  = ("Menlo", 9)
 
-# Path relative to this file:
-#   tools/sim-ui/widgets/  →  ../../../src/product/ferp-com-simulator/SPIFFS/spiffs/Configs/
-_DEFAULT_PATH = os.path.normpath(os.path.join(
-    os.path.dirname(__file__),                          # tools/sim-ui/widgets/
-    "..", "..", "..",                                   # repo root
-    "src", "product", "ferp-com-simulator",
-    "SPIFFS", "spiffs", "Configs", "DeviceConfigs.json"
-))
+# Resolved from sim_paths.json — edit that file to change this path.
+_DEFAULT_PATH = sim_paths["device_config"]
 
 
 class ConfigWidget(tk.Frame):

@@ -32,7 +32,6 @@ MsgWifiEvent::Payload MsgWifiEvent::deserialize(const hsys_msg_t &msg)
     return p;
 }
 
-#ifdef FERP_SIMULATOR
 #include <ArduinoJson.h>
 hsys_msg_t *MsgWifiEvent::from_json(const char *payload_json, hsys_module_id_t sender_id)
 {
@@ -55,4 +54,20 @@ hsys_msg_t *MsgWifiEvent::from_json(const char *payload_json, hsys_module_id_t s
 
     return MsgWifiEvent::create(sender_id, p);
 }
-#endif
+
+int32_t MsgWifiEvent::to_json(const hsys_msg_t *msg, char *data_json, uint32_t buf_len)
+{
+    auto p = deserialize(*msg);
+    static const char *ev_names[] = {
+        "STA_CONNECTED", "STA_DISCONNECTED", "STA_GOT_IP",
+        "STA_RSSI_CHANGED", "AP_START", "AP_STOP"
+    };
+    StaticJsonDocument<256> doc;
+    doc["event"] = ((unsigned)p.event < 6) ? ev_names[p.event] : "UNKNOWN";
+    doc["rssi"]  = p.rssi;
+    doc["ip"]    = p.ip_address;
+    doc["ssid"]  = p.ssid;
+    doc["mac"]   = p.mac_address;
+    size_t w = serializeJson(doc, data_json, buf_len);
+    return (w > 0) ? 0 : -2;
+}

@@ -3,7 +3,9 @@
 #include "fuel_disptap_driver.h"
 #include "com_distap.h"    // init_comms_distap(), suspend_comms_distap()
 #include "cmd_distap.h"    // distap_get_fw_version(), distap_set_display_type(), distap_set_err_mask()
+#ifndef FERP_SIMULATOR
 #include "serial_flasher.h"
+#endif
 #include "pal_logger.h"
 #include <string.h>
 #include "pal_time.h"
@@ -61,8 +63,10 @@ void FuelDispTapDriver::start(display_type_t display_type, frame_cb_t on_frame)
 
     // ── Release reset AFTER comms are ready, then wait for device to boot ──
     MLOG("Starting Display Tap, Enable");
+#ifndef FERP_SIMULATOR
     gpio_set_reset_distap(false);
     pal_time_delay_ms(500);
+#endif
 
     // ── Version check ─────────────────────────────────────────────────────────
     char version[32] = {};
@@ -82,7 +86,11 @@ void FuelDispTapDriver::start(display_type_t display_type, frame_cb_t on_frame)
         MLOGE("distap_set_display_type(%d) failed (%d)", (int)display_type, rc);
     }
 
+#ifndef FERP_SIMULATOR
     start_serial_flash(false);
+#else
+    // Serial flasher not available on simulator — skip DT board firmware update.
+#endif  // FERP_SIMULATOR
 
     char disptap_version[50] = {0};
     distap_get_fw_version((char *)(disptap_version));

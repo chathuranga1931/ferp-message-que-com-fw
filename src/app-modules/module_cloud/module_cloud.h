@@ -22,6 +22,8 @@
 #include "cloud_driver.h"
 #include "msg_cloud_status.h"
 #include "msg_config_wifi.h"
+#include "retransmission_manager.h"
+#include "msg_fuel_pumped.h"
 
 // ---------------------------------------------------------------------------
 // Module identity
@@ -50,12 +52,21 @@ public:
     /** Wire the cloud backend before app_init(). Must be called before init(). */
     void set_driver(const cloud_driver_t *drv) { _drv = drv; }
 
+    /** Wire the SD storage interface before app_init().
+     *  If not set, retransmission is silently disabled until SD is ready. */
+    void set_storage(const storage_interface_t *storage) { _storage = storage; }
+
 protected:
     void init()                                  override;
     void on_msg_received(const hsys_msg_t &msg)  override;
 
 private:
-    const cloud_driver_t *_drv            = nullptr;  ///< Cloud backend — set via set_driver()
+    const cloud_driver_t        *_drv     = nullptr;  ///< Cloud backend — set via set_driver()
+    const storage_interface_t   *_storage = nullptr;  ///< SD storage — set via set_storage()
+
+    // ── Retransmission ────────────────────────────────────────────────────────
+    retx_manager_t  _retx_mgr      = {};
+    bool            _retx_ready    = false;   ///< true once retx_mgr_init() succeeded
 
     // ── State machine ─────────────────────────────────────────────────────────
     typedef enum {
@@ -104,11 +115,16 @@ private:
     void _on_fuel_pumped(const hsys_msg_t &msg);
     void _on_timer_alarm();
     void _on_tick();
+    void _on_sd_ready();
 
     void _attempt_registration();
     void _process_events();
 
     void _arm_timer(uint32_t duration_ms);
+
+    void _retx_init();
+    void _retx_store_pumped(const MsgFuelPumped::Payload &p, const char *json_payload);
+    void _retx_process_one();
 
     cloud_startup_info_t _build_startup_info() const;
     cloud_hb_info_t      _build_hb_info()      const;

@@ -16,8 +16,10 @@
 #include "msg_fuel_pumped.h"
 #include "msg_timer_start.h"
 #include "msg_timer_alarm.h"
+#include "msg_sd_ready.h"
 #include "pal_logger.h"
 #include "pal_efuse.h"
+#include "pal_time.h"
 
 #define ERROR_OK  0
 
@@ -42,6 +44,7 @@ void ModuleCloud::init()
     subscribe(MsgInternetStatus::ID);
     subscribe(MsgFuelPumped::ID);
     subscribe(MsgTimerAlarm::ID);
+    subscribe(MsgSdReady::ID);
     subscribe(MSG_ID_TICK_1000MS);
 
     LOG_MSG_INFO(CLOUD_LOG_EN, "init — state=WAIT_FOR_INTERNET");
@@ -74,6 +77,10 @@ void ModuleCloud::on_msg_received(const hsys_msg_t &msg)
 
         case MsgFuelPumped::ID:
             _on_fuel_pumped(msg);
+            break;
+
+        case MsgSdReady::ID:
+            _on_sd_ready();
             break;
 
         case MsgTimerAlarm::ID:
@@ -206,16 +213,16 @@ void ModuleCloud::_on_fuel_pumped(const hsys_msg_t &msg)
     auto p = MsgFuelPumped::deserialize(msg);
 
     if (_state != STATE_RUNNING) {
-        LOG_MSG_WARNING(CLOUD_LOG_EN, "fuel pumped but not running — marking failed");
+        LOG_MSG_WARNING(CLOUD_LOG_EN, "fuel pumped but not running — storing for retransmission");
         _pumped_failure++;
         _publish_cloud_status(CLOUD_STATUS_PUMPED_FAILED, p.nozzle_idx);
-        // TODO: publish MsgRetransmitStore when ModuleRetransmit is implemented
+        _retx_store_pumped(p, nullptr);
         return;
     }
 
     cloud_pumped_info_t info = {};
     info.nozzle_idx      = p.nozzle_idx;
-    info.time_stamp      = 0;   // TODO: populate from pal_time when available
+    info.time_stamp      = (uint64_t)time(nullptr);
     info.unit_pricex100  = p.unit_pricex100;
     info.total_pricex100 = p.total_pricex100;
     info.volume_lx1000   = p.vol_lx1000;
@@ -231,10 +238,9 @@ void ModuleCloud::_on_fuel_pumped(const hsys_msg_t &msg)
         _publish_cloud_status(CLOUD_STATUS_PUMPED_SUCCESS, p.nozzle_idx);
     } else {
         _pumped_failure++;
-        LOG_MSG_ERROR(CLOUD_LOG_EN, "pumped send FAILED ret=%d (failure=%lu)",
-                      ret, (unsigned long)_pumped_failure);
+        LOG_MSG_ERROR(CLOUD_LOG_EN, "pumped send FAILED ret=%d — storing for retransmission", ret);
         _publish_cloud_status(CLOUD_STATUS_PUMPED_FAILED, p.nozzle_idx);
-        // TODO: publish MsgRetransmitStore when ModuleRetransmit is implemented
+        _retx_store_pumped(p, nullptr);
     }
 }
 
@@ -251,6 +257,8 @@ void ModuleCloud::_on_timer_alarm()
             // Heartbeat timer fired
             _pending_heartbeat = true;
             _process_events();
+            // Opportunistically process one retransmission entry after heartbeat
+            _retx_process_one();
             break;
 
         default:
@@ -415,4 +423,87 @@ void ModuleCloud::_publish_cloud_status(cloud_status_event_t ev, uint8_t nozzle_
     }
     auto *msg = create_typed<MsgCloudStatus>(p);
     if (msg) publish(msg);
+}
+
+// ── Retransmission helpers ────────────────────────────────────────────────────
+
+void ModuleCloud::_on_sd_ready()
+{
+    LOG_MSG_INFO(CLOUD_LOG_EN, "SD ready — initialising retransmission manager");
+    _retx_init();
+}
+
+void ModuleCloud::_retx_init()
+{
+    if (_retx_ready) return;
+    if (!_storage) {
+        LOG_MSG_WARNING(CLOUD_LOG_EN, "retx: no storage interface set — retransmission disabled");
+        return;
+    }
+
+    retx_manager_config_t cfg = {};
+    cfg.list_config.storage           = const_cast<storage_interface_t *>(_storage);
+    cfg.list_config.parent_path       = "/sd/retx";
+    cfg.list_config.file_prefix       = "evt";
+    cfg.list_config.max_lines_per_file = 500;
+    cfg.list_config.max_tracked_days  = 7;
+    cfg.send_callback                 = [](retx_event_type_t type,
+                                           const char       *payload,
+                                           size_t            len,
+                                           void             *user_data) -> int32_t {
+        auto *self = static_cast<ModuleCloud *>(user_data);
+        if (!self->_drv || self->_state != STATE_RUNNING) { return -1; }
+        // Currently only PUMPED type is stored — deserialise the JSON and re-send
+        // via the driver's raw pumped path.  If the driver gains a send_raw_pumped
+        // entry point this becomes trivial; for now use send_pumped with zeroed
+        // fields that the driver will fill from the JSON payload.
+        // TODO: extend cloud_driver_t with send_raw_pumped(json, len) for faithful replay.
+        (void)type; (void)payload; (void)len;
+        return -1;   // not yet wired to driver — prevents ack, keeps in queue
+    };
+    cfg.user_data                     = this;
+    cfg.retry_interval_ms             = 60000;   // 1 minute between retransmit attempts
+
+    int32_t ret = retx_mgr_init(&_retx_mgr, &cfg);
+    if (ret == RETX_MGR_OK) {
+        _retx_ready = true;
+        retx_mgr_cleanup(&_retx_mgr);   // delete files older than 7 days at startup
+        LOG_MSG_INFO(CLOUD_LOG_EN, "retx: manager ready");
+    } else {
+        LOG_MSG_ERROR(CLOUD_LOG_EN, "retx: init failed (%ld)", (long)ret);
+    }
+}
+
+void ModuleCloud::_retx_store_pumped(const MsgFuelPumped::Payload &p, const char * /*json_payload*/)
+{
+    if (!_retx_ready) {
+        LOG_MSG_WARNING(CLOUD_LOG_EN, "retx: not ready — failed event lost (SD not mounted?)");
+        return;
+    }
+
+    // Build a compact JSON payload to persist
+    char json[256];
+    snprintf(json, sizeof(json),
+             "{\"nozzle\":%u,\"vol\":%lu,\"unit\":%lu,\"total\":%lu,\"ts\":%llu}",
+             (unsigned)p.nozzle_idx,
+             (unsigned long)p.vol_lx1000,
+             (unsigned long)p.unit_pricex100,
+             (unsigned long)p.total_pricex100,
+             (unsigned long long)time(nullptr));
+
+    // Date key from wall-clock time
+    char date_key[16] = "00000000";
+    time_t now = time(nullptr);
+    struct tm tm_info = {};
+    localtime_r(&now, &tm_info);
+    strftime(date_key, sizeof(date_key), "%Y%m%d", &tm_info);
+
+    retx_mgr_add_failed_event(&_retx_mgr, date_key, RETX_EVENT_TYPE_PUMPED,
+                               json, strlen(json));
+}
+
+void ModuleCloud::_retx_process_one()
+{
+    if (!_retx_ready || _state != STATE_RUNNING) return;
+    retx_mgr_process(&_retx_mgr);
 }

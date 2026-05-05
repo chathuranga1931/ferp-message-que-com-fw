@@ -1,0 +1,6 @@
+{
+    "_comment": "Paths are relative to the repository root. Edit here to relocate simulator directories.",
+    "sdcard_root":    "src/product/ferp-com-main/ferp-com-simulator/SDCARD",
+    "spiffs_root":    "src/product/ferp-com-main/ferp-com-simulator/SPIFFS/spiffs",
+    "device_config":  "src/product/ferp-com-main/ferp-com-simulator/SPIFFS/spiffs/Configs/DeviceConfigs.json"
+}

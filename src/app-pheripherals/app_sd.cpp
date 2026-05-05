@@ -244,3 +244,62 @@ int32_t app_sd_dir_close(pal_sd_dir_handle_t handle)
 {
     return pal_sd_dir_close(handle);
 }
+
+// ── storage_interface_t adapter ───────────────────────────────────────────────
+//
+// Wraps app_sd_* into the generic storage_interface_t used by list_manager
+// and retransmission_manager.  The adapter ignores the get_next_file slot
+// because list_manager does not use it.
+
+static int32_t _si_delete_file(const char *path, uint32_t timeout_ms)
+{
+    return app_sd_delete_file(path, timeout_ms);
+}
+
+static int32_t _si_create_file(const char *path, uint32_t timeout_ms)
+{
+    return app_sd_create_file(path, timeout_ms);
+}
+
+static int32_t _si_append_line(const char *path, const char *line, uint32_t timeout_ms)
+{
+    return app_sd_append_line(path, line, timeout_ms);
+}
+
+static int32_t _si_write_file(const char *path, const char *content, uint32_t timeout_ms)
+{
+    return app_sd_write_file(path, content, timeout_ms);
+}
+
+static int32_t _si_read_file(const char *path, char *buf, size_t max_len, uint32_t timeout_ms)
+{
+    size_t bytes_read = 0;
+    return app_sd_read_file(path, buf, max_len, &bytes_read, timeout_ms);
+}
+
+static int32_t _si_remove_dir(const char *path, uint32_t timeout_ms)
+{
+    return app_sd_remove_dir(path, timeout_ms);
+}
+
+static int32_t _si_read_line(const char *path, uint32_t line_number,
+                              char *buf, size_t max_len, uint32_t timeout_ms)
+{
+    return app_sd_read_line(path, line_number, buf, max_len, timeout_ms);
+}
+
+static const storage_interface_t s_sd_storage_iface = {
+    .delete_file   = _si_delete_file,
+    .create_file   = _si_create_file,
+    .append_line   = _si_append_line,
+    .write_file    = _si_write_file,
+    .read_file     = _si_read_file,
+    .remove_dir    = _si_remove_dir,
+    .read_line     = _si_read_line,
+    .get_next_file = nullptr,
+};
+
+const storage_interface_t *app_sd_get_storage_interface(void)
+{
+    return &s_sd_storage_iface;
+}

@@ -37,7 +37,6 @@ MsgTimerAlarm::Payload MsgTimerAlarm::deserialize(const hsys_msg_t &msg)
     return p;
 }
 
-#ifdef FERP_SIMULATOR
 #include <ArduinoJson.h>
 hsys_msg_t *MsgTimerAlarm::from_json(const char *payload_json, hsys_module_id_t sender_id)
 {
@@ -48,4 +47,13 @@ hsys_msg_t *MsgTimerAlarm::from_json(const char *payload_json, hsys_module_id_t 
     p.elapsed_ms       = doc["elapsed_ms"].as<uint32_t>();
     return create(sender_id, p);
 }
-#endif
+
+int32_t MsgTimerAlarm::to_json(const hsys_msg_t *msg, char *data_json, uint32_t buf_len)
+{
+    auto p = deserialize(*msg);
+    StaticJsonDocument<48> doc;
+    doc["source_module_id"] = (int)p.source_module_id;
+    doc["elapsed_ms"]       = p.elapsed_ms;
+    size_t w = serializeJson(doc, data_json, buf_len);
+    return (w > 0) ? 0 : -2;
+}

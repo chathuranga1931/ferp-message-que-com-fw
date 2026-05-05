@@ -37,7 +37,7 @@ MsgConfigOta::Payload MsgConfigOta::deserialize(const hsys_msg_t &msg)
     return p;
 }
 
-int32_t MsgConfigOta::mqtt_encode(const hsys_msg_t *msg, char *data_json, uint32_t buf_len)
+int32_t MsgConfigOta::to_json(const hsys_msg_t *msg, char *data_json, uint32_t buf_len)
 {
     auto p = deserialize(*msg);
     StaticJsonDocument<256> doc;
@@ -46,4 +46,15 @@ int32_t MsgConfigOta::mqtt_encode(const hsys_msg_t *msg, char *data_json, uint32
     // root_ca is intentionally omitted (sensitive, potentially large)
     size_t w = serializeJson(doc, data_json, buf_len);
     return (w > 0) ? 0 : -2;
+}
+
+hsys_msg_t *MsgConfigOta::from_json(const char *payload_json, hsys_module_id_t sender_id)
+{
+    StaticJsonDocument<256> doc;
+    if (deserializeJson(doc, payload_json) != DeserializationError::Ok) return nullptr;
+    Payload p{};
+    strncpy(p.server_url, doc["server_url"] | "", sizeof(p.server_url) - 1);
+    p.root_ca          = nullptr;  // can't transfer pointer via JSON
+    p.check_interval_s = doc["check_interval_s"] | (uint32_t)0;
+    return create(sender_id, p);
 }

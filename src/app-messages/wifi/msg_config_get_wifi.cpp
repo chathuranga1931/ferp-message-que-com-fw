@@ -2,6 +2,7 @@
 
 #include "msg_config_get_wifi.h"
 #include "pal_logger.h"
+#include <ArduinoJson.h>
 #include <string.h>
 
 #define __TAG__ "MSG_CGWF"
@@ -36,9 +37,18 @@ MsgConfigGetWifi::Payload MsgConfigGetWifi::deserialize(const hsys_msg_t &msg)
     return p;
 }
 
-hsys_msg_t *MsgConfigGetWifi::mqtt_decode(const char * /*data_json*/, hsys_module_id_t sender_id)
+hsys_msg_t *MsgConfigGetWifi::from_json(const char * /*data_json*/, hsys_module_id_t sender_id)
 {
     Payload p{};
     p.source_module_id = sender_id;
     return create(sender_id, p);
+}
+
+int32_t MsgConfigGetWifi::to_json(const hsys_msg_t *msg, char *data_json_out, uint32_t buf_len)
+{
+    auto p = deserialize(*msg);
+    StaticJsonDocument<32> doc;
+    doc["source_module_id"] = (int)p.source_module_id;
+    size_t w = serializeJson(doc, data_json_out, buf_len);
+    return (w > 0) ? 0 : -2;
 }

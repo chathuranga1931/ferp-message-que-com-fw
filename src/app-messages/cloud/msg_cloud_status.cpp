@@ -32,7 +32,6 @@ MsgCloudStatus::Payload MsgCloudStatus::deserialize(const hsys_msg_t &msg)
     return p;
 }
 
-#ifdef FERP_SIMULATOR
 #include <ArduinoJson.h>
 hsys_msg_t *MsgCloudStatus::from_json(const char *payload_json, hsys_module_id_t sender_id)
 {
@@ -52,4 +51,18 @@ hsys_msg_t *MsgCloudStatus::from_json(const char *payload_json, hsys_module_id_t
 
     return MsgCloudStatus::create(sender_id, p);
 }
-#endif
+
+int32_t MsgCloudStatus::to_json(const hsys_msg_t *msg, char *data_json, uint32_t buf_len)
+{
+    static const char *ev_names[] = {
+        "REGISTERED", "REGISTER_FAILED", "PUMPED_SUCCESS",
+        "PUMPED_FAILED", "HB_SENT", "HB_FAILED"
+    };
+    auto p = deserialize(*msg);
+    StaticJsonDocument<128> doc;
+    doc["event"]       = ((unsigned)p.event < 6) ? ev_names[p.event] : "UNKNOWN";
+    doc["nozzle_idx"]  = p.nozzle_idx;
+    doc["device_uuid"] = p.device_uuid;
+    size_t w = serializeJson(doc, data_json, buf_len);
+    return (w > 0) ? 0 : -2;
+}

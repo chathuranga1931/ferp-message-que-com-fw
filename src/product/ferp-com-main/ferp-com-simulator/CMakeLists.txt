@@ -23,7 +23,8 @@ set(MIDDLEWARE "${SUB_MODS}/middleware")
 set(PERIPHERAL "${SUB_MODS}/peripheral")
 
 # DT board device library (display_types.h, com_distap.h, cmd_distap.h)
-set(DISTAP_LIB "${SUB_MODS}/ferp-device-firmware/ferp_board/main-esp32/lib/device")
+set(DISTAP_LIB  "${SUB_MODS}/ferp-device-firmware/ferp_board/main-esp32/lib/device")
+set(FLASHER_LIB "${SUB_MODS}/ferp-device-firmware/ferp_board/main-esp32/lib/serial_flasher")
 set(DRIVERS    "${SUB_MODS}/drivers")
 
 set(PAL_MAC    "${PAL}/mac-pc")
@@ -31,6 +32,9 @@ set(PAL_MAC_DRV "${PAL_MAC}/driver")
 
 # Force-include user_config.h first in every TU
 add_compile_options(-include "${APP}/user_config.h")
+
+# Define FERP_SIMULATOR for every translation unit in this build
+add_compile_definitions(FERP_SIMULATOR=1)
 
 # ── 1. hsys-os (macOS pthreads) ───────────────────────────────────────────────
 add_library(hsys_os STATIC
@@ -64,6 +68,7 @@ add_library(pal_mac STATIC
     ${PAL_MAC}/ds1307_i2c_emulator.cpp      # DS1307 register-bank emulator
     # Common middleware — uses ArduinoJson (platform-independent)
     ${MIDDLEWARE}/hsys_config.cpp
+    ${MIDDLEWARE}/hsys_device_info.cpp
     # Simulator driver — owns the TCP socket and all UI I/O
     ${PAL_MAC_DRV}/mac_driver.cpp
     # Sim bridge — HSYS module that serialises app messages to the UI
@@ -170,6 +175,12 @@ add_library(app_messages STATIC
     ${APP_MSGS}/fuel/msg_fuel_pumped.cpp
     ${APP_MSGS}/fuel/msg_nozzle_state.cpp
     ${APP_MSGS}/fuel/msg_printer_btn.cpp
+    # System messages (extended)
+    ${APP_MSGS}/system/msg_persist_log.cpp
+    # Device info messages
+    ${APP_MSGS}/messages/msg_dev_info_read.cpp
+    ${APP_MSGS}/messages/msg_dev_info_write.cpp
+    ${APP_MSGS}/messages/msg_dev_info_value.cpp
     # OTA messages
     ${APP_MSGS}/ota/msg_config_get_ota.cpp
     ${APP_MSGS}/ota/msg_config_ota.cpp
@@ -196,6 +207,7 @@ target_include_directories(app_messages PUBLIC
     ${APP}           # app_msg_ids.h
     ${APP_MODS}/module_config
     ${APP_MODS}/module_fuel/pumps   # nozzle_event.h (needed by msg_nozzle_state.h)
+    ${APP_MSGS}/messages            # msg_dev_info_*.h
     ${PERIPHERAL}
     ${PAL}
     ${PAL_MAC}       # esp_err.h stub
@@ -204,7 +216,6 @@ target_include_directories(app_messages PUBLIC
     ${ARDUINOJSON}       # ArduinoJson.h — needed by from_json() implementations
     ${ARDUINOJSON}/src   # ArduinoJson internal headers
 )
-target_compile_definitions(app_messages PRIVATE FERP_SIMULATOR=1)
 target_link_libraries(app_messages PRIVATE hsys_framework)
 
 # ── 5. app-pheripherals ───────────────────────────────────────────────────────
@@ -221,6 +232,7 @@ target_include_directories(app_pheripherals PUBLIC
     ${PERIPHERAL}
     ${PAL}
     ${HSYS_OS}
+    ${MIDDLEWARE}/list-manager   # storage.h
 )
 target_link_libraries(app_pheripherals PRIVATE pal_mac hsys_os)
 
@@ -262,6 +274,13 @@ add_library(app_modules STATIC
     ${APP_MODS}/module_web_client_ota/hsys_ota.cpp
     # HTTP config/OTA web server module (common, PAL-backed)
     ${APP_MODS}/module_web_server/ModuleWebServer.cpp
+    # Persistent logger module
+    ${APP_MODS}/module_plog/module_plog.cpp
+    # Device info module
+    ${APP_MODS}/module_device_info/module_device_info.cpp
+    # Middleware: list manager + retransmission manager
+    ${MIDDLEWARE}/list-manager/list_manager.cpp
+    ${MIDDLEWARE}/retransmission-manager/retransmission_manager.cpp
     # Utilities
     ${SUB_MODS}/utils/crc32.cpp
 )
@@ -288,6 +307,8 @@ target_include_directories(app_modules PUBLIC
     ${APP_MODS}/module_ota          # OtaModule.h, module_ota.h
     ${APP_MODS}/module_web_client_ota  # ModuleWebClientOta.h, hsys_ota.h
     ${APP_MODS}/module_web_server      # ModuleWebServer.h
+    ${APP_MODS}/module_plog            # module_plog.h
+    ${APP_MODS}/module_device_info     # module_device_info.h
     ${SUB_MODS}/utils               # crc32.h
     ${DRIVERS}/DS1307
     ${DRIVERS}/cube_sphere  # cube_sphere_api.h, cube_sphere_config.h
@@ -297,6 +318,9 @@ target_include_directories(app_modules PUBLIC
     ${PAL_MAC}       # esp_err.h stub
     ${DISTAP_LIB}    # display_types.h, com_distap.h, cmd_distap.h
     ${MIDDLEWARE}
+    ${MIDDLEWARE}/list-manager          # list_manager.h, storage.h
+    ${MIDDLEWARE}/retransmission-manager # retransmission_manager.h
+    ${DISTAP_LIB}    # display_types.h, com_distap.h, cmd_distap.h
     ${PERIPHERAL}
 )
 target_link_libraries(app_modules PRIVATE
@@ -329,12 +353,18 @@ target_include_directories(app_product PUBLIC
     ${APP_MODS}/module_ota/targets  # ota_driver_esp32_main.h
     ${APP_MODS}/module_web_client_ota  # ModuleWebClientOta.h
     ${APP_MODS}/module_web_server      # ModuleWebServer.h
+    ${APP_MODS}/module_plog            # module_plog.h
+    ${APP_MODS}/module_device_info     # module_device_info.h
     ${SUB_MODS}/utils               # crc32.h (transitively needed)
     ${APP_MSGS}
+    ${APP_MSGS}/system               # msg_persist_log.h
+    ${APP_MSGS}/messages             # msg_dev_info_*.h
     ${HSYS_OS}
     ${PAL_MAC}       # esp_err.h stub
     ${DISTAP_LIB}    # display_types.h (transitively needed by module_fuel.h)
     ${MIDDLEWARE}
+    ${MIDDLEWARE}/list-manager          # storage.h
+    ${MIDDLEWARE}/retransmission-manager # retransmission_manager.h
     ${PERIPHERAL}
     ${PAL}           # pal_system.h
     ${DRIVERS}/cube_sphere  # cube_sphere_cloud_driver.h

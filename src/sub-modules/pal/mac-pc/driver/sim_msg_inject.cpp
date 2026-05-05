@@ -7,7 +7,7 @@
  * owns the parsing of its own payload fields — this file only routes.
  *
  * To add a new injectable message:
- *   1. Add from_json() to the message class (header + cpp, #ifdef FERP_SIMULATOR).
+ *   1. Add from_json() to the message class (header + cpp).
  *   2. Add a case here.
  *   Zero changes to mac_driver.cpp or CMakeLists needed.
  */
@@ -142,19 +142,19 @@ void sim_msg_inject_handle(const char *cmd_json)
             break;
 
         case MSG_ID_CONFIG_SET:
-            _publish(MsgConfigSet::mqtt_decode(payload_buf, src), msg_id);
+            _publish(MsgConfigSet::from_json(payload_buf, src), msg_id);
             break;
 
         case MSG_ID_CONFIG_GET_WIFI:
-            _publish(MsgConfigGetWifi::mqtt_decode(payload_buf, src), msg_id);
+            _publish(MsgConfigGetWifi::from_json(payload_buf, src), msg_id);
             break;
 
         case MSG_ID_CONFIG_GET_CLOUD:
-            _publish(MsgConfigGetCloud::mqtt_decode(payload_buf, src), msg_id);
+            _publish(MsgConfigGetCloud::from_json(payload_buf, src), msg_id);
             break;
 
         case MSG_ID_CONFIG_GET_MQTT:
-            _publish(MsgConfigGetMqtt::mqtt_decode(payload_buf, src), msg_id);
+            _publish(MsgConfigGetMqtt::from_json(payload_buf, src), msg_id);
             break;
 
         case MSG_ID_CONFIG_GET_DT:
@@ -189,7 +189,7 @@ void sim_msg_inject_handle(const char *cmd_json)
             break;
 
         case MSG_ID_INTERNET_STATUS:
-            _publish(MsgInternetStatus::mqtt_decode(payload_buf, src), msg_id);
+            _publish(MsgInternetStatus::from_json(payload_buf, src), msg_id);
             break;
 
         case MSG_ID_CLOUD_STATUS:

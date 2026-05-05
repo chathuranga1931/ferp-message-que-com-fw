@@ -1,8 +1,7 @@
 """
 spiffs_widget.py — SPIFFS file explorer tab for the Simulator UI.
 
-Browses the simulator's SPIFFS emulation directory:
-    src/product/ferp-com-simulator/SPIFFS/spiffs/
+Browses the simulator's SPIFFS emulation directory (path from sim_paths.json).
 
 Displays the folder tree in a Treeview on the left; clicking a file
 shows its content in the right pane. JSON files are pretty-printed.
@@ -15,6 +14,7 @@ import struct
 import datetime
 import tkinter as tk
 from tkinter import ttk
+from .paths import sim_paths
 
 _BG      = "#1e1e2e"
 _BG_DARK = "#11111b"
@@ -26,14 +26,8 @@ _SEL_BG  = "#313244"
 _MONO    = ("Menlo", 10)
 _MONO_SM = ("Menlo", 9)
 
-# Absolute path to the SPIFFS emulation root:
-#   tools/sim-ui/widgets/  →  ../../../src/product/ferp-com-simulator/SPIFFS/spiffs/
-_SPIFFS_ROOT = os.path.normpath(os.path.join(
-    os.path.dirname(__file__),
-    "..", "..", "..",
-    "src", "product", "ferp-com-simulator",
-    "SPIFFS", "spiffs",
-))
+# Resolved from sim_paths.json — edit that file to change this path.
+_SPIFFS_ROOT = sim_paths["spiffs_root"]
 
 
 class SpiffsWidget(tk.Frame):

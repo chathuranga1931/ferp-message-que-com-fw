@@ -194,9 +194,32 @@ protected:
      */
     void log_error(const char *fmt, ...) const;
 
+    /**
+     * Publish a formatted text string to the persistent SD-card logger
+     * (ModulePLog).  The string is sent as a MsgPersistLog broadcast; the
+     * actual file write happens asynchronously on the storage task.
+     *
+     * Silently dropped if ModulePLog has not registered its callback (e.g.
+     * during pre-init or when the module is absent).
+     *
+     * Usage (from any module method):
+     *   log_persistent("nozzle %u pumped %.3f L", idx, vol);
+     */
+    void log_persistent(const char *fmt, ...) const;
+
+    /**
+     * Register the function that log_persistent() calls to deliver text to
+     * the persistent logger.  Called once by ModulePLog during init().
+     * Not intended for use by other modules.
+     */
+    static void register_plog_fn(void (*fn)(hsys_module_id_t sender_id,
+                                             const char      *text));
+
 private:
     hsys_module_id_t  m_id;
     const char       *m_name;
+
+    static void (*s_plog_fn)(hsys_module_id_t sender_id, const char *text);
 };
 
 // ---------------------------------------------------------------------------

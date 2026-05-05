@@ -60,8 +60,8 @@ hsys_msg_t *app_msg_codec_decode(const char *msg_name, const char *data_json,
                                   hsys_module_id_t sender_id)
 {
     const app_msg_codec_entry_t *e = find_by_name(msg_name);
-    if (!e || !e->decode) return nullptr;
-    return e->decode(data_json, sender_id);
+    if (!e || !e->from_json) return nullptr;
+    return e->from_json(data_json, sender_id);
 }
 
 hsys_module_id_t app_msg_codec_get_dest(const char *msg_name)
@@ -87,10 +87,10 @@ int32_t app_msg_codec_encode(const hsys_msg_t *msg,
     if (!msg || !msg_name_out || !data_json_out) return -1;
 
     const app_msg_codec_entry_t *e = find_by_id(msg->msg_id);
-    if (!e || !e->encode) return -1;
+    if (!e || !e->to_json) return -1;
 
     strncpy(msg_name_out, e->msg_name, name_len - 1);
     msg_name_out[name_len - 1] = '\0';
 
-    return e->encode(msg, data_json_out, data_len);
+    return e->to_json(msg, data_json_out, data_len);
 }

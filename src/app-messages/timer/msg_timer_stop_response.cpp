@@ -37,7 +37,6 @@ MsgTimerStopResponse::Payload MsgTimerStopResponse::deserialize(const hsys_msg_t
     return p;
 }
 
-#ifdef FERP_SIMULATOR
 #include <ArduinoJson.h>
 hsys_msg_t *MsgTimerStopResponse::from_json(const char *payload_json, hsys_module_id_t sender_id)
 {
@@ -48,4 +47,13 @@ hsys_msg_t *MsgTimerStopResponse::from_json(const char *payload_json, hsys_modul
     p.result           = static_cast<timer_result_t>(doc["result"].as<uint8_t>());
     return create(sender_id, p);
 }
-#endif
+
+int32_t MsgTimerStopResponse::to_json(const hsys_msg_t *msg, char *data_json, uint32_t buf_len)
+{
+    auto p = deserialize(*msg);
+    StaticJsonDocument<32> doc;
+    doc["source_module_id"] = (int)p.source_module_id;
+    doc["result"]           = (int)p.result;
+    size_t w = serializeJson(doc, data_json, buf_len);
+    return (w > 0) ? 0 : -2;
+}

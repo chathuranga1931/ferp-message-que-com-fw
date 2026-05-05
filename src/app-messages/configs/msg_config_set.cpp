@@ -98,7 +98,7 @@ MsgConfigSet::Payload MsgConfigSet::deserialize(const hsys_msg_t &msg)
     return p;
 }
 
-hsys_msg_t *MsgConfigSet::mqtt_decode(const char *data_json, hsys_module_id_t sender_id)
+hsys_msg_t *MsgConfigSet::from_json(const char *data_json, hsys_module_id_t sender_id)
 {
     StaticJsonDocument<256> doc;
     if (deserializeJson(doc, data_json) != DeserializationError::Ok) return nullptr;
@@ -122,4 +122,25 @@ hsys_msg_t *MsgConfigSet::mqtt_decode(const char *data_json, hsys_module_id_t se
     }
 
     return create(sender_id, p);
+}
+
+int32_t MsgConfigSet::to_json(const hsys_msg_t *msg, char *data_json_out, uint32_t buf_len)
+{
+    auto p = deserialize(*msg);
+    StaticJsonDocument<256> doc;
+    doc["key"] = p.key;
+    if (p.type == HSYS_TYPE_BOOL) {
+        doc["type"]  = "bool";
+        doc["value"] = p.value.as_bool ? "true" : "false";
+    } else if (p.type == HSYS_TYPE_UINT32) {
+        char vbuf[16];
+        snprintf(vbuf, sizeof(vbuf), "%lu", (unsigned long)p.value.as_uint32);
+        doc["type"]  = "uint32";
+        doc["value"] = vbuf;
+    } else {
+        doc["type"]  = "string";
+        doc["value"] = p.value.as_str;
+    }
+    size_t w = serializeJson(doc, data_json_out, buf_len);
+    return (w > 0) ? 0 : -2;
 }

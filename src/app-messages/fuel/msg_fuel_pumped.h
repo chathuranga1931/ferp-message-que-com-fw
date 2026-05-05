@@ -53,11 +53,9 @@ public:
 
     static hsys_msg_t *create(hsys_module_id_t sender_id, const Payload &p);
     static Payload     deserialize(const hsys_msg_t &msg);
-    static int32_t     mqtt_encode(const hsys_msg_t *msg, char *data_json, uint32_t buf_len);
+    static int32_t     to_json(const hsys_msg_t *msg, char *data_json, uint32_t buf_len);
 
-#ifdef FERP_SIMULATOR
     static hsys_msg_t *from_json(const char *payload_json, hsys_module_id_t sender_id);
-#endif
 
 private:
     Payload _p;

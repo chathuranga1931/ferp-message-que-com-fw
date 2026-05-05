@@ -33,7 +33,7 @@ MsgOtaEvent::Payload MsgOtaEvent::deserialize(const hsys_msg_t &msg)
     return p;
 }
 
-int32_t MsgOtaEvent::mqtt_encode(const hsys_msg_t *msg, char *data_json, uint32_t buf_len)
+int32_t MsgOtaEvent::to_json(const hsys_msg_t *msg, char *data_json, uint32_t buf_len)
 {
     auto p = deserialize(*msg);
     StaticJsonDocument<96> doc;
@@ -42,4 +42,15 @@ int32_t MsgOtaEvent::mqtt_encode(const hsys_msg_t *msg, char *data_json, uint32_
     doc["version"]    = p.version;
     size_t w = serializeJson(doc, data_json, buf_len);
     return (w > 0) ? 0 : -2;
+}
+
+hsys_msg_t *MsgOtaEvent::from_json(const char *payload_json, hsys_module_id_t sender_id)
+{
+    StaticJsonDocument<96> doc;
+    if (deserializeJson(doc, payload_json) != DeserializationError::Ok) return nullptr;
+    Payload p{};
+    p.event      = static_cast<ota_event_id_t>(doc["event"] | 0);
+    p.target_idx = doc["target_idx"] | (uint8_t)0;
+    strncpy(p.version, doc["version"] | "", sizeof(p.version) - 1);
+    return create(sender_id, p);
 }

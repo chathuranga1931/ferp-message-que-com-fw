@@ -104,6 +104,28 @@ void HsysModule::log_error(const char *fmt, ...) const
 }
 
 // ---------------------------------------------------------------------------
+// Persistent log helper
+// ---------------------------------------------------------------------------
+
+void (*HsysModule::s_plog_fn)(hsys_module_id_t, const char *) = nullptr;
+
+void HsysModule::register_plog_fn(void (*fn)(hsys_module_id_t, const char *))
+{
+    s_plog_fn = fn;
+}
+
+void HsysModule::log_persistent(const char *fmt, ...) const
+{
+    if (!s_plog_fn) return;
+    va_list ap;
+    va_start(ap, fmt);
+    char buf[192];
+    vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+    s_plog_fn(m_id, buf);
+}
+
+// ---------------------------------------------------------------------------
 // Registry
 // ---------------------------------------------------------------------------
 

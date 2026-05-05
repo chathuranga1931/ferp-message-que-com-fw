@@ -33,7 +33,7 @@ MsgOtaProgress::Payload MsgOtaProgress::deserialize(const hsys_msg_t &msg)
     return p;
 }
 
-int32_t MsgOtaProgress::mqtt_encode(const hsys_msg_t *msg, char *data_json, uint32_t buf_len)
+int32_t MsgOtaProgress::to_json(const hsys_msg_t *msg, char *data_json, uint32_t buf_len)
 {
     auto p = deserialize(*msg);
     StaticJsonDocument<96> doc;
@@ -43,4 +43,16 @@ int32_t MsgOtaProgress::mqtt_encode(const hsys_msg_t *msg, char *data_json, uint
     doc["total_bytes"]   = p.total_bytes;
     size_t w = serializeJson(doc, data_json, buf_len);
     return (w > 0) ? 0 : -2;
+}
+
+hsys_msg_t *MsgOtaProgress::from_json(const char *payload_json, hsys_module_id_t sender_id)
+{
+    StaticJsonDocument<96> doc;
+    if (deserializeJson(doc, payload_json) != DeserializationError::Ok) return nullptr;
+    Payload p{};
+    p.target_idx    = doc["target_idx"]    | (uint8_t)0;
+    p.percent       = doc["percent"]       | (uint8_t)0;
+    p.bytes_written = doc["bytes_written"] | (uint32_t)0;
+    p.total_bytes   = doc["total_bytes"]   | (uint32_t)0;
+    return create(sender_id, p);
 }

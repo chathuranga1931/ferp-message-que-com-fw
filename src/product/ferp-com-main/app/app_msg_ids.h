@@ -49,6 +49,7 @@ typedef enum : uint16_t
     MSG_ID_SD_READY         = 0x0202,   ///< ModuleSD      -> all: SD card mounted and ready
     MSG_ID_SD_STATUS        = 0x0203,   ///< ModuleSD      -> all: SD card info (type, size, free)
     MSG_ID_TIME_STATUS      = 0x0204,   ///< ModuleTimeMgr -> all: current time source and validity
+    MSG_ID_PERSIST_LOG      = 0x0205,   ///< Any -> ModulePLog: write a text string to the SD-card log
 
     // ------------------------------------------------------------------
     // Config  (0x0300 – 0x03FF)

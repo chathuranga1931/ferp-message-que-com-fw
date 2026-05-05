@@ -33,7 +33,7 @@ MsgInternetStatus::Payload MsgInternetStatus::deserialize(const hsys_msg_t &msg)
     return p;
 }
 
-int32_t MsgInternetStatus::mqtt_encode(const hsys_msg_t *msg, char *data_json, uint32_t buf_len)
+int32_t MsgInternetStatus::to_json(const hsys_msg_t *msg, char *data_json, uint32_t buf_len)
 {
     auto p = deserialize(*msg);
     StaticJsonDocument<32> doc;
@@ -42,7 +42,7 @@ int32_t MsgInternetStatus::mqtt_encode(const hsys_msg_t *msg, char *data_json, u
     return (w > 0) ? 0 : -2;
 }
 
-hsys_msg_t *MsgInternetStatus::mqtt_decode(const char *data_json, hsys_module_id_t sender_id)
+hsys_msg_t *MsgInternetStatus::from_json(const char *data_json, hsys_module_id_t sender_id)
 {
     StaticJsonDocument<32> doc;
     if (deserializeJson(doc, data_json) != DeserializationError::Ok) return nullptr;

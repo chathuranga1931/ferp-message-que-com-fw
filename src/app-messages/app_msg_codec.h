@@ -19,7 +19,7 @@
 //
 // ─── How to add a new message ──────────────────────────────────────────────
 //
-//   1. Add MsgXxx::mqtt_decode() and/or MsgXxx::mqtt_encode() to the
+//   1. Add MsgXxx::from_json() and/or MsgXxx::to_json() to the
 //      message's own .cpp/.h file (see existing examples in app-messages/).
 //   2. Add a row to the codec table in product/app/app.cpp.
 //
@@ -78,8 +78,8 @@ typedef struct {
     const char        *msg_name;    ///< C++ class name, e.g. "MsgConfigGetMqtt"
     hsys_msg_id_t      msg_id;      ///< Numeric ID — used for outbound lookup by ID
     hsys_module_id_t   dest_module;    ///< DIRECT destination for inbound; 0 = NOTIFICATION broadcast
-    fp_app_decode_t    decode;         ///< NULL → device never receives this msg via JSON transport
-    fp_app_encode_t    encode;         ///< NULL → device never sends this msg via JSON transport
+    fp_app_decode_t    from_json;      ///< NULL → device never receives this msg via JSON transport
+    fp_app_encode_t    to_json;        ///< NULL → device never sends this msg via JSON transport
     bool               multicast_resp; ///< true → respond even when cmd arrived via a wildcard/group topic
                                        ///<        false (default) → only respond to exact-topic delivery
 } app_msg_codec_entry_t;

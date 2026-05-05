@@ -59,6 +59,7 @@
 #include "ModuleWebServer.h"
 #include "ModuleMqtt.h"
 #include "module_device_info.h"
+#include "module_plog.h"
 
 #include "app_ota_config.h"
 #include "app_web_ota_config.h"  /* k_web_ota_targets[] + ModuleWebClientOta singleton */
@@ -66,6 +67,7 @@
 #include "app_msg_table.h"
 #include "app_config.h"
 #include "app_device_info.h"
+#include "app_sd.h"
 #include "hsys_config.h"
 #include "hsys_type.h"
 #include "hsys_task.h"
@@ -219,26 +221,67 @@ dev_info_entry_t *app_device_info_get_table(uint16_t *out_count)
 // ============================================================================
 
 static const app_msg_codec_entry_t k_codec_table[] = {
-    //  msg_name                msg_id                      dest_module               decode                              encode                            multicast_resp
-    { "MsgConfigGetMqtt",   MSG_ID_CONFIG_GET_MQTT,   MODULE_CONFIG_ID,         MsgConfigGetMqtt::mqtt_decode,   nullptr,                          false },
-    { "MsgConfigGetWifi",   MSG_ID_CONFIG_GET_WIFI,   MODULE_CONFIG_ID,         MsgConfigGetWifi::mqtt_decode,   nullptr,                          false },
-    { "MsgConfigGetCloud",  MSG_ID_CONFIG_GET_CLOUD,  MODULE_CONFIG_ID,         MsgConfigGetCloud::mqtt_decode,  nullptr,                          false },
-    { "MsgConfigGetOta",    MSG_ID_CONFIG_GET_OTA,    MODULE_CONFIG_ID,         MsgConfigGetOta::mqtt_decode,    nullptr,                          false },
-    { "MsgConfigSet",       MSG_ID_CONFIG_SET,        (hsys_module_id_t)0,      MsgConfigSet::mqtt_decode,       nullptr,                          true  }, // broadcast — apply on all matching devices
-    { "MsgConfigMqtt",      MSG_ID_CONFIG_MQTT,       (hsys_module_id_t)0,      nullptr,                         MsgConfigMqtt::mqtt_encode,       false },
-    { "MsgConfigWifi",      MSG_ID_CONFIG_WIFI,       (hsys_module_id_t)0,      nullptr,                         MsgConfigWifi::mqtt_encode,       false },
-    { "MsgConfigCloud",     MSG_ID_CONFIG_CLOUD,      (hsys_module_id_t)0,      nullptr,                         MsgConfigCloud::mqtt_encode,      false },
-    { "MsgConfigOta",       MSG_ID_CONFIG_OTA,        (hsys_module_id_t)0,      nullptr,                         MsgConfigOta::mqtt_encode,        false },
-    { "MsgFuelPumped",      MSG_ID_FUEL_PUMPED,       (hsys_module_id_t)0,      nullptr,                         MsgFuelPumped::mqtt_encode,       false },
-    { "MsgNozzleState",     MSG_ID_NOZZLE_STATE,      (hsys_module_id_t)0,      nullptr,                         MsgNozzleState::mqtt_encode,      false },
-    { "MsgInternetStatus",  MSG_ID_INTERNET_STATUS,   (hsys_module_id_t)0,      nullptr,                         MsgInternetStatus::mqtt_encode,   false },
-    { "MsgOtaEvent",        MSG_ID_OTA_EVENT,         (hsys_module_id_t)0,      nullptr,                         MsgOtaEvent::mqtt_encode,         false },
-    { "MsgOtaProgress",     MSG_ID_OTA_PROGRESS,      (hsys_module_id_t)0,      nullptr,                         MsgOtaProgress::mqtt_encode,      false },
+    //  msg_name                msg_id                      dest_module               from_json                           to_json                           multicast_resp
+    { "MsgConfigGetMqtt",   MSG_ID_CONFIG_GET_MQTT,   MODULE_CONFIG_ID,         MsgConfigGetMqtt::from_json,   nullptr,                         false },
+    { "MsgConfigGetWifi",   MSG_ID_CONFIG_GET_WIFI,   MODULE_CONFIG_ID,         MsgConfigGetWifi::from_json,   nullptr,                         false },
+    { "MsgConfigGetCloud",  MSG_ID_CONFIG_GET_CLOUD,  MODULE_CONFIG_ID,         MsgConfigGetCloud::from_json,  nullptr,                         false },
+    { "MsgConfigGetOta",    MSG_ID_CONFIG_GET_OTA,    MODULE_CONFIG_ID,         MsgConfigGetOta::from_json,    nullptr,                         false },
+    { "MsgConfigSet",       MSG_ID_CONFIG_SET,        (hsys_module_id_t)0,      MsgConfigSet::from_json,       nullptr,                         true  }, // broadcast — apply on all matching devices
+    { "MsgConfigMqtt",      MSG_ID_CONFIG_MQTT,       (hsys_module_id_t)0,      nullptr,                       MsgConfigMqtt::to_json,          false },
+    { "MsgConfigWifi",      MSG_ID_CONFIG_WIFI,       (hsys_module_id_t)0,      nullptr,                       MsgConfigWifi::to_json,          false },
+    { "MsgConfigCloud",     MSG_ID_CONFIG_CLOUD,      (hsys_module_id_t)0,      nullptr,                       MsgConfigCloud::to_json,         false },
+    { "MsgConfigOta",       MSG_ID_CONFIG_OTA,        (hsys_module_id_t)0,      nullptr,                       MsgConfigOta::to_json,           false },
+    { "MsgFuelPumped",      MSG_ID_FUEL_PUMPED,       (hsys_module_id_t)0,      nullptr,                       MsgFuelPumped::to_json,          false },
+    { "MsgNozzleState",     MSG_ID_NOZZLE_STATE,      (hsys_module_id_t)0,      nullptr,                       MsgNozzleState::to_json,         false },
+    { "MsgInternetStatus",  MSG_ID_INTERNET_STATUS,   (hsys_module_id_t)0,      nullptr,                       MsgInternetStatus::to_json,      false },
+    { "MsgOtaEvent",        MSG_ID_OTA_EVENT,         (hsys_module_id_t)0,      nullptr,                       MsgOtaEvent::to_json,            false },
+    { "MsgOtaProgress",     MSG_ID_OTA_PROGRESS,      (hsys_module_id_t)0,      nullptr,                       MsgOtaProgress::to_json,         false },
 };
 
 // ============================================================================
-// Pool class table
+// Persistent log — auto-logged message ID table
+//
+// ModulePLog subscribes to every ID listed here at startup and encodes each
+// received message to JSON (via app_msg_codec_encode) before writing it to
+// the rotating SD-card log.  Only messages that have an encode function in
+// k_codec_table above will produce useful JSON; others are silently skipped.
+//
+// Add or remove IDs freely — no other file needs to change.
 // ============================================================================
+
+static const hsys_msg_id_t k_plog_msg_ids[] = {
+    // System / storage
+    MSG_ID_SPIFFS_READY,        ///< SPIFFS mounted
+    MSG_ID_SD_READY,            ///< SD card mounted
+    MSG_ID_SD_STATUS,           ///< SD card info (type, size, free)
+    MSG_ID_TIME_STATUS,         ///< time source and validity
+
+    // Config lifecycle (startup + live reload)
+    MSG_ID_CONFIG_READY,        ///< config loaded or updated
+
+    // Fuel / dispenser
+    MSG_ID_FUEL_PUMPED,         ///< complete fueling transaction
+    MSG_ID_NOZZLE_STATE,        ///< nozzle lifted / replaced
+
+    // Buttons
+    MSG_ID_DEFAULT_BTN,         ///< default button pressed
+    MSG_ID_PRINTER_BTN,         ///< print button pressed
+
+    // Connectivity
+    MSG_ID_WIFI_EVENT,          ///< WiFi state change
+    MSG_ID_INTERNET_STATUS,     ///< internet reachability change
+    MSG_ID_CLOUD_STATUS,        ///< cloud event (registered, send OK/fail, …)
+    MSG_ID_MQTT_STATUS,         ///< MQTT broker connection state change
+
+    // OTA lifecycle
+    MSG_ID_OTA_START_REQUEST,   ///< OTA session requested
+    MSG_ID_OTA_START_RESPONSE,  ///< OTA session grant / reject
+    MSG_ID_OTA_ABORT_REQUEST,   ///< OTA abort requested
+    MSG_ID_OTA_COMPLETE_NOTIFY, ///< OTA binary write finished
+    MSG_ID_OTA_EVENT,           ///< OTA session lifecycle event
+    MSG_ID_OTA_PROGRESS,        ///< OTA download progress
+};
+#define PLOG_MSG_TABLE_SIZE  (sizeof(k_plog_msg_ids) / sizeof(k_plog_msg_ids[0]))
 
 static const hsys_pool_class_cfg_t k_pool_table[] = {
     {    4,   8 },
@@ -277,6 +320,7 @@ static HsysModule *k_module_table[] = {
     ModuleWebServer::instance(),
     ModuleMqtt::instance(),
     ModuleDeviceInfo::instance(),
+    ModulePLog::instance(),
 };
 #define MODULE_TABLE_SIZE  (sizeof(k_module_table) / sizeof(k_module_table[0]))
 
@@ -296,7 +340,7 @@ static const hsys_task_desc_t k_task_table[] = {
     //                   Large locals in _process_queues() are static → 4096 is fine.
     //   network_task  : WiFi connect + ICMP ping + HTTPS via esp_http_client + mbedTLS.
     //                   mbedTLS TLS handshake alone ~4-6 KB; ESP-IDF recommends ≥8192 for HTTPS.
-    { "storage_task",       4096,  5,  0,   { MODULE_SPIFFS_ID,      MODULE_SD_ID,             MODULE_CONFIG_ID,     MODULE_DEVICE_INFO_ID,  0 } },
+    { "storage_task",       4096,  5,  0,   { MODULE_SPIFFS_ID,      MODULE_SD_ID,             MODULE_CONFIG_ID,     MODULE_DEVICE_INFO_ID,  MODULE_PLOG_ID, 0 } },
     { "timing_task",      3*1024,  4,  0,   { TICKER_MODULE_ID,      MODULE_TIMER_ID,          MODULE_TIMEMGR_ID,                            0 } },
     { "indicator_task",     2048,  4,  0,   { MODULE_SYSMON_ID,      MODULE_LEDS_ID,           MODULE_BUZZER_ID,                             0 } },
     { "btn_task",           2048,  5,  0,   { MODULE_PRINT_BTN_ID,   MODULE_DEFAULT_BTN_ID,                                                  0 } },
@@ -351,7 +395,9 @@ extern "C" void app_config_init(void)
 // app_init
 // ============================================================================
 
+#ifndef FERP_SIMULATOR
 #include "board.h"
+#endif
 extern "C" void app_init(void)
 {
     logger.init();
@@ -359,7 +405,9 @@ extern "C" void app_init(void)
     // this is for displaytap library only. 
     // but this sets other GPIOs, as inputs output
     // this firmware will overide these settings as per needed. 
+#ifndef FERP_SIMULATOR
     board_init();
+#endif
 
     // 0a. PAL system init — platform-level boot (TCP server on simulator, no-op on ESP-IDF)
     //     Must run before anything else so the UI port is open from the very first log line.
@@ -376,6 +424,15 @@ extern "C" void app_init(void)
     // Wire the concrete cloud backend before modules are initialised.
     // The cube_sphere driver singleton is defined in cube_sphere_cloud_driver.cpp.
     ModuleCloud::instance()->set_driver(cloud_driver_cube_sphere());
+
+    // Wire SD storage into ModuleCloud for retransmission.
+    // retx_mgr_init() is deferred until MsgSdReady is received at runtime.
+    ModuleCloud::instance()->set_storage(app_sd_get_storage_interface());
+
+    // Wire SD storage into ModulePLog for persistent log files.
+    // Logger activates on MsgSdReady; auto-logs every message ID in k_plog_msg_ids.
+    ModulePLog::instance()->set_storage(app_sd_get_storage_interface());
+    ModulePLog::instance()->set_msg_table(k_plog_msg_ids, PLOG_MSG_TABLE_SIZE);
 
     // 1. Config — load defaults and initialise the config handle
     app_config_init();

@@ -53,6 +53,7 @@
 // ------------------------------------------------------------------
 #define MODULE_MSG_TRANSLATOR_ID  ((hsys_module_id_t) 23)   ///< ModuleMsgTranslator — message translation and routing
 #define MODULE_DEVICE_INFO_ID     ((hsys_module_id_t) 24)   ///< ModuleDeviceInfo    — runtime device identity
+#define MODULE_PLOG_ID            ((hsys_module_id_t) 25)   ///< ModulePLog          — persistent SD-card logger
 
 // ------------------------------------------------------------------
 // Simulator-only / platform-specific  (20+)

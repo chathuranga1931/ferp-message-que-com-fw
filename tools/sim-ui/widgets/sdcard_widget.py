@@ -1,8 +1,7 @@
 """
 sdcard_widget.py — SD Card file explorer tab for the Simulator UI.
 
-Browses the simulator's SD card emulation directory:
-    src/product/ferp-com-simulator/SDCARD/
+Browses the simulator's SD card emulation directory (path from sim_paths.json).
 
 Displays the folder tree in a Treeview on the left; clicking a file
 shows its content in the right pane with file size info.
@@ -14,6 +13,7 @@ import json
 import os
 import tkinter as tk
 from tkinter import ttk, messagebox, simpledialog
+from .paths import sim_paths
 
 _BG      = "#1e1e2e"
 _BG_DARK = "#11111b"
@@ -25,14 +25,8 @@ _SEL_BG  = "#313244"
 _MONO    = ("Menlo", 10)
 _MONO_SM = ("Menlo", 9)
 
-# Absolute path to the SDCARD emulation root:
-#   tools/sim-ui/widgets/  →  ../../../src/product/ferp-com-simulator/SDCARD/
-_SDCARD_ROOT = os.path.normpath(os.path.join(
-    os.path.dirname(__file__),
-    "..", "..", "..",
-    "src", "product", "ferp-com-simulator",
-    "SDCARD",
-))
+# Resolved from sim_paths.json — edit that file to change this path.
+_SDCARD_ROOT = sim_paths["sdcard_root"]
 
 _TEXT_EXTENSIONS = {
     ".txt", ".log", ".csv", ".json", ".xml", ".html",

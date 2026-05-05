@@ -15,6 +15,7 @@
 #include <stddef.h>
 #include <stdbool.h>
 #include "pal_sd.h"
+#include "storage.h"   // storage_interface_t
 
 // ---------------------------------------------------------------------------
 // Error codes
@@ -98,6 +99,13 @@ int32_t app_sd_create_dir(const char *path, uint32_t timeout_ms);
 
 /** Remove an empty directory. */
 int32_t app_sd_remove_dir(const char *path, uint32_t timeout_ms);
+
+/**
+ * @brief  Returns a pointer to a static storage_interface_t whose function
+ *         pointers are wired to the app_sd_* file I/O functions.
+ *         Valid to call at any time; the pointer is always the same object.
+ */
+const storage_interface_t *app_sd_get_storage_interface(void);
 
 /**
  * @brief Iterate over files in a directory.

@@ -76,7 +76,8 @@ public:
     static hsys_msg_t *create(hsys_module_id_t sender_id, const Payload &payload);
     static Payload     deserialize(const hsys_msg_t &msg);
 
-    static hsys_msg_t *mqtt_decode(const char *data_json, hsys_module_id_t sender_id);
+    static hsys_msg_t *from_json(const char *data_json, hsys_module_id_t sender_id);
+    static int32_t     to_json(const hsys_msg_t *msg, char *data_json_out, uint32_t buf_len);
 
 private:
     Payload m_payload{};
