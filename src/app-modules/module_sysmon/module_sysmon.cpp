@@ -13,7 +13,7 @@
 
 static ModuleSysmon s_instance;
 
-ModuleSysmon *module_sysmon_instance(void) { return &s_instance; }
+ModuleSysmon *ModuleSysmon::instance() { return &s_instance; }
 
 // ---------------------------------------------------------------------------
 // Lifecycle — Phase 2

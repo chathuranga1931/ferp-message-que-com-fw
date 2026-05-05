@@ -459,17 +459,6 @@ void ModuleMqtt::_on_pal_data(const pal_mqtt_message_t *m)
         return;
     }
 
-    // If the cmd arrived on a wildcard/group topic (not the exact device cmd
-    // topic), only process it when multicast_resp is enabled for this message
-    // type.  With the current single-subscription model this is never triggered,
-    // but it is kept as a safety guard for future group-topic support.
-    bool exact_topic = (m->topic_len == strlen(_cmd_topic) &&
-                        strncmp(m->topic, _cmd_topic, m->topic_len) == 0);
-    if (!exact_topic && !app_msg_codec_is_multicast(msg_name)) {
-        LOG_MSG_INFO(MQTT_LOG, "cmd '%s' via wildcard topic — multicast_resp=false, ignored", msg_name);
-        return;
-    }
-
     // Serialize the "data" sub-object back to JSON string for the codec
     char data_json[MODULE_MQTT_DATA_MAX];
     if (doc.containsKey("data")) {
@@ -489,8 +478,20 @@ void ModuleMqtt::_on_pal_data(const pal_mqtt_message_t *m)
         return;
     }
 
+    // If the cmd arrived on a wildcard/group topic (not the exact device cmd
+    // topic), only process it when multicast_resp is enabled for this message
+    // type.  With the current single-subscription model this is never triggered,
+    // but it is kept as a safety guard for future group-topic support.
+    bool exact_topic = (m->topic_len == strlen(_cmd_topic) &&
+                        strncmp(m->topic, _cmd_topic, m->topic_len) == 0);
+    if (!exact_topic && !app_msg_mqtt_route_is_multicast(decoded->msg_id)) {
+        LOG_MSG_INFO(MQTT_LOG, "cmd '%s' via wildcard topic — multicast_resp=false, ignored", msg_name);
+        hsys_msg_release(decoded);
+        return;
+    }
+
     // Route: DIRECT to specific module or NOTIFICATION broadcast
-    hsys_module_id_t dest = app_msg_codec_get_dest(msg_name);
+    hsys_module_id_t dest = app_msg_mqtt_route_get_dest(decoded->msg_id);
     if (dest != (hsys_module_id_t)0) {
         send(decoded, dest);
     } else {

@@ -24,14 +24,11 @@ public:
     /** Called by the soft-timer callback to publish the tick message. */
     void tick();
 
+    static Ticker *instance();
+
 protected:
     void init() override;
     void on_msg_received(const hsys_msg_t &msg) override;
 };
-
-/**
- * @brief  Returns the single firmware-lifetime instance of Ticker.
- */
-Ticker *ticker_instance(void);
 
 #endif // TICKER_H

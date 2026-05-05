@@ -10,7 +10,7 @@
 
 static Ticker s_instance;
 
-Ticker *ticker_instance(void) { return &s_instance; }
+Ticker *Ticker::instance() { return &s_instance; }
 
 // ---------------------------------------------------------------------------
 // Timer callback — runs in FreeRTOS timer daemon context

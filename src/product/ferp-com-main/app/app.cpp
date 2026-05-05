@@ -88,6 +88,29 @@
 #include "msg_ota_progress.h"
 #include "msg_config_cloud.h"
 #include "msg_config_ota.h"
+#include "msg_mqtt_status.h"
+#include "msg_default_btn.h"
+#include "msg_printer_btn.h"
+#include "msg_sd_ready.h"
+#include "msg_sd_status.h"
+#include "msg_spiffs_ready.h"
+#include "msg_wifi_event.h"
+#include "msg_cloud_status.h"
+#include "msg_time_status.h"
+#include "msg_config_ready.h"
+#include "msg_config_get.h"
+#include "msg_config_get_dt.h"
+#include "msg_ota_start_request.h"
+#include "msg_ota_abort_request.h"
+#include "msg_ota_start_response.h"
+#include "msg_ota_complete_notify.h"
+#include "msg_ota_request_driver.h"
+#include "msg_timer_start.h"
+#include "msg_timer_stop.h"
+#include "msg_timer_start_response.h"
+#include "msg_timer_stop_response.h"
+#include "msg_timer_alarm.h"
+#include "msg_tick_1000ms.h"
 
 // ============================================================================
 // Device configuration — single in-memory instance
@@ -215,27 +238,116 @@ dev_info_entry_t *app_device_info_get_table(uint16_t *out_count)
 }
 
 // ============================================================================
-// Codec table — messages exposed over JSON transport (MQTT, sim bridge, etc.)
-// Add a row here when a new message needs to be reachable over the wire.
-// The encode/decode implementations live in each message's own .cpp file.
+// Codec table — JSON serialisation registry (all wire-capable messages).
+//
+// Transport-agnostic: these rows describe only *how* to encode/decode each
+// message type, not *where* it is routed.  Used by MQTT, PLog, sim bridge.
 // ============================================================================
 
 static const app_msg_codec_entry_t k_codec_table[] = {
-    //  msg_name                msg_id                      dest_module               from_json                           to_json                           multicast_resp
-    { "MsgConfigGetMqtt",   MSG_ID_CONFIG_GET_MQTT,   MODULE_CONFIG_ID,         MsgConfigGetMqtt::from_json,   nullptr,                         false },
-    { "MsgConfigGetWifi",   MSG_ID_CONFIG_GET_WIFI,   MODULE_CONFIG_ID,         MsgConfigGetWifi::from_json,   nullptr,                         false },
-    { "MsgConfigGetCloud",  MSG_ID_CONFIG_GET_CLOUD,  MODULE_CONFIG_ID,         MsgConfigGetCloud::from_json,  nullptr,                         false },
-    { "MsgConfigGetOta",    MSG_ID_CONFIG_GET_OTA,    MODULE_CONFIG_ID,         MsgConfigGetOta::from_json,    nullptr,                         false },
-    { "MsgConfigSet",       MSG_ID_CONFIG_SET,        (hsys_module_id_t)0,      MsgConfigSet::from_json,       nullptr,                         true  }, // broadcast — apply on all matching devices
-    { "MsgConfigMqtt",      MSG_ID_CONFIG_MQTT,       (hsys_module_id_t)0,      nullptr,                       MsgConfigMqtt::to_json,          false },
-    { "MsgConfigWifi",      MSG_ID_CONFIG_WIFI,       (hsys_module_id_t)0,      nullptr,                       MsgConfigWifi::to_json,          false },
-    { "MsgConfigCloud",     MSG_ID_CONFIG_CLOUD,      (hsys_module_id_t)0,      nullptr,                       MsgConfigCloud::to_json,         false },
-    { "MsgConfigOta",       MSG_ID_CONFIG_OTA,        (hsys_module_id_t)0,      nullptr,                       MsgConfigOta::to_json,           false },
-    { "MsgFuelPumped",      MSG_ID_FUEL_PUMPED,       (hsys_module_id_t)0,      nullptr,                       MsgFuelPumped::to_json,          false },
-    { "MsgNozzleState",     MSG_ID_NOZZLE_STATE,      (hsys_module_id_t)0,      nullptr,                       MsgNozzleState::to_json,         false },
-    { "MsgInternetStatus",  MSG_ID_INTERNET_STATUS,   (hsys_module_id_t)0,      nullptr,                       MsgInternetStatus::to_json,      false },
-    { "MsgOtaEvent",        MSG_ID_OTA_EVENT,         (hsys_module_id_t)0,      nullptr,                       MsgOtaEvent::to_json,            false },
-    { "MsgOtaProgress",     MSG_ID_OTA_PROGRESS,      (hsys_module_id_t)0,      nullptr,                       MsgOtaProgress::to_json,         false },
+    //  msg_name                     msg_id                         from_json                              to_json
+
+    // ── Config requests ───────────────────────────────────────────────────────
+    { "MsgConfigGetMqtt",        MSG_ID_CONFIG_GET_MQTT,       MsgConfigGetMqtt::from_json,        MsgConfigGetMqtt::to_json       },
+    { "MsgConfigGetWifi",        MSG_ID_CONFIG_GET_WIFI,       MsgConfigGetWifi::from_json,        MsgConfigGetWifi::to_json       },
+    { "MsgConfigGetCloud",       MSG_ID_CONFIG_GET_CLOUD,      MsgConfigGetCloud::from_json,       MsgConfigGetCloud::to_json      },
+    { "MsgConfigGetOta",         MSG_ID_CONFIG_GET_OTA,        MsgConfigGetOta::from_json,         MsgConfigGetOta::to_json        },
+    { "MsgConfigGetDT",          MSG_ID_CONFIG_GET_DT,         MsgConfigGetDT::from_json,          MsgConfigGetDT::to_json         },
+    { "MsgConfigGet",            MSG_ID_CONFIG_GET,            MsgConfigGet::from_json,            MsgConfigGet::to_json           },
+    { "MsgConfigSet",            MSG_ID_CONFIG_SET,            MsgConfigSet::from_json,            MsgConfigSet::to_json           },
+
+    // ── Config responses ──────────────────────────────────────────────────────
+    { "MsgConfigMqtt",           MSG_ID_CONFIG_MQTT,           MsgConfigMqtt::from_json,           MsgConfigMqtt::to_json          },
+    { "MsgConfigWifi",           MSG_ID_CONFIG_WIFI,           MsgConfigWifi::from_json,           MsgConfigWifi::to_json          },
+    { "MsgConfigCloud",          MSG_ID_CONFIG_CLOUD,          MsgConfigCloud::from_json,          MsgConfigCloud::to_json         },
+    { "MsgConfigOta",            MSG_ID_CONFIG_OTA,            MsgConfigOta::from_json,            MsgConfigOta::to_json           },
+    { "MsgConfigReady",          MSG_ID_CONFIG_READY,          MsgConfigReady::from_json,          MsgConfigReady::to_json         },
+
+    // ── Fuel / dispenser ─────────────────────────────────────────────────────
+    { "MsgFuelPumped",           MSG_ID_FUEL_PUMPED,           MsgFuelPumped::from_json,           MsgFuelPumped::to_json          },
+    { "MsgNozzleState",          MSG_ID_NOZZLE_STATE,          MsgNozzleState::from_json,          MsgNozzleState::to_json         },
+
+    // ── Buttons ───────────────────────────────────────────────────────────────
+    { "MsgDefaultBtn",           MSG_ID_DEFAULT_BTN,           MsgDefaultBtn::from_json,           MsgDefaultBtn::to_json          },
+    { "MsgPrinterBtn",           MSG_ID_PRINTER_BTN,           MsgPrinterBtn::from_json,           MsgPrinterBtn::to_json          },
+
+    // ── Storage ───────────────────────────────────────────────────────────────
+    { "MsgSpiffsReady",          MSG_ID_SPIFFS_READY,          MsgSpiffsReady::from_json,          MsgSpiffsReady::to_json         },
+    { "MsgSdReady",              MSG_ID_SD_READY,              MsgSdReady::from_json,              MsgSdReady::to_json             },
+    { "MsgSdStatus",             MSG_ID_SD_STATUS,             MsgSdStatus::from_json,             MsgSdStatus::to_json            },
+
+    // ── Connectivity ─────────────────────────────────────────────────────────
+    { "MsgWifiEvent",            MSG_ID_WIFI_EVENT,            MsgWifiEvent::from_json,            MsgWifiEvent::to_json           },
+    { "MsgInternetStatus",       MSG_ID_INTERNET_STATUS,       MsgInternetStatus::from_json,       MsgInternetStatus::to_json      },
+    { "MsgCloudStatus",          MSG_ID_CLOUD_STATUS,          MsgCloudStatus::from_json,          MsgCloudStatus::to_json         },
+    { "MsgMqttStatus",           MSG_ID_MQTT_STATUS,           MsgMqttStatus::from_json,           MsgMqttStatus::to_json          },
+
+    // ── Time ─────────────────────────────────────────────────────────────────
+    { "MsgTimeStatus",           MSG_ID_TIME_STATUS,           MsgTimeStatus::from_json,           MsgTimeStatus::to_json          },
+
+    // ── OTA lifecycle ─────────────────────────────────────────────────────────
+    { "MsgOtaStartRequest",      MSG_ID_OTA_START_REQUEST,     MsgOtaStartRequest::from_json,      MsgOtaStartRequest::to_json     },
+    { "MsgOtaAbortRequest",      MSG_ID_OTA_ABORT_REQUEST,     MsgOtaAbortRequest::from_json,      MsgOtaAbortRequest::to_json     },
+    { "MsgOtaStartResponse",     MSG_ID_OTA_START_RESPONSE,    MsgOtaStartResponse::from_json,     MsgOtaStartResponse::to_json    },
+    { "MsgOtaCompleteNotify",    MSG_ID_OTA_COMPLETE_NOTIFY,   MsgOtaCompleteNotify::from_json,    MsgOtaCompleteNotify::to_json   },
+    { "MsgOtaRequestDriver",     MSG_ID_OTA_REQUEST_DRIVER,    MsgOtaRequestDriver::from_json,     MsgOtaRequestDriver::to_json    },
+    { "MsgOtaEvent",             MSG_ID_OTA_EVENT,             MsgOtaEvent::from_json,             MsgOtaEvent::to_json            },
+    { "MsgOtaProgress",          MSG_ID_OTA_PROGRESS,          MsgOtaProgress::from_json,          MsgOtaProgress::to_json         },
+
+    // ── Timers ────────────────────────────────────────────────────────────────
+    { "MsgTimerStart",           MSG_ID_TIMER_START,           MsgTimerStart::from_json,           MsgTimerStart::to_json          },
+    { "MsgTimerStop",            MSG_ID_TIMER_STOP,            MsgTimerStop::from_json,            MsgTimerStop::to_json           },
+    { "MsgTimerStartResponse",   MSG_ID_TIMER_START_RESPONSE,  MsgTimerStartResponse::from_json,   MsgTimerStartResponse::to_json  },
+    { "MsgTimerStopResponse",    MSG_ID_TIMER_STOP_RESPONSE,   MsgTimerStopResponse::from_json,    MsgTimerStopResponse::to_json   },
+    { "MsgTimerAlarm",           MSG_ID_TIMER_ALARM,           MsgTimerAlarm::from_json,           MsgTimerAlarm::to_json          },
+    { "MsgTick1000ms",           MSG_ID_TICK_1000MS,           MsgTick1000ms::from_json,           MsgTick1000ms::to_json          },
+};
+
+// ============================================================================
+// MQTT route table — inbound routing policy for ModuleMqtt.
+//
+// Only messages that ModuleMqtt may *receive* from the wire need an entry.
+// Outbound-only messages (those with from_json=nullptr above) are omitted.
+//
+//   dest_module = 0        → hsys_msg_publish() broadcast (notification)
+//   dest_module = <id>     → hsys_msg_send() direct to that module
+//   multicast_resp = true  → process even when cmd arrived on wildcard topic
+// ============================================================================
+
+static const app_msg_mqtt_route_t k_mqtt_route_table[] = {
+    //  msg_id                         dest_module           multicast_resp
+
+    // ── Config requests → config module ──────────────────────────────────────
+    { MSG_ID_CONFIG_GET_MQTT,       MODULE_CONFIG_ID,     false },
+    { MSG_ID_CONFIG_GET_WIFI,       MODULE_CONFIG_ID,     false },
+    { MSG_ID_CONFIG_GET_CLOUD,      MODULE_CONFIG_ID,     false },
+    { MSG_ID_CONFIG_GET_OTA,        MODULE_CONFIG_ID,     false },
+    { MSG_ID_CONFIG_GET_DT,         MODULE_CONFIG_ID,     false },
+    { MSG_ID_CONFIG_GET,            MODULE_CONFIG_ID,     false },
+    { MSG_ID_CONFIG_SET,            (hsys_module_id_t)0,  true  }, // broadcast, multicast
+
+    // ── Fuel / dispenser → broadcast ─────────────────────────────────────────
+    { MSG_ID_FUEL_PUMPED,           (hsys_module_id_t)0,  false },
+    { MSG_ID_NOZZLE_STATE,          (hsys_module_id_t)0,  false },
+
+    // ── Buttons → broadcast ───────────────────────────────────────────────────
+    { MSG_ID_DEFAULT_BTN,           (hsys_module_id_t)0,  false },
+    { MSG_ID_PRINTER_BTN,           (hsys_module_id_t)0,  false },
+
+    // ── Connectivity → broadcast ─────────────────────────────────────────────
+    { MSG_ID_WIFI_EVENT,            (hsys_module_id_t)0,  false },
+    { MSG_ID_INTERNET_STATUS,       (hsys_module_id_t)0,  false },
+
+    // ── OTA lifecycle → broadcast ─────────────────────────────────────────────
+    { MSG_ID_OTA_START_REQUEST,     (hsys_module_id_t)0,  false },
+    { MSG_ID_OTA_ABORT_REQUEST,     (hsys_module_id_t)0,  false },
+    { MSG_ID_OTA_START_RESPONSE,    (hsys_module_id_t)0,  false },
+    { MSG_ID_OTA_COMPLETE_NOTIFY,   (hsys_module_id_t)0,  false },
+    { MSG_ID_OTA_REQUEST_DRIVER,    (hsys_module_id_t)0,  false },
+
+    // ── Timers → timer module ─────────────────────────────────────────────────
+    { MSG_ID_TIMER_START,           MODULE_TIMER_ID,      false },
+    { MSG_ID_TIMER_STOP,            MODULE_TIMER_ID,      false },
 };
 
 // ============================================================================
@@ -300,8 +412,8 @@ static const hsys_pool_class_cfg_t k_pool_table[] = {
 // ============================================================================
 
 static HsysModule *k_module_table[] = {
-    ticker_instance(),
-    module_sysmon_instance(),
+    Ticker::instance(),
+    ModuleSysmon::instance(),
     ModuleSpiffs::instance(),
     ModuleConfig::instance(),
     ModuleTimer::instance(),
@@ -417,9 +529,11 @@ extern "C" void app_init(void)
     // 0b. Platform-specific setup + extra module registration
     app_platform_pre_init();
 
-    // 0c. Register the JSON message codec table
+    // 0c. Register the JSON message codec table and MQTT routing table
     app_msg_codec_register(k_codec_table,
                            (uint8_t)(sizeof(k_codec_table) / sizeof(k_codec_table[0])));
+    app_msg_mqtt_route_register(k_mqtt_route_table,
+                                (uint8_t)(sizeof(k_mqtt_route_table) / sizeof(k_mqtt_route_table[0])));
 
     // Wire the concrete cloud backend before modules are initialised.
     // The cube_sphere driver singleton is defined in cube_sphere_cloud_driver.cpp.

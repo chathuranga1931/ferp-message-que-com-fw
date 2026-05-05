@@ -71,57 +71,50 @@ typedef int32_t      (*fp_app_encode_t)(const hsys_msg_t   *msg,
                                          uint32_t            buf_len);
 
 // ---------------------------------------------------------------------------
-// Codec entry — one row per message type that participates in JSON transport
+// Codec entry — one row per message type that participates in JSON transport.
+// This table is transport-agnostic: it only cares about serialisation.
 // ---------------------------------------------------------------------------
 
 typedef struct {
-    const char        *msg_name;    ///< C++ class name, e.g. "MsgConfigGetMqtt"
-    hsys_msg_id_t      msg_id;      ///< Numeric ID — used for outbound lookup by ID
-    hsys_module_id_t   dest_module;    ///< DIRECT destination for inbound; 0 = NOTIFICATION broadcast
-    fp_app_decode_t    from_json;      ///< NULL → device never receives this msg via JSON transport
-    fp_app_encode_t    to_json;        ///< NULL → device never sends this msg via JSON transport
-    bool               multicast_resp; ///< true → respond even when cmd arrived via a wildcard/group topic
-                                       ///<        false (default) → only respond to exact-topic delivery
+    const char        *msg_name;   ///< C++ class name, e.g. "MsgConfigGetMqtt"
+    hsys_msg_id_t      msg_id;     ///< Numeric ID — used for outbound lookup by ID
+    fp_app_decode_t    from_json;  ///< NULL → message is never decoded from JSON
+    fp_app_encode_t    to_json;    ///< NULL → message is never encoded to JSON
 } app_msg_codec_entry_t;
 
 // ---------------------------------------------------------------------------
-// Registry API
+// MQTT route entry — one row per message that ModuleMqtt may receive inbound.
+// Kept separate from the codec table so routing policy and serialisation can
+// evolve independently.
+// ---------------------------------------------------------------------------
+
+typedef struct {
+    hsys_msg_id_t      msg_id;         ///< Identifies the message
+    hsys_module_id_t   dest_module;    ///< DIRECT destination; 0 = NOTIFICATION broadcast
+    bool               multicast_resp; ///< true → process even on wildcard/group topics
+} app_msg_mqtt_route_t;
+
+// ---------------------------------------------------------------------------
+// Codec registry API
 // ---------------------------------------------------------------------------
 
 /**
- * Register the codec table.
+ * Register the codec table (name ↔ JSON serialisation mapping).
  * Must be called once at startup before any transport module is initialised.
- * Subsequent calls replace the previous table.
  */
 void app_msg_codec_register(const app_msg_codec_entry_t *table, uint8_t count);
 
 /**
- * Decode an inbound JSON envelope's "msg" + "data" fields.
- *
- * Looks up msg_name in the registered table, calls the decoder, and returns
- * a pool-allocated hsys_msg_t ready to post to the bus.
+ * Decode an inbound JSON envelope's "msg" + "data" fields into a pool message.
  *
  * @param msg_name   Value of the "msg" field in the envelope.
  * @param data_json  Value of the "data" field as a JSON string.
- * @param sender_id  Sender ID to stamp on the message.
- * @return           New hsys_msg_t*, or NULL if msg_name unknown or decode failed.
+ * @param sender_id  Module ID to stamp as sender.
+ * @return           Pool-allocated hsys_msg_t*, or NULL on failure.
  */
 hsys_msg_t *app_msg_codec_decode(const char         *msg_name,
                                   const char         *data_json,
                                   hsys_module_id_t    sender_id);
-
-/**
- * Return the destination module ID for an inbound message name.
- * Returns 0 if msg_name is unknown or the message is a NOTIFICATION (broadcast).
- */
-hsys_module_id_t app_msg_codec_get_dest(const char *msg_name);
-
-/**
- * Return whether the named inbound message should be processed when received
- * via a wildcard/group topic (multicast delivery).
- * Returns false if msg_name is unknown.
- */
-bool app_msg_codec_is_multicast(const char *msg_name);
 
 /**
  * Encode an outbound hsys_msg_t into the "msg" name and "data" JSON string.
@@ -131,10 +124,32 @@ bool app_msg_codec_is_multicast(const char *msg_name);
  * @param name_len      Size of msg_name_out.
  * @param data_json_out Output buffer for the "data" JSON object string.
  * @param data_len      Size of data_json_out.
- * @return              0 on success, -1 if msg->id unknown, -2 if encode failed.
+ * @return              0 on success, negative on error.
  */
 int32_t app_msg_codec_encode(const hsys_msg_t *msg,
                               char             *msg_name_out,
                               uint32_t          name_len,
                               char             *data_json_out,
                               uint32_t          data_len);
+
+// ---------------------------------------------------------------------------
+// MQTT route registry API
+// ---------------------------------------------------------------------------
+
+/**
+ * Register the MQTT route table.
+ * Must be called once at startup before ModuleMqtt is initialised.
+ */
+void app_msg_mqtt_route_register(const app_msg_mqtt_route_t *table, uint8_t count);
+
+/**
+ * Return the destination module ID for an inbound message.
+ * Returns 0 (broadcast) if msg_id is not in the route table.
+ */
+hsys_module_id_t app_msg_mqtt_route_get_dest(hsys_msg_id_t msg_id);
+
+/**
+ * Return whether a message should be processed when received on a
+ * wildcard/group topic.  Returns false if msg_id is not in the route table.
+ */
+bool app_msg_mqtt_route_is_multicast(hsys_msg_id_t msg_id);

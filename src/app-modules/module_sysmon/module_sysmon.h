@@ -51,6 +51,8 @@ class ModuleSysmon : public HsysModule
 public:
     ModuleSysmon() : HsysModule(MODULE_SYSMON_ID, SYSMON_MODULE_NAME) {}
 
+    static ModuleSysmon *instance();
+
 protected:
     // Phase 2 — subscribe to the 1 s tick
     void init() override;
@@ -63,11 +65,5 @@ private:
 
     uint32_t m_tick_count = 0;
 };
-
-// ---------------------------------------------------------------------------
-// Singleton accessor
-// ---------------------------------------------------------------------------
-
-ModuleSysmon *module_sysmon_instance(void);
 
 #endif // MODULE_SYSMON_H
