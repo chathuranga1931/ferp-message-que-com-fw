@@ -339,8 +339,8 @@ void ModuleSimBridge::on_msg_received(const hsys_msg_t &msg)
                 }
             };
             snprintf(data, sizeof(data),
-                     "{\"event\":\"%s\",\"nozzle_idx\":%u}",
-                     _cs_str(p.event), (unsigned)p.nozzle_idx);
+                     "{\"event\":\"%s\",\"nozzle_idx\":%u,\"device_uuid\":\"%s\"}",
+                     _cs_str(p.event), (unsigned)p.nozzle_idx, p.device_uuid);
             _send_json("MSG_CUBESPHERE_STATUS", data);
             strncpy(_last_cloud_json, data, sizeof(_last_cloud_json) - 1);
             break;

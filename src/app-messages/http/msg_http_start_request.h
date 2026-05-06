@@ -12,6 +12,10 @@
 #include "pal_http_client.h"
 #include <stdint.h>
 
+/// Maximum number of response header keys a client may ask ModuleHttp to
+/// capture and forward back as MsgHttpResponseHeader messages.
+#define MSG_HTTP_MAX_COLLECT_KEYS  4U
+
 class MsgHttpStartRequest : public IHsysMsg
 {
 public:
@@ -20,6 +24,10 @@ public:
     struct Payload {
         pal_http_method_t method;      ///< HTTP method for this session
         uint32_t          timeout_ms;  ///< Request timeout; 0 = use PAL default
+        uint8_t           collect_count; ///< Number of response header keys to capture (0 = none)
+        uint8_t           _pad[3];
+        /// Response header key names to capture (NUL-terminated, unused slots are empty).
+        char collect_keys[MSG_HTTP_MAX_COLLECT_KEYS][MODULE_HTTP_MAX_HEADER_KEY];
     };
 
     static constexpr hsys_msg_desc_t DESCRIPTOR =

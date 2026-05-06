@@ -28,15 +28,21 @@
 #define MODULE_HTTP_MAX_REQUEST_BODY    4096U   ///< max request body bytes
 #endif
 #ifndef MODULE_HTTP_MAX_RESPONSE_BODY
-#define MODULE_HTTP_MAX_RESPONSE_BODY   2048U   ///< max response body bytes (pool-allocated)
+// Body is now heap-allocated per-message; this constant caps how many bytes
+// ModuleHttp will copy from the response into that heap buffer.
+#define MODULE_HTTP_MAX_RESPONSE_BODY   4096U   ///< max response body bytes (heap-allocated per result message)
 #endif
 
 // Descriptor payload_size values
 #define MODULE_HTTP_PAYLOAD_URL    (4U + MODULE_HTTP_MAX_URL_LEN)
 #define MODULE_HTTP_PAYLOAD_HDR    (4U + MODULE_HTTP_MAX_HEADER_KEY + \
                                     4U + MODULE_HTTP_MAX_HEADER_VAL)
-#define MODULE_HTTP_PAYLOAD_BODY   (4U + MODULE_HTTP_MAX_REQUEST_BODY)
-#define MODULE_HTTP_PAYLOAD_RESULT (12U + MODULE_HTTP_MAX_RESPONSE_BODY)
+// Fixed 16-byte pool slab: body_len(4) + _pad(4) + body_ptr(8).
+// The actual body is heap-allocated and freed via msg->cleanup.
+#define MODULE_HTTP_PAYLOAD_BODY   16U
+// Fixed 16-byte pool slab: result(4) + status_code(4) + body_len(4) + body_ptr(4).
+// The actual body is heap-allocated and freed via msg->cleanup.
+#define MODULE_HTTP_PAYLOAD_RESULT  16U
 
 // ---------------------------------------------------------------------------
 // Idle timer default (ms) — override via CMake compile definition

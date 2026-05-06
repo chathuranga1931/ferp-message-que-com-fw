@@ -2,8 +2,7 @@
 //
 // Sent DIRECT by the session owner to ModuleHttp to set the request body
 // (for POST / PUT).  Optional for GET / DELETE.
-// Payload uses the 4-byte length-prefix protocol:
-//   [uint32 len][len bytes of body data]
+// Fixed 16-byte pool slab; actual body is heap-allocated and freed via cleanup.
 
 #pragma once
 

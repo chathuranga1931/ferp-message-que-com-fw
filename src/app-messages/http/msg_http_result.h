@@ -2,11 +2,15 @@
 //
 // Sent DIRECT by ModuleHttp to the session owner after the HTTP call
 // completes (or if the session expires / errors).
-// Payload layout (all fields little-endian):
+//
+// Payload layout (fixed 16-byte pool slab):
 //   bytes  0.. 3  uint32_t   http_result_t result
 //   bytes  4.. 7  int32_t    HTTP status code (200, 404 …; 0 if not received)
-//   bytes  8..11  uint32_t   body_len  (0 when result != SUCCESS)
-//   bytes 12..N   uint8_t[]  body data (body_len bytes, NUL-terminated)
+//   bytes  8..11  uint32_t   body_len  (0 when no body)
+//   bytes 12..15  void *     body  — heap-allocated; freed automatically via
+//                                   msg->cleanup when the message is released.
+//
+// The body pointer is valid until the last hsys_msg_release() on this message.
 
 #pragma once
 
@@ -33,7 +37,7 @@ public:
         http_result_t result;
         int32_t       status_code;
         uint32_t      body_len;
-        const void   *body;   ///< Points into the original msg payload; valid until msg is released
+        const void   *body;   ///< Heap-allocated body buffer; valid until the last msg release
     };
 
     MsgHttpResult() = default;

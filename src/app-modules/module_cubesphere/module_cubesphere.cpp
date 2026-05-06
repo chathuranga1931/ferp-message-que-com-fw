@@ -16,6 +16,18 @@
 #include "msg_timer_start.h"
 #include "msg_timer_alarm.h"
 #include "msg_sd_ready.h"
+
+// HTTP session messages (DIRECT to/from ModuleHttp)
+#include "msg_http_start_request.h"
+#include "msg_http_start_response.h"
+#include "msg_http_set_url_request.h"
+#include "msg_http_set_root_ca_request.h"
+#include "msg_http_header_request.h"
+#include "msg_http_body_request.h"
+#include "msg_http_send_request.h"
+#include "msg_http_result.h"
+#include "msg_http_response_header.h"
+
 #include "pal_logger.h"
 #include "pal_efuse.h"
 #include "pal_time.h"
@@ -34,15 +46,60 @@
 // Secret key for SAS-AC1 token computation
 const char ModuleCubeSphere::_cs_key[] = "y4M5oJVfjAWeN059p";
 
+// Google GTS Root R1 — fallback when no root CA is provided via config.
+// This is the trust anchor for *.run.app (Google Cloud Run) and was the cert
+// used in the original Arduino implementation (setCACert). Using a specific
+// cert instead of esp_crt_bundle_attach avoids a large heap allocation during
+// the TLS handshake, which was causing ECONNABORTED on ESP32 due to heap
+// fragmentation when multiple TLS sessions start simultaneously.
+static const char _cs_gts_root_r1[] =
+    "-----BEGIN CERTIFICATE-----\n"
+    "MIIFYjCCBEqgAwIBAgIQd70NbNs2+RrqIQ/E8FjTDTANBgkqhkiG9w0BAQsFADBX\n"
+    "MQswCQYDVQQGEwJCRTEZMBcGA1UEChMQR2xvYmFsU2lnbiBudi1zYTEQMA4GA1UE\n"
+    "CxMHUm9vdCBDQTEbMBkGA1UEAxMSR2xvYmFsU2lnbiBSb290IENBMB4XDTIwMDYx\n"
+    "OTAwMDA0MloXDTI4MDEyODAwMDA0MlowRzELMAkGA1UEBhMCVVMxIjAgBgNVBAoT\n"
+    "GUdvb2dsZSBUcnVzdCBTZXJ2aWNlcyBMTEMxFDASBgNVBAMTC0dUUyBSb290IFIx\n"
+    "MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAthECix7joXebO9y/lD63\n"
+    "ladAPKH9gvl9MgaCcfb2jH/76Nu8ai6Xl6OMS/kr9rH5zoQdsfnFl97vufKj6bwS\n"
+    "iV6nqlKr+CMny6SxnGPb15l+8Ape62im9MZaRw1NEDPjTrETo8gYbEvs/AmQ351k\n"
+    "KSUjB6G00j0uYODP0gmHu81I8E3CwnqIiru6z1kZ1q+PsAewnjHxgsHA3y6mbWwZ\n"
+    "DrXYfiYaRQM9sHmklCitD38m5agI/pboPGiUU+6DOogrFZYJsuB6jC511pzrp1Zk\n"
+    "j5ZPaK49l8KEj8C8QMALXL32h7M1bKwYUH+E4EzNktMg6TO8UpmvMrUpsyUqtEj5\n"
+    "cuHKZPfmghCN6J3Cioj6OGaK/GP5Afl4/Xtcd/p2h/rs37EOeZVXtL0m79YB0esW\n"
+    "CruOC7XFxYpVq9Os6pFLKcwZpDIlTirxZUTQAs6qzkm06p98g7BAe+dDq6dso499\n"
+    "iYH6TKX/1Y7DzkvgtdizjkXPdsDtQCv9Uw+wp9U7DbGKogPeMa3Md+pvez7W35Ei\n"
+    "Eua++tgy/BBjFFFy3l3WFpO9KWgz7zpm7AeKJt8T11dleCfeXkkUAKIAf5qoIbap\n"
+    "sZWwpbkNFhHax2xIPEDgfg1azVY80ZcFuctL7TlLnMQ/0lUTbiSw1nH69MG6zO0b\n"
+    "9f6BQdgAmD06yK56mDcYBZUCAwEAAaOCATgwggE0MA4GA1UdDwEB/wQEAwIBhjAP\n"
+    "BgNVHRMBAf8EBTADAQH/MB0GA1UdDgQWBBTkrysmcRorSCeFL1JmLO/wiRNxPjAf\n"
+    "BgNVHSMEGDAWgBRge2YaRQ2XyolQL30EzTSo//z9SzBgBggrBgEFBQcBAQRUMFIw\n"
+    "JQYIKwYBBQUHMAGGGWh0dHA6Ly9vY3NwLnBraS5nb29nL2dzcjEwKQYIKwYBBQUH\n"
+    "MAKGHWh0dHA6Ly9wa2kuZ29vZy9nc3IxL2dzcjEuY3J0MDIGA1UdHwQrMCkwJ6Al\n"
+    "oCOGIWh0dHA6Ly9jcmwucGtpLmdvb2cvZ3NyMS9nc3IxLmNybDA7BgNVHSAENDAy\n"
+    "MAgGBmeBDAECATAIBgZngQwBAgIwDQYLKwYBBAHWeQIFAwIwDQYLKwYBBAHWeQIF\n"
+    "AwMwDQYJKoZIhvcNAQELBQADggEBADSkHrEoo9C0dhemMXoh6dFSPsjbdBZBiLg9\n"
+    "NR/u92VS7YPHmPbFpnKFBKIJdTa4sQB1Zh/xfIOjX1B3sMJnwMNJbsJK4vfBSB3J\n"
+    "DMTLpZAGF2VsMEiGGe7Zy2V7NLzxBhW3vCXHMVRrLkK2G7iDjFBXluZHoWGBLhbM\n"
+    "9NQVAKLpEJaGfEbI8Mk8RzGBrGjhxeFdVHB9fL4T4F07NZ2g5GNjlSK8PBFyZfGV\n"
+    "7TDEbQNBKBH2YHwzMsq7LfMb/eTa9fXFbDnGxuHUO5mL1IwRRvuqORXxfmZHBr3F\n"
+    "s2xaEXGAuMl3gMX/vO6A8Cqjn0swAa6JnBPMiR6GF/5iXK3tgCxLNNvfKRvCTy8=\n"
+    "-----END CERTIFICATE-----\n";
+
 // ── Singleton ─────────────────────────────────────────────────────────────────
 
 static ModuleCubeSphere s_instance;
 ModuleCubeSphere *ModuleCubeSphere::instance() { return &s_instance; }
 
+// CubeSphere cloud endpoints
+#define CS_URL_BOOTSTRAP   "https://fuel-iot-core-v2-alw5epn3aq-el.a.run.app/api/bootstrap/core/v1/device"
+#define CS_URL_DEV_CONFIG  "https://fuel-iot-core-v2-alw5epn3aq-el.a.run.app/api/ingress/core/v1/device/config"
+#define CS_URL_EVENTS      "https://fuel-iot-core-v2-alw5epn3aq-el.a.run.app/api/ingress/core/v1/device/event"
+
 // ── Lifecycle ─────────────────────────────────────────────────────────────────
 
 void ModuleCubeSphere::init()
 {
+    // Notifications
     subscribe(MsgConfigReady::ID);
     subscribe(MsgConfigCloud::ID);
     subscribe(MsgConfigWifi::ID);
@@ -53,6 +110,16 @@ void ModuleCubeSphere::init()
     subscribe(MsgSdReady::ID);
     subscribe(MSG_ID_TICK_1000MS);
 
+    // DIRECT responses from ModuleHttp
+    subscribe(MSG_ID_HTTP_START_RESPONSE);
+    subscribe(MSG_ID_HTTP_RESPONSE_HEADER);
+    subscribe(MSG_ID_HTTP_RESULT);
+    // Op-response messages — subscribe so the framework routes them here (errors logged only)
+    subscribe(MSG_ID_HTTP_SET_URL_RESPONSE);
+    subscribe(MSG_ID_HTTP_SET_ROOT_CA_RESP);
+    subscribe(MSG_ID_HTTP_HEADER_RESPONSE);
+    subscribe(MSG_ID_HTTP_BODY_RESPONSE);
+
     LOG_MSG_INFO(CSP_LOG_EN, "init — state=WAIT_FOR_INTERNET");
 }
 
@@ -61,15 +128,26 @@ void ModuleCubeSphere::init()
 void ModuleCubeSphere::on_msg_received(const hsys_msg_t &msg)
 {
     switch (msg.msg_id) {
-        case MsgConfigReady::ID:     _on_config_ready();          break;
-        case MsgConfigCloud::ID:     _on_config_cloud(msg);       break;
-        case MsgConfigWifi::ID:      _on_config_wifi(msg);        break;
-        case MsgWifiEvent::ID:       _on_wifi_event(msg);         break;
-        case MsgInternetStatus::ID:  _on_internet_status(msg);    break;
-        case MsgFuelPumped::ID:      _on_fuel_pumped(msg);        break;
-        case MsgSdReady::ID:         _on_sd_ready();              break;
-        case MsgTimerAlarm::ID:      _on_timer_alarm();           break;
-        case MSG_ID_TICK_1000MS:     _on_tick();                  break;
+        // Notifications
+        case MsgConfigReady::ID:           _on_config_ready();           break;
+        case MsgConfigCloud::ID:           _on_config_cloud(msg);        break;
+        case MsgConfigWifi::ID:            _on_config_wifi(msg);         break;
+        case MsgWifiEvent::ID:             _on_wifi_event(msg);          break;
+        case MsgInternetStatus::ID:        _on_internet_status(msg);     break;
+        case MsgFuelPumped::ID:            _on_fuel_pumped(msg);         break;
+        case MsgSdReady::ID:               _on_sd_ready();               break;
+        case MsgTimerAlarm::ID:            _on_timer_alarm();            break;
+        case MSG_ID_TICK_1000MS:           _on_tick();                   break;
+        // HTTP session responses (DIRECT from ModuleHttp)
+        case MSG_ID_HTTP_START_RESPONSE:   _on_http_start_response(msg); break;
+        case MSG_ID_HTTP_RESPONSE_HEADER:  _on_http_response_header(msg);break;
+        case MSG_ID_HTTP_RESULT:           _on_http_result(msg);         break;
+        // Op-responses — no state change needed; silently ignored
+        case MSG_ID_HTTP_SET_URL_RESPONSE:
+        case MSG_ID_HTTP_SET_ROOT_CA_RESP:
+        case MSG_ID_HTTP_HEADER_RESPONSE:
+        case MSG_ID_HTTP_BODY_RESPONSE:
+            break;
         default: break;
     }
 }
@@ -100,9 +178,11 @@ void ModuleCubeSphere::_on_config_cloud(const hsys_msg_t &msg)
     LOG_MSG_INFO(CSP_LOG_EN, "cloud config: root_ca=%s hb_enabled=%d interval=%us",
                  _cloud_root_ca ? "***" : "(null)", (int)p.hb_enabled, (unsigned)p.hb_interval_s);
 
-    if (_internet_up && _state == STATE_WAIT_FOR_INTERNET) {
+    // If WiFi already has an IP (GOT_IP arrived before config), start registration now
+    if (_wifi_ip[0] != '\0' && _state == STATE_WAIT_FOR_INTERNET) {
+        LOG_MSG_INFO(CSP_LOG_EN, "cloud config received after GOT_IP — starting registration");
         _state = STATE_REGISTERING;
-        _attempt_registration();
+        _start_registration();
     }
 }
 
@@ -130,6 +210,13 @@ void ModuleCubeSphere::_on_wifi_event(const hsys_msg_t &msg)
             strncpy(_wifi_mac,  p.mac_address, sizeof(_wifi_mac)  - 1);
             LOG_MSG_INFO(CSP_LOG_EN, "WiFi GOT_IP ssid=%s ip=%s rssi=%d",
                          _wifi_ssid, _wifi_ip, _wifi_rssi);
+
+            // Trigger registration if cloud config is ready and not yet registered
+            if (_cloud_config_ready && _state == STATE_WAIT_FOR_INTERNET) {
+                LOG_MSG_INFO(CSP_LOG_EN, "GOT_IP with cloud config ready — starting registration");
+                _state = STATE_REGISTERING;
+                _start_registration();
+            }
             break;
         case WIFI_EVENT_STA_RSSI_CHANGED:
             _wifi_rssi = p.rssi;
@@ -145,24 +232,8 @@ void ModuleCubeSphere::_on_wifi_event(const hsys_msg_t &msg)
 void ModuleCubeSphere::_on_internet_status(const hsys_msg_t &msg)
 {
     auto p = MsgInternetStatus::deserialize(msg);
-    _internet_up = p.connected;
     LOG_MSG_INFO(CSP_LOG_EN, "internet %s", p.connected ? "UP" : "DOWN");
-
-    if (p.connected) {
-        if (_state == STATE_WAIT_FOR_INTERNET) {
-            if (_cloud_config_ready) {
-                _state = STATE_REGISTERING;
-                _attempt_registration();
-            } else {
-                LOG_MSG_INFO(CSP_LOG_EN, "internet up — waiting for cloud config");
-            }
-        }
-    } else {
-        if (_state == STATE_RUNNING) {
-            LOG_MSG_WARNING(CSP_LOG_EN, "internet lost — back to WAIT_FOR_INTERNET");
-            _state = STATE_WAIT_FOR_INTERNET;
-        }
-    }
+    // Internet status is informational — registration is triggered by WiFi GOT_IP
 }
 
 void ModuleCubeSphere::_on_fuel_pumped(const hsys_msg_t &msg)
@@ -173,41 +244,66 @@ void ModuleCubeSphere::_on_fuel_pumped(const hsys_msg_t &msg)
         LOG_MSG_WARNING(CSP_LOG_EN, "fuel pumped but not RUNNING — storing for retx");
         _pumped_failure++;
         _publish_status(CUBESPHERE_STATUS_PUMPED_FAILED, p.nozzle_idx);
-        _retx_store_pumped(p, nullptr);
+        _retx_store_pumped(p);
         return;
     }
 
-    cs_pumped_event_t ev = {};
-    ev.nozzle_idx     = p.nozzle_idx;
-    ev.time_stamp     = (uint64_t)time(nullptr);
-    ev.unit_pricex100  = p.unit_pricex100;
-    ev.total_pricex100 = p.total_pricex100;
-    ev.volume_lx1000   = p.vol_lx1000;
-    ev.event_id        = _pumped_success + _pumped_failure + 1;
-
-    int32_t ret = _cs_send_pumped(ev);
-    if (ret == CS_ERROR_OK) {
-        _pumped_success++;
-        _publish_status(CUBESPHERE_STATUS_PUMPED_SUCCESS, p.nozzle_idx);
-        LOG_MSG_INFO(CSP_LOG_EN, "pumped sent OK (total=%lu)", (unsigned long)_pumped_success);
-    } else {
+    if (_http_phase != HTTP_IDLE) {
+        LOG_MSG_WARNING(CSP_LOG_EN, "HTTP busy — storing pumped event for retx");
         _pumped_failure++;
-        LOG_MSG_ERROR(CSP_LOG_EN, "pumped FAILED ret=%d — storing for retx", ret);
         _publish_status(CUBESPHERE_STATUS_PUMPED_FAILED, p.nozzle_idx);
-        _retx_store_pumped(p, nullptr);
+        _retx_store_pumped(p);
+        return;
     }
+
+    if (p.nozzle_idx >= CS_NO_NOZZLES || _cs_nozzles[p.nozzle_idx].uuid[0] == '\0') {
+        LOG_MSG_ERROR(CSP_LOG_EN, "invalid nozzle_idx %u or unconfigured nozzle", p.nozzle_idx);
+        _pumped_failure++;
+        _publish_status(CUBESPHERE_STATUS_PUMPED_FAILED, p.nozzle_idx);
+        _retx_store_pumped(p);
+        return;
+    }
+
+    // Build the pumped event JSON into _event_json now so it is ready when StartResponse arrives
+    struct timeval now_tv;
+    gettimeofday(&now_tv, nullptr);
+    char ts[64] = {};
+    _cs_format_iso8601(now_tv.tv_sec + (int)(3600 * 5.5), "+05:30", ts, sizeof(ts));
+
+    uint32_t event_id = _pumped_success + _pumped_failure + 1;
+
+    JsonDocument doc;
+    JsonObject root   = doc.add<JsonObject>();
+    JsonArray  events = root["events"].to<JsonArray>();
+    JsonObject e0     = events.add<JsonObject>();
+    e0["device"] = _cs_nozzles[p.nozzle_idx].uuid;
+    e0["time"]   = ts;
+    e0["event"]  = "app.fuel/pump-end";
+    JsonObject body = e0["body"].to<JsonObject>();
+    body["L"]  = p.vol_lx1000   * 0.001;
+    body["T"]  = _cs_nozzles[p.nozzle_idx].fuel_type;
+    body["P"]  = p.total_pricex100 * 0.01;
+    body["U"]  = p.unit_pricex100  * 0.01;
+    body["ID"] = event_id;
+    serializeJson(doc, _event_json, sizeof(_event_json));
+
+    _cur_evt = EVT_PUMPED;
+    _send_http_start(PAL_HTTP_METHOD_POST, 10000, nullptr);
+    LOG_MSG_DEBUG(CSP_LOG_EN, "pumped event queued (nozzle=%u id=%u)", p.nozzle_idx, event_id);
 }
 
 void ModuleCubeSphere::_on_timer_alarm()
 {
     switch (_state) {
         case STATE_REGISTERING:
-            LOG_MSG_INFO(CSP_LOG_EN, "retry timer — re-attempting registration");
-            _attempt_registration();
+            if (_http_phase == HTTP_IDLE) {
+                LOG_MSG_INFO(CSP_LOG_EN, "retry timer — re-attempting registration");
+                _start_registration();
+            }
             break;
         case STATE_RUNNING:
             _pending_heartbeat = true;
-            _process_events();
+            _start_next_event();
             _retx_process_one();
             break;
         default: break;
@@ -216,9 +312,92 @@ void ModuleCubeSphere::_on_timer_alarm()
 
 void ModuleCubeSphere::_on_tick() { _uptime_sec++; }
 
-// ── State machine ─────────────────────────────────────────────────────────────
+// ── HTTP response handlers ────────────────────────────────────────────────────
 
-void ModuleCubeSphere::_attempt_registration()
+void ModuleCubeSphere::_on_http_start_response(const hsys_msg_t &msg)
+{
+    if (_http_phase != HTTP_STARTING) return;
+
+    auto p = MsgHttpStartResponse::deserialize(msg);
+
+    if (p.result == HTTP_SESSION_BUSY) {
+        LOG_MSG_WARNING(CSP_LOG_EN, "HTTP session busy — retry in 5s");
+        _http_phase = HTTP_IDLE;
+        _arm_timer(5000);
+        return;
+    }
+
+    // Session open — burst-send configuration messages then SendRequest
+    if (_state == STATE_REGISTERING) {
+        switch (_reg_step) {
+            case REG_STEP_1: _burst_get(CS_URL_BOOTSTRAP);                       break;
+            case REG_STEP_2: _burst_get_with_auth(CS_URL_BOOTSTRAP, _auth_hdr);  break;
+            case REG_STEP_3: _burst_get_with_auth(CS_URL_DEV_CONFIG, _auth_hdr); break;
+        }
+    } else if (_state == STATE_RUNNING) {
+        char auth[512] = {};
+        snprintf(auth, sizeof(auth), "Basic %s", _cs_net_cfg.basic_authentication_base64);
+        _burst_post(CS_URL_EVENTS, auth, _event_json, (uint32_t)strlen(_event_json));
+    }
+
+    _http_phase = HTTP_EXECUTING;
+}
+
+void ModuleCubeSphere::_on_http_response_header(const hsys_msg_t &msg)
+{
+    // Only relevant during STEP_1 — capture nonce from www-authenticate
+    if (_state != STATE_REGISTERING || _reg_step != REG_STEP_1) return;
+
+    const char *key = MsgHttpResponseHeader::get_key(msg);
+    const char *val = MsgHttpResponseHeader::get_value(msg);
+    if (!key || !val) return;
+    if (strcasecmp(key, "www-authenticate") != 0) return;
+
+    const char *ns = strstr(val, "nonce=\"");
+    if (!ns) return;
+    ns += 7;
+    const char *ne = strchr(ns, '"');
+    if (!ne || (size_t)(ne - ns) >= sizeof(_reg_nonce)) return;
+
+    memset(_reg_nonce, 0, sizeof(_reg_nonce));
+    memcpy(_reg_nonce, ns, (size_t)(ne - ns));
+    LOG_MSG_DEBUG(CSP_LOG_EN, "captured nonce (len=%u)", (unsigned)(ne - ns));
+}
+
+void ModuleCubeSphere::_on_http_result(const hsys_msg_t &msg)
+{
+    if (_http_phase != HTTP_EXECUTING) return;
+    _http_phase = HTTP_IDLE;
+
+    if (_state == STATE_REGISTERING) {
+        switch (_reg_step) {
+            case REG_STEP_1: _on_reg_step1_result(msg); break;
+            case REG_STEP_2: _on_reg_step2_result(msg); break;
+            case REG_STEP_3: _on_reg_step3_result(msg); break;
+        }
+    } else if (_state == STATE_RUNNING) {
+        _on_event_result(msg);
+    }
+}
+
+// ── Registration helpers ──────────────────────────────────────────────────────
+
+void ModuleCubeSphere::_start_registration()
+{
+    memset(_reg_nonce,   0, sizeof(_reg_nonce));
+    memset(&_cs_net_cfg, 0, sizeof(_cs_net_cfg));
+    memset(_cs_nozzles,  0, sizeof(_cs_nozzles));
+    _reg_step = REG_STEP_1;
+    _start_reg_step_1();
+}
+
+void ModuleCubeSphere::_start_reg_step_1()
+{
+    LOG_MSG_INFO(CSP_LOG_EN, "reg step1 — GET /bootstrap (expecting 401 + nonce)");
+    _send_http_start(PAL_HTTP_METHOD_GET, 30000, "www-authenticate");
+}
+
+void ModuleCubeSphere::_start_reg_step_2()
 {
     uint8_t mac_bytes[6] = {};
     char    mac12[13]    = {};
@@ -226,69 +405,359 @@ void ModuleCubeSphere::_attempt_registration()
         snprintf(mac12, sizeof(mac12), "%02X%02X%02X%02X%02X%02X",
                  mac_bytes[0], mac_bytes[1], mac_bytes[2],
                  mac_bytes[3], mac_bytes[4], mac_bytes[5]);
-    } else {
-        LOG_MSG_ERROR(CSP_LOG_EN, "pal_efuse_get_mac failed");
     }
 
-    LOG_MSG_INFO(CSP_LOG_EN, "attempting registration mac=%s", mac12);
+    char token[PAL_SHA256_DIGEST_LENGTH * 2 + 1] = {};
+    _cs_calc_sha256(_reg_nonce, mac12, _cs_key, token, sizeof(token));
+    snprintf(_auth_hdr, sizeof(_auth_hdr),
+             "SAS-AC1 nonce=\"%s\" id=\"%s\" token=\"%s\"",
+             _reg_nonce, mac12, token);
 
-    int32_t ret = _cs_register(mac12, _cloud_root_ca);
-    if (ret == CS_ERROR_OK) {
-        LOG_MSG_INFO(CSP_LOG_EN, "registration OK — state=RUNNING");
-        _state = STATE_RUNNING;
-        _pending_startup = true;
-        _process_events();
-
-        _publish_status(CUBESPHERE_STATUS_REGISTERED, 0, _cs_net_cfg.agent_uuid);
-        if (_hb_enabled) _arm_timer(_hb_interval_ms);
-    } else {
-        LOG_MSG_ERROR(CSP_LOG_EN, "registration FAILED ret=%d — retry in %lus",
-                      ret, (unsigned long)(MODULE_CUBESPHERE_RETRY_INTERVAL_MS / 1000));
-        _publish_status(CUBESPHERE_STATUS_REGISTER_FAILED);
-        _arm_timer(MODULE_CUBESPHERE_RETRY_INTERVAL_MS);
-    }
+    LOG_MSG_INFO(CSP_LOG_EN, "reg step2 — GET /bootstrap with SAS-AC1 auth");
+    _reg_step = REG_STEP_2;
+    _send_http_start(PAL_HTTP_METHOD_GET, 30000, nullptr);
 }
 
-void ModuleCubeSphere::_process_events()
+void ModuleCubeSphere::_start_reg_step_3()
 {
-    if (_state != STATE_RUNNING) return;
+    snprintf(_auth_hdr, sizeof(_auth_hdr),
+             "Basic %s", _cs_net_cfg.basic_authentication_base64);
+    LOG_MSG_INFO(CSP_LOG_EN, "reg step3 — GET /device/config with Basic auth");
+    _reg_step = REG_STEP_3;
+    _send_http_start(PAL_HTTP_METHOD_GET, 30000, nullptr);
+}
+
+void ModuleCubeSphere::_on_reg_step1_result(const hsys_msg_t &msg)
+{
+    auto f = MsgHttpResult::get_fields(msg);
+
+    if (f.result != HTTP_RESULT_SUCCESS || f.status_code != 401) {
+        LOG_MSG_ERROR(CSP_LOG_EN, "reg step1: result=%d status=%d (expected 401)",
+                      (int)f.result, (int)f.status_code);
+        _reg_failed();
+        return;
+    }
+    if (_reg_nonce[0] == '\0') {
+        LOG_MSG_ERROR(CSP_LOG_EN, "reg step1: no nonce captured from www-authenticate");
+        _reg_failed();
+        return;
+    }
+    LOG_MSG_DEBUG(CSP_LOG_EN, "reg step1 OK — nonce obtained, starting step2");
+    _start_reg_step_2();
+}
+
+void ModuleCubeSphere::_on_reg_step2_result(const hsys_msg_t &msg)
+{
+    auto f = MsgHttpResult::get_fields(msg);
+
+    if (f.result != HTTP_RESULT_SUCCESS ||
+        (f.status_code != 200 && f.status_code != 201)) {
+        LOG_MSG_ERROR(CSP_LOG_EN, "reg step2: result=%d status=%d",
+                      (int)f.result, (int)f.status_code);
+        _reg_failed();
+        return;
+    }
+    if (!f.body || f.body_len == 0) {
+        LOG_MSG_ERROR(CSP_LOG_EN, "reg step2: empty body");
+        _reg_failed();
+        return;
+    }
+
+    JsonDocument doc;
+    deserializeJson(doc, (const char *)f.body, DeserializationOption::NestingLimit(20));
+
+    const char *dev_id = nullptr;
+    const char *secret = nullptr;
+    if (doc["data"].is<JsonObject>()) {
+        JsonObject data = doc["data"].as<JsonObject>();
+        dev_id = data["device_id"] | (const char *)nullptr;
+        secret = data["secret"]    | (const char *)nullptr;
+    }
+    if (!dev_id || !secret) {
+        LOG_MSG_ERROR(CSP_LOG_EN, "reg step2: missing device_id or secret");
+        _reg_failed();
+        return;
+    }
+
+    char id_secret[CS_SIZE_UUID + CS_SIZE_SECRET + 2] = {};
+    snprintf(id_secret, sizeof(id_secret), "%s:%s", dev_id, secret);
+    char b64[CS_SIZE_SECRET] = {};
+    pal_crypto_base64_encode((const uint8_t *)id_secret, strlen(id_secret),
+                              b64, sizeof(b64));
+
+    strncpy(_cs_net_cfg.agent_uuid,                  dev_id, CS_SIZE_UUID   - 1);
+    strncpy(_cs_net_cfg.basic_authentication_base64, b64,    CS_SIZE_SECRET - 1);
+    LOG_MSG_DEBUG(CSP_LOG_EN, "reg step2 OK — device_id=%s", _cs_net_cfg.agent_uuid);
+    _start_reg_step_3();
+}
+
+void ModuleCubeSphere::_on_reg_step3_result(const hsys_msg_t &msg)
+{
+    auto f = MsgHttpResult::get_fields(msg);
+
+    if (f.result != HTTP_RESULT_SUCCESS ||
+        (f.status_code != 200 && f.status_code != 201)) {
+        LOG_MSG_ERROR(CSP_LOG_EN, "reg step3: result=%d status=%d",
+                      (int)f.result, (int)f.status_code);
+        _reg_failed();
+        return;
+    }
+    if (!f.body || f.body_len == 0) {
+        LOG_MSG_ERROR(CSP_LOG_EN, "reg step3: empty body");
+        _reg_failed();
+        return;
+    }
+
+    JsonDocument doc;
+    deserializeJson(doc, (const char *)f.body, DeserializationOption::NestingLimit(20));
+
+    bool nozzles_ok = false;
+    if (doc["data"].is<JsonObject>()) {
+        JsonObject data    = doc["data"].as<JsonObject>();
+        JsonArray  nozzles = data["nozzles"].as<JsonArray>();
+        int        n       = (int)nozzles.size();
+        if (n > CS_NO_NOZZLES) n = CS_NO_NOZZLES;
+        nozzles_ok = (n > 0);
+        memset(_cs_nozzles, 0, sizeof(_cs_nozzles));
+        for (int i = 0; i < n; i++) {
+            JsonObject nz     = nozzles[i].as<JsonObject>();
+            const char *uuid  = nz["device_id"]    | (const char *)nullptr;
+            const char *ft    = nz["fuel_type"]     | (const char *)nullptr;
+            const char *ft_s  = nz["fuel_type_str"] | (const char *)nullptr;
+            const char *nz_id = nz["id"]            | (const char *)nullptr;
+            if (!uuid || !ft || !ft_s || !nz_id) { nozzles_ok = false; break; }
+            strncpy(_cs_nozzles[i].uuid,          uuid,  CS_SIZE_UUID          - 1);
+            strncpy(_cs_nozzles[i].fuel_type,     ft,    CS_SIZE_FUEL_TYPE     - 1);
+            strncpy(_cs_nozzles[i].fuel_type_str, ft_s,  CS_SIZE_FUEL_TYPE_STR - 1);
+            strncpy(_cs_nozzles[i].nozzle_id,     nz_id, CS_SIZE_NOZZLE_ID    - 1);
+            LOG_MSG_DEBUG(CSP_LOG_EN, "nozzle[%d] uuid=%s ft=%s",
+                          i, _cs_nozzles[i].uuid, _cs_nozzles[i].fuel_type);
+        }
+    }
+    if (!nozzles_ok) {
+        LOG_MSG_ERROR(CSP_LOG_EN, "reg step3: nozzle config incomplete");
+        _reg_failed();
+        return;
+    }
+
+    LOG_MSG_INFO(CSP_LOG_EN, "registration complete — state=RUNNING");
+    _state = STATE_RUNNING;
+    _publish_status(CUBESPHERE_STATUS_REGISTERED, 0, _cs_net_cfg.agent_uuid);
+    _pending_startup = true;
+    _start_next_event();
+}
+
+void ModuleCubeSphere::_reg_failed()
+{
+    LOG_MSG_ERROR(CSP_LOG_EN, "registration failed — retry in %lus",
+                  (unsigned long)(MODULE_CUBESPHERE_RETRY_INTERVAL_MS / 1000));
+    _publish_status(CUBESPHERE_STATUS_REGISTER_FAILED);
+    _arm_timer(MODULE_CUBESPHERE_RETRY_INTERVAL_MS);
+}
+
+// ── Running event helpers ─────────────────────────────────────────────────────
+
+void ModuleCubeSphere::_start_next_event()
+{
+    if (_state != STATE_RUNNING || _http_phase != HTTP_IDLE) return;
 
     if (_pending_startup) {
         _pending_startup = false;
-        LOG_MSG_INFO(CSP_LOG_EN, "sending startup event");
-        _cs_send_startup(_build_startup_info());
-    }
-
-    if (_pending_reconnect) {
+        _cur_evt = EVT_STARTUP;
+    } else if (_pending_reconnect) {
         _pending_reconnect = false;
-        LOG_MSG_INFO(CSP_LOG_EN, "sending reconnect event");
-        cs_reconnect_info_t r = {};
-        strncpy(r.ssid,       _wifi_ssid,     sizeof(r.ssid)       - 1);
-        strncpy(r.password,   _wifi_password, sizeof(r.password)   - 1);
-        strncpy(r.ip_address, _wifi_ip,       sizeof(r.ip_address) - 1);
-        r.rssi       = _wifi_rssi;
-        r.uptime_sec = _uptime_sec;
-        _cs_send_reconnect(r);
-    }
-
-    if (_pending_status_update) {
+        _cur_evt = EVT_RECONNECT;
+    } else if (_pending_status_update) {
         _pending_status_update = false;
-        LOG_MSG_INFO(CSP_LOG_EN, "sending status-updated event");
-        _cs_send_status_updated(_build_startup_info());
+        _cur_evt = EVT_STATUS_UPDATE;
+    } else if (_pending_heartbeat && _hb_enabled) {
+        _pending_heartbeat = false;
+        _cur_evt = EVT_HEARTBEAT;
+    } else {
+        if (_hb_enabled) _arm_timer(_hb_interval_ms);
+        return;
     }
 
-    if (_pending_heartbeat && _hb_enabled) {
-        _pending_heartbeat = false;
-        LOG_MSG_INFO(CSP_LOG_EN, "sending heartbeat");
-        int32_t ret = _cs_send_hb(_build_hb_info());
-        if (ret == CS_ERROR_OK) {
-            _publish_status(CUBESPHERE_STATUS_HB_SENT);
-        } else {
-            LOG_MSG_WARNING(CSP_LOG_EN, "heartbeat failed ret=%d", ret);
-            _publish_status(CUBESPHERE_STATUS_HB_FAILED);
-        }
-        _arm_timer(_hb_interval_ms);
+    if (!_build_event_json(_cur_evt)) {
+        LOG_MSG_ERROR(CSP_LOG_EN, "failed to build JSON for event %d", (int)_cur_evt);
+        _cur_evt = EVT_NONE;
+        _start_next_event();
+        return;
     }
+
+    LOG_MSG_INFO(CSP_LOG_EN, "starting HTTP POST for event %d", (int)_cur_evt);
+    _send_http_start(PAL_HTTP_METHOD_POST, 10000, nullptr);
+}
+
+bool ModuleCubeSphere::_build_event_json(evt_type_t evt)
+{
+    struct timeval now_tv;
+    gettimeofday(&now_tv, nullptr);
+    char ts[64] = {};
+    _cs_format_iso8601(now_tv.tv_sec + (int)(3600 * 5.5), "+05:30", ts, sizeof(ts));
+
+    JsonDocument doc;
+    JsonObject root   = doc.add<JsonObject>();
+    JsonArray  events = root["events"].to<JsonArray>();
+
+    switch (evt) {
+        case EVT_HEARTBEAT: {
+            JsonObject e0 = events.add<JsonObject>();
+            e0["device"] = _cs_net_cfg.agent_uuid;
+            e0["time"]   = ts;
+            e0["event"]  = "core/heartbeat";
+            JsonObject b0 = e0["body"].to<JsonObject>();
+            b0["rssi"]   = _wifi_rssi;
+            b0["uptime"] = _uptime_sec;
+            for (int i = 0; i < CS_NO_NOZZLES; i++) {
+                if (_cs_nozzles[i].uuid[0] == '\0') continue;
+                JsonObject en = events.add<JsonObject>();
+                en["device"] = _cs_nozzles[i].uuid;
+                en["time"]   = ts;
+                en["event"]  = "core/heartbeat";
+                JsonObject bn = en["body"].to<JsonObject>();
+                bn["rssi"]   = _wifi_rssi;
+                bn["uptime"] = _uptime_sec;
+            }
+            break;
+        }
+        case EVT_STARTUP:
+        case EVT_STATUS_UPDATE: {
+            JsonObject e0   = events.add<JsonObject>();
+            e0["device"]    = _cs_net_cfg.agent_uuid;
+            e0["time"]      = ts;
+            e0["event"]     = (evt == EVT_STARTUP) ? "core/startup" : "core/status-updated";
+            JsonObject body = e0["body"].to<JsonObject>();
+            body["hw_type"]       = "ferp-com";
+            body["hw_version"]    = "2602";
+            body["sw_version"]    = "1.0.0";
+            body["local_ip"]      = _wifi_ip;
+            body["mac"]           = _wifi_mac;
+            body["wifi_ssid"]     = _wifi_ssid;
+            body["wifi_password"] = _wifi_password;
+            body["sd_status"]     = "unknown";
+            break;
+        }
+        case EVT_RECONNECT: {
+            JsonObject e0   = events.add<JsonObject>();
+            e0["device"]    = _cs_net_cfg.agent_uuid;
+            e0["time"]      = ts;
+            e0["event"]     = "core/reconnect";
+            JsonObject body = e0["body"].to<JsonObject>();
+            body["rssi"]          = _wifi_rssi;
+            body["uptime"]        = _uptime_sec;
+            body["local_ip"]      = _wifi_ip;
+            body["wifi_ssid"]     = _wifi_ssid;
+            body["wifi_password"] = _wifi_password;
+            break;
+        }
+        default: return false;
+    }
+
+    size_t written = serializeJson(doc, _event_json, sizeof(_event_json));
+    return (written > 0);
+}
+
+void ModuleCubeSphere::_on_event_result(const hsys_msg_t &msg)
+{
+    auto f = MsgHttpResult::get_fields(msg);
+    bool ok = (f.result == HTTP_RESULT_SUCCESS &&
+               (f.status_code == 200 || f.status_code == 201));
+
+    if (ok && f.body && f.body_len > 0) {
+        JsonDocument doc;
+        deserializeJson(doc, (const char *)f.body, DeserializationOption::NestingLimit(10));
+        if (doc["data"].is<JsonArray>()) {
+            JsonArray arr = doc["data"].as<JsonArray>();
+            if (arr.size() > 0) {
+                const char *st = arr[0]["status"] | "";
+                ok = (strcmp(st, "OK") == 0);
+            }
+        }
+    }
+
+    switch (_cur_evt) {
+        case EVT_HEARTBEAT:
+            if (ok) {
+                _publish_status(CUBESPHERE_STATUS_HB_SENT);
+                LOG_MSG_INFO(CSP_LOG_EN, "heartbeat OK");
+            } else {
+                LOG_MSG_WARNING(CSP_LOG_EN, "heartbeat failed result=%d status=%d",
+                                (int)f.result, (int)f.status_code);
+                _publish_status(CUBESPHERE_STATUS_HB_FAILED);
+            }
+            break;
+        case EVT_PUMPED:
+            if (ok) {
+                _pumped_success++;
+                _publish_status(CUBESPHERE_STATUS_PUMPED_SUCCESS);
+                LOG_MSG_INFO(CSP_LOG_EN, "pumped OK (total=%lu)", (unsigned long)_pumped_success);
+            } else {
+                _pumped_failure++;
+                LOG_MSG_WARNING(CSP_LOG_EN, "pumped failed result=%d status=%d",
+                                (int)f.result, (int)f.status_code);
+                _publish_status(CUBESPHERE_STATUS_PUMPED_FAILED);
+            }
+            break;
+        default: break;
+    }
+
+    _cur_evt = EVT_NONE;
+    _start_next_event();
+}
+
+// ── HTTP session helpers ──────────────────────────────────────────────────────
+
+void ModuleCubeSphere::_send_http_start(pal_http_method_t method,
+                                         uint32_t timeout_ms,
+                                         const char *collect_key)
+{
+    MsgHttpStartRequest::Payload p{};
+    p.method     = method;
+    p.timeout_ms = timeout_ms;
+    if (collect_key && collect_key[0] != '\0') {
+        p.collect_count = 1;
+        strncpy(p.collect_keys[0], collect_key, MODULE_HTTP_MAX_HEADER_KEY - 1);
+    }
+    hsys_msg_t *m = MsgHttpStartRequest::create(id(), p);
+    if (m) {
+        send(m, MODULE_HTTP_ID);
+        _http_phase = HTTP_STARTING;
+    } else {
+        LOG_MSG_ERROR(CSP_LOG_EN, "_send_http_start: message create failed");
+    }
+}
+
+void ModuleCubeSphere::_burst_get(const char *url)
+{
+    const char *ca = _cloud_root_ca ? _cloud_root_ca : _cs_gts_root_r1;
+    { MsgHttpSetRootCaRequest::Payload rca{}; rca.cert_pem = ca;
+      hsys_msg_t *m = MsgHttpSetRootCaRequest::create(id(), rca); if (m) send(m, MODULE_HTTP_ID); }
+    { hsys_msg_t *m = MsgHttpSetUrlRequest::create(id(), url); if (m) send(m, MODULE_HTTP_ID); }
+    { hsys_msg_t *m = MsgHttpSendRequest::create(id());        if (m) send(m, MODULE_HTTP_ID); }
+}
+
+void ModuleCubeSphere::_burst_get_with_auth(const char *url, const char *auth_value)
+{
+    const char *ca = _cloud_root_ca ? _cloud_root_ca : _cs_gts_root_r1;
+    { MsgHttpSetRootCaRequest::Payload rca{}; rca.cert_pem = ca;
+      hsys_msg_t *m = MsgHttpSetRootCaRequest::create(id(), rca); if (m) send(m, MODULE_HTTP_ID); }
+    { hsys_msg_t *m = MsgHttpSetUrlRequest::create(id(), url);              if (m) send(m, MODULE_HTTP_ID); }
+    { hsys_msg_t *m = MsgHttpHeaderRequest::create(id(), "Authorization", auth_value); if (m) send(m, MODULE_HTTP_ID); }
+    { hsys_msg_t *m = MsgHttpSendRequest::create(id());                     if (m) send(m, MODULE_HTTP_ID); }
+}
+
+void ModuleCubeSphere::_burst_post(const char *url, const char *auth_value,
+                                    const char *json_body, uint32_t json_len)
+{
+    const char *ca = _cloud_root_ca ? _cloud_root_ca : _cs_gts_root_r1;
+    { MsgHttpSetRootCaRequest::Payload rca{}; rca.cert_pem = ca;
+      hsys_msg_t *m = MsgHttpSetRootCaRequest::create(id(), rca); if (m) send(m, MODULE_HTTP_ID); }
+    { hsys_msg_t *m = MsgHttpSetUrlRequest::create(id(), url);                             if (m) send(m, MODULE_HTTP_ID); }
+    { hsys_msg_t *m = MsgHttpHeaderRequest::create(id(), "Authorization", auth_value);     if (m) send(m, MODULE_HTTP_ID); }
+    { hsys_msg_t *m = MsgHttpHeaderRequest::create(id(), "Content-Type", "application/json"); if (m) send(m, MODULE_HTTP_ID); }
+    { hsys_msg_t *m = MsgHttpBodyRequest::create(id(), json_body, json_len);               if (m) send(m, MODULE_HTTP_ID); }
+    { hsys_msg_t *m = MsgHttpSendRequest::create(id());                                    if (m) send(m, MODULE_HTTP_ID); }
 }
 
 void ModuleCubeSphere::_arm_timer(uint32_t duration_ms)
@@ -382,399 +851,6 @@ void ModuleCubeSphere::_cs_format_iso8601(time_t epoch_sec, const char *tz_offse
              tm_info.tm_hour, tm_info.tm_min, tm_info.tm_sec, tz_offset);
 }
 
-// ── CubeSphere HTTP session methods ───────────────────────────────────────────
-
-int32_t ModuleCubeSphere::_cs_register(const char *mac12, const char *root_ca)
-{
-    int32_t ret = CS_ERROR_INVALID_MAC;
-
-    do {
-        if (strlen(mac12) != 12) {
-            LOG_MSG_DEBUG(CSP_LOG_EN, "mac12 invalid length");
-            break;
-        }
-
-        // ── Request 1: GET bootstrap (401 + nonce) ────────────────────────────
-        pal_http_client_config_t cfg = {};
-        cfg.url        = "https://fuel-iot-core-v2-alw5epn3aq-el.a.run.app/api/bootstrap/core/v1/device";;
-        cfg.cert_pem   = root_ca;
-        cfg.timeout_ms = 30000;
-        cfg.keep_alive = false;
-
-        pal_http_client_handle_t h = nullptr;
-        if (pal_http_client_init(&cfg, &h) != 0) {
-            LOG_MSG_ERROR(CSP_LOG_EN, "req1 init failed");
-            ret = CS_ERROR_NO_NONCE;
-            break;
-        }
-
-        const char *hdr_names[] = { "www-authenticate", "WWW-Authenticate" };
-        pal_http_client_collect_headers(h, hdr_names, 2);
-
-        pal_http_response_t resp = {};
-        int32_t sc = pal_http_client_get(h, &resp);
-
-        bool  nonce_ok = false;
-        char  nonce[128] = {};
-        if (sc == 401) {
-            char hdr[512] = {};
-            if (pal_http_client_get_header(h, "www-authenticate", hdr, sizeof(hdr)) != 0)
-                pal_http_client_get_header(h, "WWW-Authenticate", hdr, sizeof(hdr));
-
-            char *ns = strstr(hdr, "nonce=\"");
-            if (ns) {
-                ns += 7;
-                char *ne = strchr(ns, '"');
-                if (ne && (size_t)(ne - ns) < sizeof(nonce)) {
-                    memcpy(nonce, ns, ne - ns);
-                    nonce_ok = true;
-                }
-            }
-        }
-
-        pal_http_response_free(&resp);
-        pal_http_client_cleanup(h);
-        h = nullptr;
-
-        if (!nonce_ok) { ret = CS_ERROR_NO_NONCE; break; }
-        LOG_MSG_DEBUG(CSP_LOG_EN, "nonce obtained");
-
-        // ── Request 2: GET bootstrap with SAS-AC1 auth ────────────────────────
-        char token[PAL_SHA256_DIGEST_LENGTH * 2 + 1] = {};
-        _cs_calc_sha256(nonce, mac12, _cs_key, token, sizeof(token));
-
-        cfg.url = "https://fuel-iot-core-v2-alw5epn3aq-el.a.run.app/api/bootstrap/core/v1/device";;
-        if (pal_http_client_init(&cfg, &h) != 0) {
-            LOG_MSG_ERROR(CSP_LOG_EN, "req2 init failed");
-            ret = CS_ERROR_GET_AGENT_CONFIG_FAILED;
-            break;
-        }
-
-        char auth[512] = {};
-        snprintf(auth, sizeof(auth), "SAS-AC1 nonce=\"%s\" id=\"%s\" token=\"%s\"",
-                 nonce, mac12, token);
-        pal_http_client_set_header(h, "Authorization", auth);
-
-        sc = pal_http_client_get(h, &resp);
-        LOG_MSG_DEBUG(CSP_LOG_EN, "req2 status=%d", sc);
-
-        if (sc == 200 || sc == 201) {
-            JsonDocument doc;
-            deserializeJson(doc, resp.body, DeserializationOption::NestingLimit(20));
-            if (doc.containsKey("data")) {
-                JsonObject data = doc["data"].as<JsonObject>();
-                const char *dev_id = data["device_id"] | (const char *)nullptr;
-                const char *secret = data["secret"]    | (const char *)nullptr;
-
-                if (!dev_id) {
-                    LOG_MSG_DEBUG(CSP_LOG_EN, "no device_id in response");
-                    pal_http_response_free(&resp);
-                    pal_http_client_cleanup(h);
-                    ret = CS_ERROR_GET_AGENT_CONFIG_FAILED;
-                    break;
-                }
-                if (!secret) {
-                    LOG_MSG_DEBUG(CSP_LOG_EN, "no secret in response");
-                    pal_http_response_free(&resp);
-                    pal_http_client_cleanup(h);
-                    ret = CS_ERROR_GET_AGENT_CONFIG_FAILED;
-                    break;
-                }
-
-                // Build basic auth: base64(device_id:secret)
-                char id_secret[CS_SIZE_UUID + CS_SIZE_SECRET + 2] = {};
-                snprintf(id_secret, sizeof(id_secret), "%s:%s", dev_id, secret);
-                char b64[CS_SIZE_SECRET] = {};
-                pal_crypto_base64_encode((const uint8_t *)id_secret, strlen(id_secret),
-                                         b64, sizeof(b64));
-
-                memset(&_cs_net_cfg, 0, sizeof(_cs_net_cfg));
-                strncpy(_cs_net_cfg.agent_uuid,                  dev_id, CS_SIZE_UUID   - 1);
-                strncpy(_cs_net_cfg.basic_authentication_base64, b64,    CS_SIZE_SECRET - 1);
-                LOG_MSG_DEBUG(CSP_LOG_EN, "device_id=%s", _cs_net_cfg.agent_uuid);
-            } else {
-                pal_http_response_free(&resp);
-                pal_http_client_cleanup(h);
-                ret = CS_ERROR_GET_AGENT_CONFIG_FAILED;
-                break;
-            }
-        } else {
-            pal_http_response_free(&resp);
-            pal_http_client_cleanup(h);
-            ret = CS_ERROR_GET_AGENT_CONFIG_FAILED;
-            break;
-        }
-
-        pal_http_response_free(&resp);
-        pal_http_client_cleanup(h);
-        h = nullptr;
-
-        // ── Request 3: GET ingress/device/config (nozzle config) ──────────────
-        cfg.url = "https://fuel-iot-core-v2-alw5epn3aq-el.a.run.app/api/ingress/core/v1/device/config";;
-        if (pal_http_client_init(&cfg, &h) != 0) {
-            LOG_MSG_ERROR(CSP_LOG_EN, "req3 init failed");
-            ret = CS_ERROR_GET_NOZZLE_CONFIG_FAILED;
-            break;
-        }
-
-        char basic_auth[512] = {};
-        snprintf(basic_auth, sizeof(basic_auth), "Basic %s", _cs_net_cfg.basic_authentication_base64);
-        pal_http_client_set_header(h, "Authorization", basic_auth);
-
-        sc = pal_http_client_get(h, &resp);
-
-        bool nozzles_ok = false;
-        if (sc == 200 || sc == 201) {
-            JsonDocument doc;
-            deserializeJson(doc, resp.body, DeserializationOption::NestingLimit(20));
-            if (doc.containsKey("data")) {
-                JsonObject data    = doc["data"].as<JsonObject>();
-                JsonArray  nozzles = data["nozzles"].as<JsonArray>();
-                int        n       = (int)nozzles.size();
-                if (n > CS_NO_NOZZLES) n = CS_NO_NOZZLES;
-
-                nozzles_ok = true;
-                memset(_cs_nozzles, 0, sizeof(_cs_nozzles));
-                for (int i = 0; i < n; i++) {
-                    JsonObject nz = nozzles[i].as<JsonObject>();
-                    const char *nz_uuid  = nz["device_id"]    | (const char *)nullptr;
-                    const char *nz_ft    = nz["fuel_type"]     | (const char *)nullptr;
-                    const char *nz_ft_s  = nz["fuel_type_str"] | (const char *)nullptr;
-                    const char *nz_id    = nz["id"]            | (const char *)nullptr;
-                    if (!nz_uuid || !nz_ft || !nz_ft_s || !nz_id) {
-                        nozzles_ok = false;
-                        break;
-                    }
-                    strncpy(_cs_nozzles[i].uuid,          nz_uuid, CS_SIZE_UUID         - 1);
-                    strncpy(_cs_nozzles[i].fuel_type,     nz_ft,   CS_SIZE_FUEL_TYPE    - 1);
-                    strncpy(_cs_nozzles[i].fuel_type_str, nz_ft_s, CS_SIZE_FUEL_TYPE_STR- 1);
-                    strncpy(_cs_nozzles[i].nozzle_id,     nz_id,   CS_SIZE_NOZZLE_ID    - 1);
-                    LOG_MSG_DEBUG(CSP_LOG_EN, "nozzle[%d] uuid=%s ft=%s id=%s",
-                                  i, _cs_nozzles[i].uuid, _cs_nozzles[i].fuel_type, _cs_nozzles[i].nozzle_id);
-                }
-            }
-        } else {
-            pal_http_response_free(&resp);
-            pal_http_client_cleanup(h);
-            ret = CS_ERROR_GET_NOZZLE_CONFIG_FAILED;
-            break;
-        }
-
-        pal_http_response_free(&resp);
-        pal_http_client_cleanup(h);
-        h = nullptr;
-
-        if (nozzles_ok) {
-            LOG_MSG_INFO(CSP_LOG_EN, "registration complete — nozzles configured");
-            ret = CS_ERROR_OK;
-        } else {
-            LOG_MSG_ERROR(CSP_LOG_EN, "nozzle config incomplete");
-            ret = CS_ERROR_GET_NOZZLE_CONFIG_FAILED;
-        }
-
-    } while (false);
-
-    return ret;
-}
-
-int32_t ModuleCubeSphere::_cs_send_event(const char *json_payload)
-{
-    pal_http_client_config_t cfg = {};
-    cfg.url        = "https://fuel-iot-core-v2-alw5epn3aq-el.a.run.app/api/ingress/core/v1/device/event";;
-    cfg.cert_pem   = _cloud_root_ca;
-    cfg.timeout_ms = 10000;
-    cfg.keep_alive = false;
-
-    pal_http_client_handle_t h = nullptr;
-    if (pal_http_client_init(&cfg, &h) != 0) {
-        LOG_MSG_ERROR(CSP_LOG_EN, "send_event: init failed");
-        return -1;
-    }
-
-    char auth[512] = {};
-    snprintf(auth, sizeof(auth), "Basic %s", _cs_net_cfg.basic_authentication_base64);
-    pal_http_client_set_header(h, "Authorization", auth);
-    pal_http_client_set_header(h, "Content-Type", "application/json");
-
-    pal_http_response_t resp = {};
-    int32_t sc = pal_http_client_post(h, json_payload, strlen(json_payload), &resp);
-
-    int32_t ret = -1;
-    if (sc == 200 || sc == 201) {
-        JsonDocument doc;
-        deserializeJson(doc, resp.body, DeserializationOption::NestingLimit(20));
-        if (doc.containsKey("data")) {
-            JsonArray arr = doc["data"].as<JsonArray>();
-            JsonObject r0 = arr[0];
-            const char *status = r0["status"] | "";
-            ret = (strcmp(status, "OK") == 0) ? CS_ERROR_OK : -1;
-        }
-    } else {
-        LOG_MSG_ERROR(CSP_LOG_EN, "send_event HTTP %d", sc);
-    }
-
-    pal_http_response_free(&resp);
-    pal_http_client_cleanup(h);
-    return ret;
-}
-
-int32_t ModuleCubeSphere::_cs_send_hb(const cs_hb_info_t &hb)
-{
-    static char json[2048];
-    struct timeval now;
-    gettimeofday(&now, nullptr);
-    char ts[64] = {};
-    _cs_format_iso8601(now.tv_sec + (int)(3600 * 5.5), "+05:30", ts, sizeof(ts));
-
-    JsonDocument doc;
-    JsonObject   root   = doc.add<JsonObject>();
-    JsonArray    events = root["events"].to<JsonArray>();
-
-    // Main device heartbeat
-    JsonObject e0 = events.add<JsonObject>();
-    e0["device"] = _cs_net_cfg.agent_uuid;
-    e0["time"]   = ts;
-    e0["event"]  = "core/heartbeat";
-    JsonObject b0 = e0["body"].to<JsonObject>();
-    b0["rssi"]   = hb.rssi;
-    b0["uptime"] = hb.uptime_sec;
-
-    // Per-nozzle heartbeat
-    for (int i = 0; i < CS_NO_NOZZLES; i++) {
-        if (_cs_nozzles[i].uuid[0] == '\0') continue;
-        JsonObject en = events.add<JsonObject>();
-        en["device"] = _cs_nozzles[i].uuid;
-        en["time"]   = ts;
-        en["event"]  = "core/heartbeat";
-        JsonObject bn = en["body"].to<JsonObject>();
-        bn["rssi"]   = hb.rssi;
-        bn["uptime"] = hb.uptime_sec;
-    }
-
-    serializeJson(doc, json, sizeof(json));
-    return _cs_send_event(json);
-}
-
-int32_t ModuleCubeSphere::_cs_send_startup(const cs_startup_info_t &info)
-{
-    static char json[2048];
-    struct timeval now;
-    gettimeofday(&now, nullptr);
-    char ts[64] = {};
-    _cs_format_iso8601(now.tv_sec + (int)(3600 * 5.5), "+05:30", ts, sizeof(ts));
-
-    JsonDocument doc;
-    JsonObject   root   = doc.add<JsonObject>();
-    JsonArray    events = root["events"].to<JsonArray>();
-    JsonObject   e0     = events.add<JsonObject>();
-
-    e0["device"] = _cs_net_cfg.agent_uuid;
-    e0["time"]   = ts;
-    e0["event"]  = "core/startup";
-    JsonObject body = e0["body"].to<JsonObject>();
-    body["hw_type"]       = info.device_type;
-    body["hw_version"]    = info.board_version;
-    body["sw_version"]    = info.fw_version;
-    body["local_ip"]      = info.ip_address;
-    body["mac"]           = info.mac_address_str;
-    body["wifi_ssid"]     = info.ssid;
-    body["wifi_password"] = info.password;
-    body["sd_status"]     = info.sd_card_status;
-
-    serializeJson(doc, json, sizeof(json));
-    return _cs_send_event(json);
-}
-
-int32_t ModuleCubeSphere::_cs_send_reconnect(const cs_reconnect_info_t &r)
-{
-    static char json[2048];
-    struct timeval now;
-    gettimeofday(&now, nullptr);
-    char ts[64] = {};
-    _cs_format_iso8601(now.tv_sec + (int)(3600 * 5.5), "+05:30", ts, sizeof(ts));
-
-    JsonDocument doc;
-    JsonObject   root   = doc.add<JsonObject>();
-    JsonArray    events = root["events"].to<JsonArray>();
-    JsonObject   e0     = events.add<JsonObject>();
-
-    e0["device"] = _cs_net_cfg.agent_uuid;
-    e0["time"]   = ts;
-    e0["event"]  = "core/reconnect";
-    JsonObject body = e0["body"].to<JsonObject>();
-    body["rssi"]          = r.rssi;
-    body["uptime"]        = r.uptime_sec;
-    body["local_ip"]      = r.ip_address;
-    body["wifi_ssid"]     = r.ssid;
-    body["wifi_password"] = r.password;
-
-    serializeJson(doc, json, sizeof(json));
-    return _cs_send_event(json);
-}
-
-int32_t ModuleCubeSphere::_cs_send_pumped(const cs_pumped_event_t &ev)
-{
-    if (ev.nozzle_idx >= CS_NO_NOZZLES) {
-        LOG_MSG_ERROR(CSP_LOG_EN, "invalid nozzle_idx %u", ev.nozzle_idx);
-        return -1;
-    }
-
-    static char json[2048];
-    struct timeval now;
-    gettimeofday(&now, nullptr);
-    char ts[64] = {};
-    _cs_format_iso8601(now.tv_sec + (int)(3600 * 5.5), "+05:30", ts, sizeof(ts));
-
-    JsonDocument doc;
-    JsonObject   root   = doc.add<JsonObject>();
-    JsonArray    events = root["events"].to<JsonArray>();
-    JsonObject   e0     = events.add<JsonObject>();
-
-    e0["device"] = _cs_nozzles[ev.nozzle_idx].uuid;
-    e0["time"]   = ts;
-    e0["event"]  = "app.fuel/pump-end";
-    JsonObject body = e0["body"].to<JsonObject>();
-    body["L"]  = ev.volume_lx1000  * 0.001;
-    body["T"]  = _cs_nozzles[ev.nozzle_idx].fuel_type;
-    body["P"]  = ev.total_pricex100 * 0.01;
-    body["U"]  = ev.unit_pricex100  * 0.01;
-    body["ID"] = ev.event_id;
-
-    serializeJson(doc, json, sizeof(json));
-    LOG_MSG_DEBUG(CSP_LOG_EN, "pumped json: %s", json);
-    return _cs_send_event(json);
-}
-
-int32_t ModuleCubeSphere::_cs_send_status_updated(const cs_startup_info_t &info)
-{
-    static char json[2048];
-    struct timeval now;
-    gettimeofday(&now, nullptr);
-    char ts[64] = {};
-    _cs_format_iso8601(now.tv_sec + (int)(3600 * 5.5), "+05:30", ts, sizeof(ts));
-
-    JsonDocument doc;
-    JsonObject   root   = doc.add<JsonObject>();
-    JsonArray    events = root["events"].to<JsonArray>();
-    JsonObject   e0     = events.add<JsonObject>();
-
-    e0["device"] = _cs_net_cfg.agent_uuid;
-    e0["time"]   = ts;
-    e0["event"]  = "core/status-updated";
-    JsonObject body = e0["body"].to<JsonObject>();
-    body["hw_type"]       = info.device_type;
-    body["hw_version"]    = info.board_version;
-    body["sw_version"]    = info.fw_version;
-    body["local_ip"]      = info.ip_address;
-    body["mac"]           = info.mac_address_str;
-    body["wifi_ssid"]     = info.ssid;
-    body["wifi_password"] = info.password;
-    body["sd_status"]     = info.sd_card_status;
-
-    serializeJson(doc, json, sizeof(json));
-    return _cs_send_event(json);
-}
-
 // ── Retransmission ────────────────────────────────────────────────────────────
 
 void ModuleCubeSphere::_on_sd_ready()
@@ -813,8 +889,7 @@ void ModuleCubeSphere::_retx_init()
     }
 }
 
-void ModuleCubeSphere::_retx_store_pumped(const MsgFuelPumped::Payload &p,
-                                           const char * /*json_payload*/)
+void ModuleCubeSphere::_retx_store_pumped(const MsgFuelPumped::Payload &p)
 {
     if (!_retx_ready) {
         LOG_MSG_WARNING(CSP_LOG_EN, "retx: not ready — event lost");

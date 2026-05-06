@@ -258,8 +258,20 @@ int32_t pal_http_client_get(pal_http_client_handle_t handle,
             response->body[client->response_len] = '\0';
         }
         
-        // Headers are already captured in the event handler
-        response->header_count = 0;
+        // Copy captured headers into response->headers[] in "Key: Value" format
+        for (uint8_t i = 0;
+             i < client->header_count && i < PAL_HTTP_MAX_HEADERS;
+             ++i) {
+            if (!client->header_keys[i] || !client->header_values[i]) continue;
+            size_t len = strlen(client->header_keys[i]) +
+                         strlen(client->header_values[i]) + 4U;
+            response->headers[i] = (char *)malloc(len);
+            if (response->headers[i]) {
+                snprintf(response->headers[i], len, "%s: %s",
+                         client->header_keys[i], client->header_values[i]);
+            }
+            response->header_count = (uint8_t)(i + 1U);
+        }
     }
 
     return status_code;
@@ -301,7 +313,20 @@ int32_t pal_http_client_post(pal_http_client_handle_t handle,
             memcpy(response->body, client->response_buffer, client->response_len);
             response->body[client->response_len] = '\0';
         }
-        response->header_count = 0;
+        // Copy captured headers into response->headers[]
+        for (uint8_t i = 0;
+             i < client->header_count && i < PAL_HTTP_MAX_HEADERS;
+             ++i) {
+            if (!client->header_keys[i] || !client->header_values[i]) continue;
+            size_t len = strlen(client->header_keys[i]) +
+                         strlen(client->header_values[i]) + 4U;
+            response->headers[i] = (char *)malloc(len);
+            if (response->headers[i]) {
+                snprintf(response->headers[i], len, "%s: %s",
+                         client->header_keys[i], client->header_values[i]);
+            }
+            response->header_count = (uint8_t)(i + 1U);
+        }
     }
 
     return status_code;

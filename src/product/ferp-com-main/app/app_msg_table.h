@@ -67,6 +67,20 @@
 #include "msg_dev_info_read.h"          // MsgDevInfoRead         (0x0B00)
 #include "msg_dev_info_write.h"         // MsgDevInfoWrite        (0x0B01)
 #include "msg_dev_info_value.h"         // MsgDevInfoValue        (0x0B02)
+#include "msg_http_start_request.h"     // MsgHttpStartRequest    (0x0C00)
+#include "msg_http_start_response.h"    // MsgHttpStartResponse   (0x0C01)
+#include "msg_http_set_url_request.h"   // MsgHttpSetUrlRequest   (0x0C02)
+#include "msg_http_set_url_response.h"  // MsgHttpSetUrlResponse  (0x0C03)
+#include "msg_http_set_root_ca_request.h"  // MsgHttpSetRootCaRequest  (0x0C04)
+#include "msg_http_set_root_ca_response.h" // MsgHttpSetRootCaResponse (0x0C05)
+#include "msg_http_header_request.h"    // MsgHttpHeaderRequest   (0x0C06)
+#include "msg_http_header_response.h"   // MsgHttpHeaderResponse  (0x0C07)
+#include "msg_http_body_request.h"      // MsgHttpBodyRequest     (0x0C08)
+#include "msg_http_body_response.h"     // MsgHttpBodyResponse    (0x0C09)
+#include "msg_http_send_request.h"      // MsgHttpSendRequest     (0x0C0A)
+#include "msg_http_result.h"            // MsgHttpResult          (0x0C0B)
+#include "msg_http_abort_request.h"     // MsgHttpAbortRequest    (0x0C0C)
+#include "msg_http_response_header.h"   // MsgHttpResponseHeader  (0x0C0D)
 
 // ---------------------------------------------------------------------------
 // Descriptor table macro
@@ -117,6 +131,20 @@
         MsgDevInfoRead::DESCRIPTOR,                                               \
         MsgDevInfoWrite::DESCRIPTOR,                                              \
         MsgDevInfoValue::DESCRIPTOR,                                              \
+        MsgHttpStartRequest::DESCRIPTOR,                                          \
+        MsgHttpStartResponse::DESCRIPTOR,                                         \
+        MsgHttpSetUrlRequest::DESCRIPTOR,                                         \
+        MsgHttpSetUrlResponse::DESCRIPTOR,                                        \
+        MsgHttpSetRootCaRequest::DESCRIPTOR,                                      \
+        MsgHttpSetRootCaResponse::DESCRIPTOR,                                     \
+        MsgHttpHeaderRequest::DESCRIPTOR,                                         \
+        MsgHttpHeaderResponse::DESCRIPTOR,                                        \
+        MsgHttpBodyRequest::DESCRIPTOR,                                           \
+        MsgHttpBodyResponse::DESCRIPTOR,                                          \
+        MsgHttpSendRequest::DESCRIPTOR,                                           \
+        MsgHttpResult::DESCRIPTOR,                                                \
+        MsgHttpAbortRequest::DESCRIPTOR,                                          \
+        MsgHttpResponseHeader::DESCRIPTOR,                                        \
     };                                                                            \
     static const uint16_t k_msg_table_count =                                     \
         (uint16_t)(sizeof(k_msg_table) / sizeof(k_msg_table[0]))

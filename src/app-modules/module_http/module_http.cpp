@@ -178,10 +178,13 @@ void ModuleHttp::_handle_start_request(const hsys_msg_t &msg)
     }
 
     auto p = MsgHttpStartRequest::deserialize(msg);
-    _owner_id   = msg.sender_id;
-    _method     = p.method;
-    _timeout_ms = p.timeout_ms;
-    _state      = SESSION_OPEN;
+    _owner_id      = msg.sender_id;
+    _method        = p.method;
+    _timeout_ms    = p.timeout_ms;
+    _collect_count = (p.collect_count <= MSG_HTTP_MAX_COLLECT_KEYS)
+                     ? p.collect_count : (uint8_t)MSG_HTTP_MAX_COLLECT_KEYS;
+    memcpy(_collect_keys, p.collect_keys, sizeof(_collect_keys));
+    _state         = SESSION_OPEN;
 
     _reset_idle_timer();
     hsys_start_timer(_idle_timer);
@@ -318,6 +321,13 @@ void ModuleHttp::_execute()
         LOG_MSG_ERROR(MOD_HTTP_LOG_EN, "_execute: pal_http_client_init failed (%d)", (int)rc);
         _send_result(HTTP_RESULT_CONNECT_FAILED, 0, nullptr, 0U);
         return;
+    }
+
+    // Register response headers to capture (if requested by session owner)
+    if (_collect_count > 0U) {
+        const char *ckeys[MSG_HTTP_MAX_COLLECT_KEYS];
+        for (uint8_t i = 0U; i < _collect_count; ++i) ckeys[i] = _collect_keys[i];
+        pal_http_client_collect_headers(handle, ckeys, _collect_count);
     }
 
     // Apply request headers
@@ -494,14 +504,16 @@ bool ModuleHttp::_is_owner(const hsys_msg_t &msg) const
 
 void ModuleHttp::_reset_session()
 {
-    _state     = IDLE;
-    _owner_id  = HSYS_MODULE_ID_INVALID;
-    _method    = PAL_HTTP_METHOD_GET;
-    _timeout_ms = 0U;
-    _cert_pem  = nullptr;
-    _url[0]    = '\0';
-    _hdr_count = 0U;
-    _body_len  = 0U;
-    memset(_hdr_keys, 0, sizeof(_hdr_keys));
-    memset(_hdr_vals, 0, sizeof(_hdr_vals));
+    _state         = IDLE;
+    _owner_id      = HSYS_MODULE_ID_INVALID;
+    _method        = PAL_HTTP_METHOD_GET;
+    _timeout_ms    = 0U;
+    _cert_pem      = nullptr;
+    _url[0]        = '\0';
+    _hdr_count     = 0U;
+    _body_len      = 0U;
+    _collect_count = 0U;
+    memset(_hdr_keys,    0, sizeof(_hdr_keys));
+    memset(_hdr_vals,    0, sizeof(_hdr_vals));
+    memset(_collect_keys, 0, sizeof(_collect_keys));
 }

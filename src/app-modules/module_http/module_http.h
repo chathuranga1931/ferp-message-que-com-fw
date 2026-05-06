@@ -30,6 +30,7 @@
 #include "app_module_ids.h"
 #include "http_types.h"
 #include "pal_http_client.h"
+#include "msg_http_start_request.h"
 #include <stdint.h>
 
 // ---------------------------------------------------------------------------
@@ -72,6 +73,10 @@ private:
     uint8_t           _hdr_count   = 0U;
     uint8_t           _body_buf[MODULE_HTTP_MAX_REQUEST_BODY] = {};
     uint32_t          _body_len    = 0U;
+
+    // Response header collection (set by client via MsgHttpStartRequest.collect_keys)
+    char    _collect_keys[MSG_HTTP_MAX_COLLECT_KEYS][MODULE_HTTP_MAX_HEADER_KEY] = {};
+    uint8_t _collect_count = 0U;
 
     // ── Idle timer ───────────────────────────────────────────────────────────
     hsys_timer_handle_t _idle_timer    = nullptr;

@@ -1,26 +1,34 @@
 // module_cubesphere.h
 //
-// ModuleCubeSphere — HTTPS cloud manager with all CubeSphere HTTP logic inlined.
+// ModuleCubeSphere — fully message-driven CubeSphere cloud manager.
 //
-// All HTTP session management, registration, and telemetry sending is
-// implemented directly in this module. There is no external cube_sphere_api
-// dependency.
+// All HTTP calls are made through ModuleHttp (http_task) using the
+// HSYS HTTP session protocol.  No PAL HTTP calls are made directly.
 //
-// State machine:
-//   WAIT_FOR_INTERNET ──[internet connected]──▶ REGISTERING
-//   REGISTERING ──[_cs_register success]──▶ RUNNING
-//   REGISTERING ──[_cs_register fail]──▶ REGISTERING (retry via timer)
-//   RUNNING ──[internet lost]──▶ WAIT_FOR_INTERNET
+// Top-level state machine:
+//   WAIT_FOR_INTERNET ──[WiFi GOT_IP + cloud config ready]──► REGISTERING
+//   REGISTERING ──[3-step reg OK]──► RUNNING
+//   REGISTERING ──[fail]──► REGISTERING (retry via timer)
+//   RUNNING ──[WiFi reconnect / events / heartbeat]──► RUNNING
+//
+// Registration sub-steps (within REGISTERING):
+//   STEP_1: GET /bootstrap          → 401 + WWW-Authenticate nonce
+//   STEP_2: GET /bootstrap (auth)   → 200 + device_id + secret
+//   STEP_3: GET /device/config      → 200 + nozzle config
+//
+// HTTP session phases (used in both REGISTERING and RUNNING):
+//   HTTP_IDLE       — no session active
+//   HTTP_STARTING   — MsgHttpStartRequest sent, awaiting StartResponse
+//   HTTP_EXECUTING  — all config + SendRequest burst-sent, awaiting Result
 
 #pragma once
 
 #include "hsys_module.h"
 #include "msg_cubesphere_status.h"
 #include "msg_config_wifi.h"
+#include "msg_http_start_request.h"
 #include "retransmission_manager.h"
 #include "msg_fuel_pumped.h"
-#include "pal_http_client.h"
-
 #include "app_module_ids.h"
 #include <time.h>
 
@@ -44,12 +52,6 @@
 #define CS_SIZE_STATUS_WORD     20
 #define CS_NO_NOZZLES            2
 
-#define CS_ERROR_OK                         0
-#define CS_ERROR_INVALID_MAC                4
-#define CS_ERROR_NO_NONCE                   5
-#define CS_ERROR_GET_AGENT_CONFIG_FAILED    6
-#define CS_ERROR_GET_NOZZLE_CONFIG_FAILED   7
-
 typedef struct {
     char  agent_uuid[CS_SIZE_UUID];
     char  basic_authentication_base64[CS_SIZE_SECRET];
@@ -70,14 +72,6 @@ typedef struct {
 } cs_hb_info_t;
 
 typedef struct {
-    char    ssid[CS_SIZE_WIFI_SSID];
-    char    password[CS_SIZE_WIFI_PASSWORD];
-    char    ip_address[CS_SIZE_IP_ADDRESS];
-    int8_t  rssi;
-    uint32_t uptime_sec;
-} cs_reconnect_info_t;
-
-typedef struct {
     char     ssid[CS_SIZE_WIFI_SSID];
     char     password[CS_SIZE_WIFI_PASSWORD];
     char     ip_address[CS_SIZE_IP_ADDRESS];
@@ -92,6 +86,14 @@ typedef struct {
     uint32_t event_count_success;
     uint32_t event_count_failure;
 } cs_startup_info_t;
+
+typedef struct {
+    char     ssid[CS_SIZE_WIFI_SSID];
+    char     password[CS_SIZE_WIFI_PASSWORD];
+    char     ip_address[CS_SIZE_IP_ADDRESS];
+    int8_t   rssi;
+    uint32_t uptime_sec;
+} cs_reconnect_info_t;
 
 typedef struct {
     uint8_t  nozzle_idx;
@@ -121,30 +123,60 @@ private:
     retx_manager_t  _retx_mgr   = {};
     bool            _retx_ready = false;
 
+    // ── Top-level state ───────────────────────────────────────────────────────
     typedef enum {
         STATE_WAIT_FOR_INTERNET,
         STATE_REGISTERING,
         STATE_RUNNING,
-    } cubesphere_state_t;
+    } cs_state_t;
 
-    cubesphere_state_t _state = STATE_WAIT_FOR_INTERNET;
+    // ── HTTP session phase (active in REGISTERING and RUNNING) ────────────────
+    typedef enum {
+        HTTP_IDLE,      ///< No HTTP session
+        HTTP_STARTING,  ///< StartRequest sent, awaiting StartResponse
+        HTTP_EXECUTING, ///< SendRequest sent (burst), awaiting Result
+    } http_phase_t;
 
-    bool    _internet_up        = false;
+    // ── Registration sub-step ─────────────────────────────────────────────────
+    typedef enum {
+        REG_STEP_1,  ///< GET /bootstrap — expect 401, capture nonce
+        REG_STEP_2,  ///< GET /bootstrap with SAS-AC1 auth — expect 200
+        REG_STEP_3,  ///< GET /device/config with Basic auth — expect 200
+    } reg_step_t;
+
+    // ── Running event type currently being sent ───────────────────────────────
+    typedef enum {
+        EVT_NONE,
+        EVT_STARTUP,
+        EVT_RECONNECT,
+        EVT_HEARTBEAT,
+        EVT_PUMPED,
+        EVT_STATUS_UPDATE,
+    } evt_type_t;
+
+    cs_state_t   _state      = STATE_WAIT_FOR_INTERNET;
+    http_phase_t _http_phase = HTTP_IDLE;
+    reg_step_t   _reg_step   = REG_STEP_1;
+    evt_type_t   _cur_evt    = EVT_NONE;
+
+    // ── WiFi / internet context ───────────────────────────────────────────────
     bool    _cloud_config_ready = false;
-    bool    _wifi_reconnected   = false;
     bool    _wifi_was_connected = false;
+    bool    _wifi_reconnected   = false;
 
-    char        _wifi_ssid[CS_SIZE_WIFI_SSID]         = {};
-    char        _wifi_password[CS_SIZE_WIFI_PASSWORD]  = {};
-    const char *_cloud_root_ca                         = nullptr;
-    char        _wifi_ip[CS_SIZE_IP_ADDRESS]           = {};
-    char        _wifi_mac[CS_SIZE_MAC]                 = {};
-    int8_t      _wifi_rssi                             = -100;
-    uint32_t    _uptime_sec                            = 0;
+    char   _wifi_ssid[CS_SIZE_WIFI_SSID]        = {};
+    char   _wifi_password[CS_SIZE_WIFI_PASSWORD] = {};
+    char   _wifi_ip[CS_SIZE_IP_ADDRESS]          = {};
+    char   _wifi_mac[CS_SIZE_MAC]                = {};
+    int8_t _wifi_rssi                            = -100;
+
+    const char *_cloud_root_ca = nullptr;
+    uint32_t    _uptime_sec    = 0;
 
     uint32_t _pumped_success = 0;
     uint32_t _pumped_failure = 0;
 
+    // ── Pending events (running state) ────────────────────────────────────────
     bool _pending_startup       = false;
     bool _pending_reconnect     = false;
     bool _pending_heartbeat     = false;
@@ -153,12 +185,15 @@ private:
     uint32_t _hb_interval_ms = MODULE_CUBESPHERE_DEFAULT_HB_INTERVAL_MS;
     bool     _hb_enabled     = true;
 
-    // CubeSphere cloud state (formerly cube_sphere_api.cpp module-level statics)
+    // ── CubeSphere cloud credentials ──────────────────────────────────────────
     static const char   _cs_key[];
-    cs_network_config_t _cs_net_cfg                  = {};
-    cs_nozzle_config_t  _cs_nozzles[CS_NO_NOZZLES]  = {};
+    char                _reg_nonce[128]                 = {};  ///< Captured from WWW-Authenticate in step 1
+    char                _event_json[2048]               = {};  ///< Pre-built JSON body for current event
+    char                _auth_hdr[512]                  = {};  ///< Scratch: SAS-AC1 / Basic auth header value
+    cs_network_config_t _cs_net_cfg                     = {};
+    cs_nozzle_config_t  _cs_nozzles[CS_NO_NOZZLES]      = {};
 
-    // Message handlers
+    // ── Notification handlers ─────────────────────────────────────────────────
     void _on_config_ready();
     void _on_config_cloud(const hsys_msg_t &msg);
     void _on_config_wifi(const hsys_msg_t &msg);
@@ -169,36 +204,55 @@ private:
     void _on_tick();
     void _on_sd_ready();
 
-    // State machine helpers
-    void _attempt_registration();
-    void _process_events();
+    // ── HTTP response handlers (DIRECT from ModuleHttp) ───────────────────────
+    void _on_http_start_response(const hsys_msg_t &msg);
+    void _on_http_response_header(const hsys_msg_t &msg);
+    void _on_http_result(const hsys_msg_t &msg);
+
+    // ── Registration helpers ──────────────────────────────────────────────────
+    void _start_registration();
+    void _start_reg_step_1();
+    void _start_reg_step_2();
+    void _start_reg_step_3();
+    void _on_reg_step1_result(const hsys_msg_t &msg);
+    void _on_reg_step2_result(const hsys_msg_t &msg);
+    void _on_reg_step3_result(const hsys_msg_t &msg);
+    void _reg_failed();
+
+    // ── Running event helpers ─────────────────────────────────────────────────
+    void _start_next_event();
+    bool _build_event_json(evt_type_t evt);
+    void _on_event_result(const hsys_msg_t &msg);
+
+    // ── HTTP session helpers ──────────────────────────────────────────────────
+    void _send_http_start(pal_http_method_t method, uint32_t timeout_ms,
+                          const char *collect_key = nullptr);
+    void _burst_get(const char *url);
+    void _burst_get_with_auth(const char *url, const char *auth_value);
+    void _burst_post(const char *url, const char *auth_value,
+                     const char *json_body, uint32_t json_len);
+
+    // ── Timer helper ─────────────────────────────────────────────────────────
     void _arm_timer(uint32_t duration_ms);
 
-    // CubeSphere HTTP session methods (inlined from cube_sphere_api.cpp)
-    int32_t _cs_register(const char *mac12, const char *root_ca);
-    int32_t _cs_send_event(const char *json_payload);
-    int32_t _cs_send_hb(const cs_hb_info_t &hb);
-    int32_t _cs_send_startup(const cs_startup_info_t &info);
-    int32_t _cs_send_reconnect(const cs_reconnect_info_t &r);
-    int32_t _cs_send_pumped(const cs_pumped_event_t &ev);
-    int32_t _cs_send_status_updated(const cs_startup_info_t &info);
-
-    // Crypto / time helpers (inlined from cube_sphere_api.cpp)
-    static void _cs_get_sha256_hex(const uint8_t *data, size_t len, char *out, size_t out_len);
-    static void _cs_calc_sha256(const char *nonce, const char *mac, const char *key,
-                                 char *out, size_t out_len);
+    // ── Crypto / time helpers ─────────────────────────────────────────────────
+    static void _cs_get_sha256_hex(const uint8_t *data, size_t len,
+                                    char *out, size_t out_len);
+    static void _cs_calc_sha256(const char *nonce, const char *mac,
+                                 const char *key, char *out, size_t out_len);
     static void _cs_format_iso8601(time_t epoch_sec, const char *tz_offset,
                                     char *buf, size_t buf_len);
 
-    // Payload builders
+    // ── Payload builders ──────────────────────────────────────────────────────
     cs_startup_info_t _build_startup_info() const;
     cs_hb_info_t      _build_hb_info()      const;
 
-    // Retransmission
-    void _retx_init();
-    void _retx_store_pumped(const MsgFuelPumped::Payload &p, const char *json_payload);
-    void _retx_process_one();
-
+    // ── Status publisher ──────────────────────────────────────────────────────
     void _publish_status(cubesphere_status_event_t ev, uint8_t nozzle_idx = 0,
                          const char *uuid = nullptr);
+
+    // ── Retransmission ────────────────────────────────────────────────────────
+    void _retx_init();
+    void _retx_store_pumped(const MsgFuelPumped::Payload &p);
+    void _retx_process_one();
 };

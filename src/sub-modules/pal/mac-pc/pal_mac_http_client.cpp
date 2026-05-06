@@ -288,7 +288,22 @@ int32_t pal_http_client_get(pal_http_client_handle_t handle,
         return -1;
     }
 
-    return _finish(curl, &body, response);
+    int32_t ret = _finish(curl, &body, response);
+
+    // Copy captured headers into response->headers[] in "Key: Value" format.
+    // ModuleHttp iterates response->headers to send MsgHttpResponseHeader messages.
+    if (response) {
+        for (uint8_t i = 0;
+             i < ctx->captured_count && i < PAL_HTTP_MAX_HEADERS;
+             ++i) {
+            char line[PAL_HTTP_MAX_HEADER_LEN * 2 + 4];
+            snprintf(line, sizeof(line), "%s: %s",
+                     ctx->captured_keys[i], ctx->captured_vals[i]);
+            response->headers[i] = strdup(line);
+            response->header_count = (uint8_t)(i + 1U);
+        }
+    }
+    return ret;
 }
 
 int32_t pal_http_client_post(pal_http_client_handle_t handle,
@@ -317,7 +332,21 @@ int32_t pal_http_client_post(pal_http_client_handle_t handle,
         return -1;
     }
 
-    return _finish(curl, &resp_body, response);
+    int32_t ret = _finish(curl, &resp_body, response);
+
+    // Copy captured headers into response->headers[].
+    if (response) {
+        for (uint8_t i = 0;
+             i < ctx->captured_count && i < PAL_HTTP_MAX_HEADERS;
+             ++i) {
+            char line[PAL_HTTP_MAX_HEADER_LEN * 2 + 4];
+            snprintf(line, sizeof(line), "%s: %s",
+                     ctx->captured_keys[i], ctx->captured_vals[i]);
+            response->headers[i] = strdup(line);
+            response->header_count = (uint8_t)(i + 1U);
+        }
+    }
+    return ret;
 }
 
 int32_t pal_http_client_get_header(pal_http_client_handle_t handle,

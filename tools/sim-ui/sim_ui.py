@@ -45,6 +45,7 @@ from widgets.spiffs_widget         import SpiffsWidget
 from widgets.sdcard_widget         import SdCardWidget
 from widgets.message_inject_widget import MessageInjectWidget
 from widgets.mqtt_widget           import MqttWidget
+from widgets.cloud_widget          import CloudWidget
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -222,6 +223,12 @@ class App(tk.Tk):
         notebook.add(sdcard_frame, text="SDCard")
         self._sdcard = SdCardWidget(sdcard_frame)
         self._sdcard.pack(fill=tk.BOTH, expand=True)
+
+        # ── Tab: Cloud (CubeSphere) ───────────────────────────────────────────
+        cloud_frame = tk.Frame(notebook, bg="#1e1e2e")
+        notebook.add(cloud_frame, text="Cloud")
+        self._cloud_widget = CloudWidget(cloud_frame)
+        self._cloud_widget.pack(fill=tk.BOTH, expand=True)
 
         # ── Tab: MQTT ─────────────────────────────────────────────────────────
         mqtt_frame = tk.Frame(notebook, bg="#1e1e2e")
@@ -431,7 +438,7 @@ class App(tk.Tk):
         elif msg_id == "MSG_FUEL_PUMPED":
             self._handle_fuel_pumped(data)
 
-        elif msg_id == "MSG_CLOUD_STATUS":
+        elif msg_id == "MSG_CUBESPHERE_STATUS":
             self._handle_cloud_status(data)
 
         elif msg_id == "MSG_MQTT_EVENT":
@@ -506,6 +513,7 @@ class App(tk.Tk):
         event = data.get("event", "")
         ok = event in ("REGISTERED", "PUMPED_SUCCESS", "HB_SENT")
         self._led_cloud.set_on(ok)
+        self._cloud_widget.on_event(data)
 
     def _handle_sim_led(self, data: dict):
         led   = data.get("led", "")

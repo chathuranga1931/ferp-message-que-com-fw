@@ -240,6 +240,9 @@ void hsys_msg_release(hsys_msg_t *msg)
 
     if (remaining == 0) {
         if (msg->payload) {
+            if (msg->cleanup) {
+                msg->cleanup(msg->payload);
+            }
             hsys_pool_free(msg->payload);
             msg->payload = nullptr;
         }

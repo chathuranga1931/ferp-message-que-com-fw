@@ -80,6 +80,9 @@ typedef struct hsys_msg {
     uint16_t                 payload_size;  ///< Size of payload in bytes
     volatile uint8_t         ref_count;     ///< Decremented by bus after each delivery
     const hsys_msg_desc_t   *desc;          ///< Pointer back to the static descriptor
+    /// Optional per-message cleanup hook.  Called once when ref_count reaches 0,
+    /// before the pool slab is returned.  Set to nullptr (default) for no-op.
+    void                   (*cleanup)(void *payload);
 } hsys_msg_t;
 
 // ---------------------------------------------------------------------------
