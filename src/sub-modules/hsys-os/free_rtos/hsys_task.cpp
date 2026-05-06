@@ -16,7 +16,7 @@ hsys_task_handle_t hsys_task_create(
     BaseType_t result = xTaskCreate(
         task_function,   // Task function
         task_name,       // Name of the task
-        stack_depth,     // Stack depth in words
+        stack_depth,     // Stack depth in bytes (ESP-IDF FreeRTOS uses bytes, not words)
         parameters,      // Parameters to the task function
         priority,        // Task priority
         &task_handle     // Handle to the created task

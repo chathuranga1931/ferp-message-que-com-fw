@@ -438,7 +438,7 @@ static HsysModule *k_module_table[] = {
     OtaModule::instance(),
     // ModuleWebClientOta::instance(),
     ModuleWebServer::instance(),
-    // ModuleMqtt::instance(),
+    ModuleMqtt::instance(),
     ModuleDeviceInfo::instance(),
     ModulePLog::instance(),
     ModuleHttp::instance(),
@@ -452,7 +452,11 @@ static HsysModule *k_module_table[] = {
 static const hsys_task_desc_t k_task_table[] = {
     // stack notes (ESP32 Xtensa, FreeRTOS):
     //   storage_task  : SPIFFS/SD mount + JSON config. JSON buf is static → 4096 is fine.
-    //   timing_task   : tick counters + timer slot management. Very lightweight.
+    //   timing_task   : tick counters + timer slot management.
+    //                   MODULE_TIMEMGR _on_ntp_done() keeps 5+ frames outstanding
+    //                   (ds1307 I2C, _write_spiffs_backup, _publish_status, _stop_timer,
+    //                   _arm_timer) then calls a final LOG which runs vsnprintf while all
+    //                   those frames are still live → ~1400 B + 200 B ISR save. Min 3 KB.
     //   indicator_task: Sysmon report (vprintf loop) + GPIO LEDs/buzzer.
     //                   ESP-IDF vprintf needs ~512 B; Xtensa FreeRTOS frame ~320 B → min 2048.
     //   btn_task      : debounce state machine + message publish.
@@ -464,14 +468,14 @@ static const hsys_task_desc_t k_task_table[] = {
     //                    MODULE_WEB_CLIENT_OTA_ID still calls pal_http_client directly
     //                    (mbedTLS handshake ~4-6 KB) → keep at 8 KB minimum.
     //   http_task      : ModuleHttp owns all TLS for CubeSphere sessions → 10 KB.
-    { "storage_task",       4096,  5,  0,   { MODULE_SPIFFS_ID,      MODULE_SD_ID,             MODULE_CONFIG_ID,     MODULE_DEVICE_INFO_ID,  MODULE_PLOG_ID, 0 } },
+    { "storage_task",     4*1024,  5,  0,   { MODULE_SPIFFS_ID,      MODULE_SD_ID,             MODULE_CONFIG_ID,     MODULE_DEVICE_INFO_ID,  MODULE_PLOG_ID, 0 } },
     { "timing_task",      3*1024,  4,  0,   { TICKER_MODULE_ID,      MODULE_TIMER_ID,          MODULE_TIMEMGR_ID,                            0 } },
-    { "indicator_task",     2048,  4,  0,   { MODULE_SYSMON_ID,      MODULE_LEDS_ID,           MODULE_BUZZER_ID,                             0 } },
-    { "btn_task",           4096,  5,  0,   { MODULE_PRINT_BTN_ID,   MODULE_DEFAULT_BTN_ID,                                                  0 } },
-    { "fuel_task",          4096,  5,  0,   { MODULE_FUEL_ID,                                                                                0 } },
-    { "network_task1",    8*1024,  5,  0,   { MODULE_WIFI_ID,        MODULE_MQTT_ID,           MODULE_INTERNET_ID,                           0 } },
-    { "network_task2",    8*1024,  5,  0,   { MODULE_CLOUD_ID,       MODULE_WEB_CLIENT_OTA_ID, MODULE_WEB_SERVER_ID,  MODULE_OTA_ID,         0 } },
-    { "http_task",       10*1024,  5,  0,   { MODULE_HTTP_ID,                                                                                  0 } }
+    { "indicator_task",   2*1024,  4,  0,   { MODULE_SYSMON_ID,      MODULE_LEDS_ID,           MODULE_BUZZER_ID,                             0 } },
+    { "btn_task",         2*1024,  5,  0,   { MODULE_PRINT_BTN_ID,   MODULE_DEFAULT_BTN_ID,                                                  0 } },
+    { "fuel_task",        4*1024,  5,  0,   { MODULE_FUEL_ID,                                                                                0 } },
+    { "network_task" ,   10*1024,  5,  0,   { MODULE_WIFI_ID,        MODULE_INTERNET_ID,       MODULE_MQTT_ID,                    
+                                              MODULE_CLOUD_ID,       MODULE_WEB_CLIENT_OTA_ID, MODULE_WEB_SERVER_ID,  MODULE_OTA_ID,         0 } },
+    { "http_task",        5*1024,  5,  0,   { MODULE_HTTP_ID,                                                                                0 } }
 };
 #define TASK_TABLE_SIZE  (sizeof(k_task_table) / sizeof(k_task_table[0]))
 
@@ -543,10 +547,10 @@ extern "C" void app_init(void)
     app_platform_pre_init();
 
     // 0c. Register the JSON message codec table and MQTT routing table
-    // app_msg_codec_register(k_codec_table,
-                        //    (uint8_t)(sizeof(k_codec_table) / sizeof(k_codec_table[0])));
-    // app_msg_mqtt_route_register(k_mqtt_route_table,
-                                // (uint8_t)(sizeof(k_mqtt_route_table) / sizeof(k_mqtt_route_table[0])));
+    app_msg_codec_register(k_codec_table,
+                           (uint8_t)(sizeof(k_codec_table) / sizeof(k_codec_table[0])));
+    app_msg_mqtt_route_register(k_mqtt_route_table,
+                                (uint8_t)(sizeof(k_mqtt_route_table) / sizeof(k_mqtt_route_table[0])));
 
     // Wire SD storage into ModuleCubeSphere for retransmission.
     // retx_mgr_init() is deferred until MsgSdReady is received at runtime.

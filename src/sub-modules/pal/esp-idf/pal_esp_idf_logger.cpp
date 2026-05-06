@@ -108,7 +108,7 @@ void pal_logger_log(bool en, const char *format, ...) {
 
     // Visible width of the prefix (level + tag + line + " : "), used for indent
     uint32_t prefix_raw_len = (uint32_t)(msg_start - s_log_buffer); // byte count
-    char prefix_copy[64];
+    static char prefix_copy[64]; // static: safe because mutex is held for the full call
     if (prefix_raw_len < sizeof(prefix_copy)) {
         strncpy(prefix_copy, s_log_buffer, prefix_raw_len);
         prefix_copy[prefix_raw_len] = '\0';

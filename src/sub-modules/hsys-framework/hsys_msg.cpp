@@ -94,7 +94,22 @@ typedef struct {
     uint8_t          count;
 } hsys_sub_entry_t;
 
-static hsys_sub_entry_t    s_sub_table[HSYS_MAX_MSG_IDS];
+// Two-array subscription design
+// ─────────────────────────────
+// s_id_map[msg_id]   uint8_t  →  index into s_sub_table, or SUB_IDX_NONE
+// s_sub_table[idx]   18 B     →  subscriber list for that message type
+//
+// s_id_map costs 1 byte per possible ID value  (4096 IDs = 4 KB).
+// s_sub_table costs 18 bytes per *registered* message (64 msgs = 1.1 KB).
+// Total: ~5 KB regardless of how sparse the ID space is.
+// Previously a flat table: s_sub_table[4096] × 18 B = 72 KB.
+//
+// s_id_map is written once in hsys_msg_table_init() then frozen.
+// sub_entry_for() is therefore lock-free and safe to call from ISR.
+#define SUB_IDX_NONE  ((uint8_t)0xFFU)
+
+static uint8_t             s_id_map[HSYS_MAX_MSG_IDS];            ///< msg_id → s_sub_table index
+static hsys_sub_entry_t    s_sub_table[HSYS_MAX_REGISTERED_MSGS]; ///< compact subscriber lists
 static hsys_mutex_handle_t s_sub_mutex    = nullptr;
 static bool                s_initialised  = false;
 
@@ -102,7 +117,9 @@ static hsys_sub_entry_t *sub_entry_for(hsys_msg_id_t msg_id)
 {
     if (msg_id == HSYS_MSG_ID_INVALID || msg_id >= HSYS_MAX_MSG_IDS)
         return nullptr;
-    return &s_sub_table[msg_id];
+    uint8_t idx = s_id_map[msg_id];
+    if (idx == SUB_IDX_NONE) return nullptr;
+    return &s_sub_table[idx];
 }
 
 // ---------------------------------------------------------------------------
@@ -113,7 +130,8 @@ hsys_status_t hsys_msg_init(void)
 {
     if (s_initialised) return HSYS_OK;
 
-    memset(s_sub_table,   0, sizeof(s_sub_table));
+    memset(s_id_map,    SUB_IDX_NONE, sizeof(s_id_map));  // all IDs unmapped
+    memset(s_sub_table, 0,            sizeof(s_sub_table));
     memset(s_header_pool, 0, sizeof(s_header_pool));
     memset(s_header_used, 0, sizeof(s_header_used));
 
@@ -128,8 +146,18 @@ hsys_status_t hsys_msg_init(void)
 
 hsys_status_t hsys_msg_table_init(const hsys_msg_desc_t *table, uint16_t count)
 {
-    if (!s_initialised)        return HSYS_ERR_NOT_INIT;
-    if (!table || count == 0)  return HSYS_ERR_INVALID;
+    if (!s_initialised)                   return HSYS_ERR_NOT_INIT;
+    if (!table || count == 0)             return HSYS_ERR_INVALID;
+    if (count > HSYS_MAX_REGISTERED_MSGS) return HSYS_ERR_INVALID;
+
+    // Build the id→index map from the descriptor table.
+    // After this function returns, s_id_map is frozen (never written again),
+    // so sub_entry_for() requires no lock and is ISR-safe.
+    for (uint16_t i = 0; i < count; i++) {
+        hsys_msg_id_t id = table[i].msg_id;
+        if (id != HSYS_MSG_ID_INVALID && id < HSYS_MAX_MSG_IDS)
+            s_id_map[id] = (uint8_t)i;
+    }
 
     s_desc_table       = table;
     s_desc_table_count = count;

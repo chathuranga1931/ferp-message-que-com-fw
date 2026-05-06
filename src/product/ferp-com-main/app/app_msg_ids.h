@@ -5,19 +5,28 @@
 // Rules:
 //   1. Every message ID used anywhere in this application MUST be listed here.
 //   2. IDs are never duplicated — the enum enforces uniqueness at compile time.
-//   3. IDs are grouped by subsystem in ascending order within each range.
+//   3. IDs are grouped by subsystem in ascending order within each domain range.
 //   4. Message class headers (msg_*.h) #include this file and reference the
 //      named constant — they never contain raw numeric literals for IDs.
 //   5. app_msg_table.h assembles the descriptor table using these IDs.
 //
-// ID space layout:
+// ID space layout (domain-prefix scheme, all IDs < 1024 = 0x0400):
 //   0x0000           — reserved (HSYS_MSG_ID_INVALID)
-//   0x0001 – 0x00FF  — sensor / data messages
-//   0x0100 – 0x01FF  — control / command messages
+//   0x0010 – 0x001F  — fuel / dispenser messages
+//   0x0020 – 0x002F  — button messages
+//   0x0030 – 0x003F  — connectivity + OTA + MQTT messages
+//   0x0040 – 0x004F  — device info messages
+//   0x0050 – 0x005F  — HTTP client session messages
+//   0x0060 – 0x00FF  — reserved for future use
+//   0x0100 – 0x01FF  — timer messages
 //   0x0200 – 0x02FF  — system / timing messages
 //   0x0300 – 0x03FF  — config messages
-//   0x0400 – 0xFFFE  — reserved for future use
-//   0xFFFF           — reserved (HSYS_MSG_ID_INVALID)
+//
+// Memory cost of the domain-prefix scheme:
+//   The subscription lookup uses a two-array design in hsys_msg.cpp:
+//     s_id_map[HSYS_MAX_MSG_IDS]           — uint8_t per slot (1024 × 1 B = 1 KB)
+//     s_sub_table[HSYS_MAX_REGISTERED_MSGS] — 18 B per registered msg (64 × 18 B = 1.1 KB)
+//   Total: ~2.1 KB, regardless of ID sparseness.
 
 #ifndef APP_MSG_IDS_H
 #define APP_MSG_IDS_H
@@ -32,6 +41,60 @@
 
 typedef enum : uint16_t
 {
+    // ------------------------------------------------------------------
+    // Fuel / dispenser  (0x0010 – 0x001F)
+    // ------------------------------------------------------------------
+    MSG_ID_FUEL_PUMPED          = 0x0010,   ///< ModuleFuel -> all: complete fueling transaction
+    MSG_ID_NOZZLE_STATE         = 0x0011,   ///< ModuleFuel -> all: nozzle state transition
+
+    // ------------------------------------------------------------------
+    // Buttons  (0x0020 – 0x002F)
+    // ------------------------------------------------------------------
+    MSG_ID_DEFAULT_BTN          = 0x0020,   ///< ModuleDefaultBtn -> all: default button pressed
+    MSG_ID_PRINTER_BTN          = 0x0021,   ///< ModulePrintBtn   -> all: print button pressed
+
+    // ------------------------------------------------------------------
+    // Connectivity + OTA + MQTT  (0x0030 – 0x003F)
+    // ------------------------------------------------------------------
+    MSG_ID_WIFI_EVENT           = 0x0030,   ///< ModuleWifi     -> all: WiFi state change
+    MSG_ID_INTERNET_STATUS      = 0x0031,   ///< ModuleInternet -> all: internet reachability
+    MSG_ID_CUBESPHERE_STATUS    = 0x0032,   ///< ModuleCubeSphere -> all: cloud event result
+    MSG_ID_CLOUD_STATUS         = MSG_ID_CUBESPHERE_STATUS,   ///< backward-compat alias
+    MSG_ID_OTA_START_REQUEST    = 0x0033,   ///< Source -> OtaModule:  request OTA session
+    MSG_ID_OTA_START_RESPONSE   = 0x0034,   ///< OtaModule -> Source:  session grant/reject
+    MSG_ID_OTA_REQUEST_DRIVER   = 0x0035,   ///< Source -> OtaModule:  get fs driver
+    MSG_ID_OTA_DRIVER_RESPONSE  = 0x0036,   ///< OtaModule -> Source:  driver + ctx pointers
+    MSG_ID_OTA_ABORT_REQUEST    = 0x0037,   ///< Source -> OtaModule:  abort active session
+    MSG_ID_OTA_COMPLETE_NOTIFY  = 0x0038,   ///< Source -> OtaModule:  binary write finished
+    MSG_ID_OTA_EVENT            = 0x0039,   ///< OtaModule -> all:     session lifecycle events
+    MSG_ID_OTA_PROGRESS         = 0x003A,   ///< Source -> all:        write progress update
+    MSG_ID_MQTT_STATUS          = 0x003B,   ///< ModuleMqtt -> all: MQTT broker connection state change
+
+    // ------------------------------------------------------------------
+    // Device info  (0x0040 – 0x004F)
+    // ------------------------------------------------------------------
+    MSG_ID_DEV_INFO_READ        = 0x0040,   ///< Any -> ModuleDeviceInfo: read a field by key (DIRECT response)
+    MSG_ID_DEV_INFO_WRITE       = 0x0041,   ///< Permitted -> ModuleDeviceInfo: write a field by key
+    MSG_ID_DEV_INFO_VALUE       = 0x0042,   ///< ModuleDeviceInfo -> requester: field value response (DIRECT)
+
+    // ------------------------------------------------------------------
+    // HTTP client session  (0x0050 – 0x005F)
+    // ------------------------------------------------------------------
+    MSG_ID_HTTP_START_REQUEST      = 0x0050,   ///< client → ModuleHttp: open session (DIRECT)
+    MSG_ID_HTTP_START_RESPONSE     = 0x0051,   ///< ModuleHttp → client: session result (DIRECT)
+    MSG_ID_HTTP_SET_URL_REQUEST    = 0x0052,   ///< client → ModuleHttp: set request URL (DIRECT)
+    MSG_ID_HTTP_SET_URL_RESPONSE   = 0x0053,   ///< ModuleHttp → client: URL accepted (DIRECT)
+    MSG_ID_HTTP_SET_ROOT_CA_REQ    = 0x0054,   ///< client → ModuleHttp: set CA cert (DIRECT)
+    MSG_ID_HTTP_SET_ROOT_CA_RESP   = 0x0055,   ///< ModuleHttp → client: CA accepted (DIRECT)
+    MSG_ID_HTTP_HEADER_REQUEST     = 0x0056,   ///< client → ModuleHttp: add request header (DIRECT)
+    MSG_ID_HTTP_HEADER_RESPONSE    = 0x0057,   ///< ModuleHttp → client: header accepted (DIRECT)
+    MSG_ID_HTTP_BODY_REQUEST       = 0x0058,   ///< client → ModuleHttp: set request body (DIRECT)
+    MSG_ID_HTTP_BODY_RESPONSE      = 0x0059,   ///< ModuleHttp → client: body accepted (DIRECT)
+    MSG_ID_HTTP_SEND_REQUEST       = 0x005A,   ///< client → ModuleHttp: execute HTTP call (DIRECT)
+    MSG_ID_HTTP_RESULT             = 0x005B,   ///< ModuleHttp → client: HTTP result + body (DIRECT)
+    MSG_ID_HTTP_ABORT_REQUEST      = 0x005C,   ///< client → ModuleHttp: abort session (DIRECT)
+    MSG_ID_HTTP_RESPONSE_HEADER    = 0x005D,   ///< ModuleHttp → client: one response header (DIRECT)
+
     // ------------------------------------------------------------------
     // Timer  (0x0100 – 0x010F)
     // ------------------------------------------------------------------
@@ -58,14 +121,14 @@ typedef enum : uint16_t
     MSG_ID_CONFIG_SET           = 0x0301,   ///< Any -> ModuleConfig: set one config field
     MSG_ID_CONFIG_GET           = 0x0302,   ///< Any -> ModuleConfig: request re-publish of current config
 
-    // Typed domain config requests (sent AFTER MsgConfigReady — NOTIFICATION)
+    // Typed domain config requests
     MSG_ID_CONFIG_GET_WIFI      = 0x0303,   ///< Any -> ModuleConfig: request WiFi config (DIRECT response)
     MSG_ID_CONFIG_GET_CLOUD     = 0x0304,   ///< Any -> ModuleConfig: request Cloud config (DIRECT response)
     MSG_ID_CONFIG_GET_MQTT      = 0x0305,   ///< Any -> ModuleConfig: request MQTT config (DIRECT response)
     MSG_ID_CONFIG_GET_DT        = 0x0306,   ///< Any -> ModuleConfig: request Device/HW config (DIRECT response)
     MSG_ID_CONFIG_GET_OTA       = 0x030B,   ///< Any -> ModuleConfig: request OTA config (DIRECT response)
 
-    // Typed domain config responses (sent DIRECT back to the requester)
+    // Typed domain config responses
     MSG_ID_CONFIG_WIFI          = 0x0307,   ///< ModuleConfig -> ModuleWifi:  WiFi credentials
     MSG_ID_CONFIG_CLOUD         = 0x0308,   ///< ModuleConfig -> ModuleCloud: cloud parameters
     MSG_ID_CONFIG_MQTT          = 0x0309,   ///< ModuleConfig -> ModuleMqtt:  MQTT broker settings
@@ -73,68 +136,9 @@ typedef enum : uint16_t
     MSG_ID_CONFIG_OTA           = 0x030C,   ///< ModuleConfig -> ModuleWebClientOta: OTA server config
 
     // ------------------------------------------------------------------
-    // Fuel / dispenser  (0x0800 – 0x08FF)
-    // ------------------------------------------------------------------
-    MSG_ID_FUEL_PUMPED          = 0x0800,   ///< ModuleFuel -> all: complete fueling transaction
-    MSG_ID_NOZZLE_STATE         = 0x0801,   ///< ModuleFuel -> all: nozzle state transition
-
-    // ------------------------------------------------------------------
-    // Buttons  (0x0900 – 0x09FF)
-    // ------------------------------------------------------------------
-    MSG_ID_DEFAULT_BTN          = 0x0900,   ///< ModuleDefaultBtn -> all: default button pressed
-    MSG_ID_PRINTER_BTN          = 0x0901,   ///< ModulePrintBtn   -> all: print button pressed
-
-    // ------------------------------------------------------------------
-    // Connectivity  (0x0A00 – 0x0AFF)
-    // ------------------------------------------------------------------
-    MSG_ID_WIFI_EVENT           = 0x0A00,   ///< ModuleWifi     -> all: WiFi state change
-    MSG_ID_INTERNET_STATUS      = 0x0A01,   ///< ModuleInternet -> all: internet reachability
-    MSG_ID_CUBESPHERE_STATUS     = 0x0A02,   ///< ModuleCubeSphere -> all: cloud event result
-    MSG_ID_CLOUD_STATUS          = MSG_ID_CUBESPHERE_STATUS,   ///< backward-compat alias
-
-    // ------------------------------------------------------------------
-    // OTA  (0x0A03 – 0x0A0A)
-    // ------------------------------------------------------------------
-    MSG_ID_OTA_START_REQUEST    = 0x0A03,   ///< Source -> OtaModule:  request OTA session
-    MSG_ID_OTA_START_RESPONSE   = 0x0A04,   ///< OtaModule -> Source:  session grant/reject
-    MSG_ID_OTA_REQUEST_DRIVER   = 0x0A05,   ///< Source -> OtaModule:  get fs driver
-    MSG_ID_OTA_DRIVER_RESPONSE  = 0x0A06,   ///< OtaModule -> Source:  driver + ctx pointers
-    MSG_ID_OTA_ABORT_REQUEST    = 0x0A07,   ///< Source -> OtaModule:  abort active session
-    MSG_ID_OTA_COMPLETE_NOTIFY  = 0x0A08,   ///< Source -> OtaModule:  binary write finished
-    MSG_ID_OTA_EVENT            = 0x0A09,   ///< OtaModule -> all:     session lifecycle events
-    MSG_ID_OTA_PROGRESS         = 0x0A0A,   ///< Source -> all:        write progress update
-
-    MSG_ID_MQTT_STATUS          = 0x0A0B,   ///< ModuleMqtt -> all: MQTT broker connection state change
-
-    // ------------------------------------------------------------------
-    // Device info  (0x0B00 – 0x0BFF)
-    // ------------------------------------------------------------------
-    MSG_ID_DEV_INFO_READ        = 0x0B00,   ///< Any -> ModuleDeviceInfo: read a field by key (DIRECT response)
-    MSG_ID_DEV_INFO_WRITE       = 0x0B01,   ///< Permitted -> ModuleDeviceInfo: write a field by key
-    MSG_ID_DEV_INFO_VALUE       = 0x0B02,   ///< ModuleDeviceInfo -> requester: field value response (DIRECT)
-
-    // ------------------------------------------------------------------
-    // HTTP client session  (0x0C00 – 0x0C0D)
-    // ------------------------------------------------------------------
-    MSG_ID_HTTP_START_REQUEST      = 0x0C00,   ///< client → ModuleHttp: open session (DIRECT)
-    MSG_ID_HTTP_START_RESPONSE     = 0x0C01,   ///< ModuleHttp → client: session result (DIRECT)
-    MSG_ID_HTTP_SET_URL_REQUEST    = 0x0C02,   ///< client → ModuleHttp: set request URL (DIRECT)
-    MSG_ID_HTTP_SET_URL_RESPONSE   = 0x0C03,   ///< ModuleHttp → client: URL accepted (DIRECT)
-    MSG_ID_HTTP_SET_ROOT_CA_REQ    = 0x0C04,   ///< client → ModuleHttp: set CA cert (DIRECT)
-    MSG_ID_HTTP_SET_ROOT_CA_RESP   = 0x0C05,   ///< ModuleHttp → client: CA accepted (DIRECT)
-    MSG_ID_HTTP_HEADER_REQUEST     = 0x0C06,   ///< client → ModuleHttp: add request header (DIRECT)
-    MSG_ID_HTTP_HEADER_RESPONSE    = 0x0C07,   ///< ModuleHttp → client: header accepted (DIRECT)
-    MSG_ID_HTTP_BODY_REQUEST       = 0x0C08,   ///< client → ModuleHttp: set request body (DIRECT)
-    MSG_ID_HTTP_BODY_RESPONSE      = 0x0C09,   ///< ModuleHttp → client: body accepted (DIRECT)
-    MSG_ID_HTTP_SEND_REQUEST       = 0x0C0A,   ///< client → ModuleHttp: execute HTTP call (DIRECT)
-    MSG_ID_HTTP_RESULT             = 0x0C0B,   ///< ModuleHttp → client: HTTP result + body (DIRECT)
-    MSG_ID_HTTP_ABORT_REQUEST      = 0x0C0C,   ///< client → ModuleHttp: abort session (DIRECT)
-    MSG_ID_HTTP_RESPONSE_HEADER    = 0x0C0D,   ///< ModuleHttp → client: one response header (DIRECT)
-
-    // ------------------------------------------------------------------
     // Sentinel — keep one above the highest assigned ID
     // ------------------------------------------------------------------
-    MSG_ID_MAX              = 0x0C0E,
+    MSG_ID_MAX              = 0x030D,   ///< = 781; highest used is 0x030C (CONFIG_OTA)
 
 } app_msg_id_e;
 

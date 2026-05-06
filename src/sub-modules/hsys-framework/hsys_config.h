@@ -57,6 +57,15 @@
 #define HSYS_MAX_SUBSCRIBERS_PER_MSG  8
 #endif
 
+/** Maximum number of message types that can be registered via hsys_msg_table_init().
+ *  The subscription table has one entry per registered message type (not per possible
+ *  ID value), so this controls the compact s_sub_table size — set it to the number of
+ *  messages in your descriptor table plus a small margin.  Must be <= 254 (uint8_t
+ *  index; 0xFF is the "not registered" sentinel). */
+#ifndef HSYS_MAX_REGISTERED_MSGS
+#define HSYS_MAX_REGISTERED_MSGS    64
+#endif
+
 // ---------------------------------------------------------------------------
 // Buffer pool
 //
