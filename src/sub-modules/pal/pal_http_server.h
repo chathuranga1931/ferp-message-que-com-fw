@@ -33,17 +33,7 @@ typedef void* pal_http_server_handle_t;
  */
 typedef void* pal_http_request_t;
 
-/**
- * @brief HTTP methods
- */
-typedef enum {
-    PAL_HTTP_GET,
-    PAL_HTTP_POST,
-    PAL_HTTP_PUT,
-    PAL_HTTP_DELETE,
-    PAL_HTTP_HEAD,
-    PAL_HTTP_OPTIONS
-} pal_http_method_t;
+#include "pal_http_types.h"
 
 /**
  * @brief HTTP server configuration

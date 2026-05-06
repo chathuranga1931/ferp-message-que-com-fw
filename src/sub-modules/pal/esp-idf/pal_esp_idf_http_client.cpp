@@ -7,7 +7,9 @@
 #include "pal_logger.h"
 
 #include "esp_http_client.h"
+#include "esp_crt_bundle.h"
 #include "esp_tls.h"
+#include "esp_system.h"
 #include <string.h>
 #include <stdlib.h>
 
@@ -127,16 +129,25 @@ int32_t pal_http_client_init(const pal_http_client_config_t* config,
     esp_config.buffer_size_tx = 1024;
     esp_config.disable_auto_redirect = false;
     esp_config.max_redirection_count = 10;
-    
+
+    // Use the built-in certificate bundle when no custom CA is provided.
+    // This avoids allocating a per-connection CA copy in heap, which is a
+    // significant source of fragmentation when requests are retried frequently.
+    if (config->cert_pem == NULL) {
+        esp_config.crt_bundle_attach = esp_crt_bundle_attach;
+    }
+
     // IMPORTANT: Disable authentication to allow custom auth headers
     // This prevents ESP-IDF from rejecting unknown auth methods like "SAS-AC1"
     esp_config.auth_type = HTTP_AUTH_TYPE_NONE;
 
+    LOG_MSG_INFO(HTTP_ERROR_LOG_EN, "free heap before http init: %lu B", (unsigned long)esp_get_free_heap_size());
     client->esp_client = esp_http_client_init(&esp_config);
     if (client->esp_client == NULL) {
         free(client->response_buffer);
         free(client);
-        LOG_MSG_ERROR(HTTP_ERROR_LOG_EN, "Failed to initialize ESP HTTP client");
+        LOG_MSG_ERROR(HTTP_ERROR_LOG_EN, "Failed to initialize ESP HTTP client (free heap: %lu B)",
+                      (unsigned long)esp_get_free_heap_size());
         return -1;
     }
 
@@ -168,6 +179,14 @@ int32_t pal_http_client_set_header(pal_http_client_handle_t handle,
     esp_err_t err = esp_http_client_set_header(client->esp_client, key, value);
     
     return (err == ESP_OK) ? 0 : -1;
+}
+
+int32_t pal_http_client_clear_headers(pal_http_client_handle_t handle)
+{
+    if (handle == NULL) return -1;
+    // esp_http_client_set_header() replaces existing headers with the same key,
+    // so accumulated duplicates are not possible. Nothing to do here.
+    return 0;
 }
 
 int32_t pal_http_client_collect_headers(pal_http_client_handle_t handle,

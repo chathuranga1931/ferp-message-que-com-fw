@@ -35,17 +35,7 @@ extern "C" {
  */
 typedef void* pal_http_client_handle_t;
 
-/**
- * @brief HTTP method types
- */
-typedef enum {
-    PAL_HTTP_METHOD_GET = 0,
-    PAL_HTTP_METHOD_POST,
-    PAL_HTTP_METHOD_PUT,
-    PAL_HTTP_METHOD_DELETE,
-    PAL_HTTP_METHOD_HEAD,
-    PAL_HTTP_METHOD_PATCH
-} pal_http_method_t;
+#include "pal_http_types.h"
 
 /**
  * @brief HTTP client configuration
@@ -108,6 +98,17 @@ int32_t pal_http_client_set_url(pal_http_client_handle_t handle, const char* url
 int32_t pal_http_client_set_header(pal_http_client_handle_t handle, 
                                      const char* key, 
                                      const char* value);
+
+/**
+ * @brief Clear all request headers previously added with pal_http_client_set_header().
+ *
+ * Use this when reusing a handle across multiple requests that require different
+ * header sets (e.g., switching from a challenge/response auth header to Basic auth).
+ *
+ * @param handle HTTP client handle
+ * @return int32_t 0 on success, negative error code on failure
+ */
+int32_t pal_http_client_clear_headers(pal_http_client_handle_t handle);
 
 /**
  * @brief Enable header collection

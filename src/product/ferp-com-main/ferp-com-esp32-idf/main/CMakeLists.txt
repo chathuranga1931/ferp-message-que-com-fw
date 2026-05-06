@@ -29,7 +29,7 @@ idf_component_register(
         "${D_MODS}/module_fuel/fuel_disptap_driver.cpp"
         "${D_MODS}/module_fuel/pumps/sanki/sanki_6_digit_1.cpp"
         "${D_MODS}/module_buzzer/module_buzzer.cpp"
-        "${D_MODS}/module_cloud/module_cloud.cpp"
+        "${D_MODS}/module_cubesphere/module_cubesphere.cpp"
         "${D_MODS}/module_internet/module_internet.cpp"
         "${D_MODS}/module_wifi/module_wifi.cpp"
         "${D_MODS}/module_sd/module_sd.cpp"
@@ -56,6 +56,9 @@ idf_component_register(
         # ── Persistent log module ────────────────────────────────────────────
         "${D_MODS}/module_plog/module_plog.cpp"
 
+        # ── HTTP client module ────────────────────────────────────────────────
+        "${D_MODS}/module_http/module_http.cpp"
+
         # ── Utilities ────────────────────────────────────────────────────
         "${D_SUB}/utils/crc32.cpp"
 
@@ -78,7 +81,7 @@ idf_component_register(
         "${D_MSGS}/cloud/msg_config_get_cloud.cpp"
         "${D_MSGS}/cloud/msg_config_cloud.cpp"
         "${D_MSGS}/cloud/msg_internet_status.cpp"
-        "${D_MSGS}/cloud/msg_cloud_status.cpp"
+        "${D_MSGS}/cloud/msg_cubesphere_status.cpp"
         # MQTT messages
         "${D_MSGS}/mqtt/msg_config_get_mqtt.cpp"
         "${D_MSGS}/mqtt/msg_config_mqtt.cpp"
@@ -114,6 +117,21 @@ idf_component_register(
         "${D_MSGS}/ota/msg_ota_complete_notify.cpp"
         "${D_MSGS}/ota/msg_ota_event.cpp"
         "${D_MSGS}/ota/msg_ota_progress.cpp"
+        # HTTP session messages
+        "${D_MSGS}/http/msg_http_start_request.cpp"
+        "${D_MSGS}/http/msg_http_start_response.cpp"
+        "${D_MSGS}/http/msg_http_set_url_request.cpp"
+        "${D_MSGS}/http/msg_http_set_url_response.cpp"
+        "${D_MSGS}/http/msg_http_set_root_ca_request.cpp"
+        "${D_MSGS}/http/msg_http_set_root_ca_response.cpp"
+        "${D_MSGS}/http/msg_http_header_request.cpp"
+        "${D_MSGS}/http/msg_http_header_response.cpp"
+        "${D_MSGS}/http/msg_http_body_request.cpp"
+        "${D_MSGS}/http/msg_http_body_response.cpp"
+        "${D_MSGS}/http/msg_http_send_request.cpp"
+        "${D_MSGS}/http/msg_http_result.cpp"
+        "${D_MSGS}/http/msg_http_abort_request.cpp"
+        "${D_MSGS}/http/msg_http_response_header.cpp"
 
         # Device info messages
         "${D_MSGS}/messages/msg_dev_info_read.cpp"
@@ -172,8 +190,6 @@ idf_component_register(
 
         # ── External drivers ──────────────────────────────────────────────
         "${D_SUB}/drivers/DS1307/ds1307.cpp"
-        "${D_SUB}/drivers/cube_sphere/cube_sphere_api.cpp"
-        "${D_SUB}/drivers/cube_sphere/cube_sphere_cloud_driver.cpp"
     INCLUDE_DIRS
         # Entry point + app
         "."
@@ -192,7 +208,7 @@ idf_component_register(
         "${D_MODS}/module_fuel/pumps"
         "${D_MODS}/module_fuel/pumps/sanki"
         "${D_MODS}/module_buzzer"
-        "${D_MODS}/module_cloud"
+        "${D_MODS}/module_cubesphere"
         "${D_MODS}/module_internet"
         "${D_MODS}/module_wifi"
         "${D_MODS}/module_sd"
@@ -204,6 +220,7 @@ idf_component_register(
         "${D_MODS}/module_web_client_ota"
         "${D_MODS}/module_device_info"
         "${D_MODS}/module_plog"
+        "${D_MODS}/module_http"
         # App messages and peripherals
         "${D_MSGS}"
         "${D_MSGS}/buttons"
@@ -216,6 +233,7 @@ idf_component_register(
         "${D_MSGS}/timer"
         "${D_MSGS}/wifi"
         "${D_MSGS}/messages"
+        "${D_MSGS}/http"
         "${D_PHER}"
         # Generic peripheral
         "${D_SUB}/peripheral"
@@ -233,8 +251,6 @@ idf_component_register(
         "${D_SUB}/ferp-device-firmware/ferp_board/main-esp32/lib/serial_flasher"
         # DS1307 driver
         "${D_SUB}/drivers/DS1307"
-        # CubeSphere cloud driver
-        "${D_SUB}/drivers/cube_sphere"
         # hsys headers (needed by app.h and friends)
         "${D_SUB}/hsys-framework"
         "${D_SUB}/hsys-os"
@@ -272,11 +288,6 @@ set_source_files_properties(
     "${D_MODS}/module_print_btn/module_print_btn.cpp"
     "${D_SUB}/drivers/DS1307/ds1307.cpp"
     PROPERTIES COMPILE_OPTIONS "-Wno-missing-field-initializers;-Wno-type-limits"
-)
-
-set_source_files_properties(
-    "${D_SUB}/drivers/cube_sphere/cube_sphere_api.cpp"
-    PROPERTIES COMPILE_OPTIONS "-Wno-deprecated-declarations;-Wno-unused-variable;-Wno-unused-but-set-variable;-Wno-missing-field-initializers"
 )
 
 # Note: BOARD_2602 is defined globally via add_compile_definitions() in the

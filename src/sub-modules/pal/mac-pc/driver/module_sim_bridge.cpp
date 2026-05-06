@@ -43,7 +43,7 @@
 // ── Connectivity ──
 #include "msg_wifi_event.h"
 #include "msg_internet_status.h"
-#include "msg_cloud_status.h"
+#include "msg_cubesphere_status.h"
 #include "msg_mqtt_status.h"
 
 #include <stdio.h>
@@ -85,7 +85,7 @@ void ModuleSimBridge::init()
     // ── Connectivity ──
     subscribe(MSG_ID_WIFI_EVENT);
     subscribe(MSG_ID_INTERNET_STATUS);
-    subscribe(MSG_ID_CLOUD_STATUS);
+    subscribe(MSG_ID_CUBESPHERE_STATUS);
     subscribe(MSG_ID_MQTT_STATUS);
 
     mac_driver_set_connect_cb(&ModuleSimBridge::on_ui_connected);
@@ -325,23 +325,23 @@ void ModuleSimBridge::on_msg_received(const hsys_msg_t &msg)
             break;
         }
 
-        case MSG_ID_CLOUD_STATUS: {
-            auto p = MsgCloudStatus::deserialize(msg);
-            static const auto _cs_str = [](cloud_status_event_t e) -> const char * {
+        case MSG_ID_CUBESPHERE_STATUS: {
+            auto p = MsgCubesphereStatus::deserialize(msg);
+            static const auto _cs_str = [](cubesphere_status_event_t e) -> const char * {
                 switch (e) {
-                    case CLOUD_STATUS_REGISTERED:      return "REGISTERED";
-                    case CLOUD_STATUS_REGISTER_FAILED: return "REGISTER_FAILED";
-                    case CLOUD_STATUS_PUMPED_SUCCESS:  return "PUMPED_SUCCESS";
-                    case CLOUD_STATUS_PUMPED_FAILED:   return "PUMPED_FAILED";
-                    case CLOUD_STATUS_HB_SENT:         return "HB_SENT";
-                    case CLOUD_STATUS_HB_FAILED:       return "HB_FAILED";
-                    default:                           return "UNKNOWN";
+                    case CUBESPHERE_STATUS_REGISTERED:      return "REGISTERED";
+                    case CUBESPHERE_STATUS_REGISTER_FAILED: return "REGISTER_FAILED";
+                    case CUBESPHERE_STATUS_PUMPED_SUCCESS:  return "PUMPED_SUCCESS";
+                    case CUBESPHERE_STATUS_PUMPED_FAILED:   return "PUMPED_FAILED";
+                    case CUBESPHERE_STATUS_HB_SENT:         return "HB_SENT";
+                    case CUBESPHERE_STATUS_HB_FAILED:       return "HB_FAILED";
+                    default:                                return "UNKNOWN";
                 }
             };
             snprintf(data, sizeof(data),
                      "{\"event\":\"%s\",\"nozzle_idx\":%u}",
                      _cs_str(p.event), (unsigned)p.nozzle_idx);
-            _send_json("MSG_CLOUD_STATUS", data);
+            _send_json("MSG_CUBESPHERE_STATUS", data);
             strncpy(_last_cloud_json, data, sizeof(_last_cloud_json) - 1);
             break;
         }
@@ -382,7 +382,7 @@ void ModuleSimBridge::_send_json(const char *id, const char *data_json)
         mac_driver_send_json("MSG_INTERNET_STATUS", b._last_internet_json);
 
     if (b._last_cloud_json[0])
-        mac_driver_send_json("MSG_CLOUD_STATUS", b._last_cloud_json);
+        mac_driver_send_json("MSG_CUBESPHERE_STATUS", b._last_cloud_json);
 }
 
 void ModuleSimBridge::_send_pool_status()

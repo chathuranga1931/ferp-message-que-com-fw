@@ -36,7 +36,8 @@
 #define MODULE_PRINT_BTN_ID       ((hsys_module_id_t) 10)   ///< ModulePrintBtn  — print button
 #define MODULE_FUEL_ID            ((hsys_module_id_t) 11)   ///< ModuleFuel      — fuel dispenser
 #define MODULE_BUZZER_ID          ((hsys_module_id_t) 12)   ///< ModuleBuzzer    — buzzer / audio cues
-#define MODULE_CLOUD_ID           ((hsys_module_id_t) 13)   ///< ModuleCloud     — cloud connectivity
+#define MODULE_CUBESPHERE_ID      ((hsys_module_id_t) 13)   ///< ModuleCubeSphere — CubeSphere cloud connectivity
+#define MODULE_CLOUD_ID           MODULE_CUBESPHERE_ID      ///< Backward-compat alias
 #define MODULE_INTERNET_ID        ((hsys_module_id_t) 14)   ///< ModuleInternet  — internet reachability
 #define MODULE_WIFI_ID            ((hsys_module_id_t) 15)   ///< ModuleWifi      — WiFi connection manager
 #define MODULE_SD_ID              ((hsys_module_id_t) 16)   ///< ModuleSD        — SD card
@@ -54,6 +55,7 @@
 #define MODULE_MSG_TRANSLATOR_ID  ((hsys_module_id_t) 23)   ///< ModuleMsgTranslator — message translation and routing
 #define MODULE_DEVICE_INFO_ID     ((hsys_module_id_t) 24)   ///< ModuleDeviceInfo    — runtime device identity
 #define MODULE_PLOG_ID            ((hsys_module_id_t) 25)   ///< ModulePLog          — persistent SD-card logger
+#define MODULE_HTTP_ID            ((hsys_module_id_t) 26)   ///< ModuleHttp          — centralised HTTP/HTTPS client
 
 // ------------------------------------------------------------------
 // Simulator-only / platform-specific  (20+)

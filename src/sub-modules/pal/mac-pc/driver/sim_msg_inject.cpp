@@ -41,7 +41,7 @@
 #include "msg_timer_alarm.h"
 #include "msg_wifi_event.h"
 #include "msg_internet_status.h"
-#include "msg_cloud_status.h"
+#include "msg_cubesphere_status.h"
 
 #define __TAG__         "SIM_INJ "
 #define SIM_INJ_LOG     true
@@ -192,8 +192,8 @@ void sim_msg_inject_handle(const char *cmd_json)
             _publish(MsgInternetStatus::from_json(payload_buf, src), msg_id);
             break;
 
-        case MSG_ID_CLOUD_STATUS:
-            _publish(MsgCloudStatus::from_json(payload_buf, src), msg_id);
+        case MSG_ID_CUBESPHERE_STATUS:
+            _publish(MsgCubesphereStatus::from_json(payload_buf, src), msg_id);
             break;
 
         default:

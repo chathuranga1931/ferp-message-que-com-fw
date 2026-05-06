@@ -48,8 +48,7 @@
 #include "module_print_btn.h"
 #include "module_fuel.h"
 #include "module_buzzer.h"
-#include "module_cloud.h"
-#include "cube_sphere_cloud_driver.h"
+#include "module_cubesphere.h"
 #include "module_internet.h"
 #include "module_wifi.h"
 #include "module_sd.h"
@@ -60,6 +59,7 @@
 #include "ModuleMqtt.h"
 #include "module_device_info.h"
 #include "module_plog.h"
+#include "module_http.h"
 
 #include "app_ota_config.h"
 #include "app_web_ota_config.h"  /* k_web_ota_targets[] + ModuleWebClientOta singleton */
@@ -95,7 +95,7 @@
 #include "msg_sd_status.h"
 #include "msg_spiffs_ready.h"
 #include "msg_wifi_event.h"
-#include "msg_cloud_status.h"
+#include "msg_cubesphere_status.h"
 #include "msg_time_status.h"
 #include "msg_config_ready.h"
 #include "msg_config_get.h"
@@ -121,33 +121,41 @@ app_config_t _app_config;
 void app_config_load_defaults(app_config_t *cfg)
 {
     memset(cfg, 0, sizeof(*cfg));
-    strncpy(cfg->wifi_ssid,          "MyNetwork",            sizeof(cfg->wifi_ssid)          - 1);
-    strncpy(cfg->wifi_password,      "password123",          sizeof(cfg->wifi_password)       - 1);
-    strncpy(cfg->cloud_url,          "https://cloud.example.com", sizeof(cfg->cloud_url)      - 1);
-    strncpy(cfg->cloud_secret,       "changeme",             sizeof(cfg->cloud_secret)        - 1);
-    strncpy(cfg->ota_server_url,     "http://144.24.156.245:8080",  sizeof(cfg->ota_server_url)  - 1);
-    cfg->ota_check_interval_s        = 30;   /* 30 s default — clamp enforced in ModuleWebClientOta */
-    cfg->cloud_hb_enabled            = true;
-    cfg->cloud_hb_interval_s         = 60;
-    strncpy(cfg->mqtt_host,          "broker.emqx.io",      sizeof(cfg->mqtt_host)           - 1);
-    cfg->mqtt_port                   = 1883;
-    strncpy(cfg->mqtt_user,          "",                     sizeof(cfg->mqtt_user)           - 1);
-    strncpy(cfg->mqtt_password,      "",                     sizeof(cfg->mqtt_password)       - 1);
-    cfg->display_type                = 0;
-    cfg->stabilize_delay_ms          = 500;
-    cfg->en_retx                     = false;
-    cfg->nozzle_swap                 = false;
-    cfg->tot_cnt                     = 3;
-    cfg->tot_dur                     = 1000;
-    strncpy(cfg->printer_url,        "http://printer.local", sizeof(cfg->printer_url)         - 1);
-    cfg->printer_copy_count          = 1;
-    cfg->log_udp_enabled             = false;
-    strncpy(cfg->log_udp_server_ip,  "192.168.1.100",        sizeof(cfg->log_udp_server_ip)   - 1);
-    cfg->log_udp_port                = 4444;
-    cfg->dt_log_rate                 = 1;
-    cfg->print_delay_ms              = 0;
-    cfg->enable_nid_print            = false;
-    cfg->enable_nid_cloud            = false;
+    
+    strncpy(cfg->wifi_ssid, "FERP-SSID", sizeof(cfg->wifi_ssid) - 1);
+    strncpy(cfg->wifi_password, "FERP-PASSWORD", sizeof(cfg->wifi_password) - 1);
+    
+    strncpy(cfg->cloud_url, "https://cloud.example.com", sizeof(cfg->cloud_url) - 1);
+    strncpy(cfg->cloud_secret, "changeme", sizeof(cfg->cloud_secret) - 1);
+    cfg->cloud_hb_enabled = true;
+    cfg->cloud_hb_interval_s = 60;
+    cfg->enable_nid_print = false;
+    cfg->enable_nid_cloud = false;
+
+    strncpy(cfg->ota_server_url, "http://144.24.156.245:8080", sizeof(cfg->ota_server_url)  - 1);
+    cfg->ota_check_interval_s = 30; 
+    
+    strncpy(cfg->mqtt_host, "broker.emqx.io", sizeof(cfg->mqtt_host) - 1);
+    cfg->mqtt_port = 1883;
+    strncpy(cfg->mqtt_user, "", sizeof(cfg->mqtt_user) - 1);
+    strncpy(cfg->mqtt_password, "", sizeof(cfg->mqtt_password) - 1);
+    
+    cfg->display_type = 0;
+    cfg->stabilize_delay_ms = 500;
+    cfg->tot_cnt = 3;
+    cfg->tot_dur = 1000;
+    strncpy(cfg->printer_url, "http://printer.local", sizeof(cfg->printer_url) - 1);
+    cfg->printer_copy_count = 1;
+    cfg->print_delay_ms = 0;
+    cfg->en_retx = false;
+    cfg->nozzle_swap = false;
+    
+    cfg->log_udp_enabled = false;
+    strncpy(cfg->log_udp_server_ip, "144.24.156.245", sizeof(cfg->log_udp_server_ip) - 1);
+    cfg->log_udp_port = 22222;
+    
+    cfg->dt_log_rate = 1;
+    
 }
 
 static config_t k_config_table[] = {
@@ -199,7 +207,7 @@ config_t *app_config_get_table(uint16_t *out_size)
 
 static app_device_info_t s_device_info = {};
 
-const hsys_module_id_t k_dev_info_perm_cloud_write[]    = { MODULE_CLOUD_ID };
+const hsys_module_id_t k_dev_info_perm_cloud_write[]    = { MODULE_CUBESPHERE_ID };
 const uint8_t          k_dev_info_perm_cloud_write_count = 1;
 
 static dev_info_entry_t k_dev_info_table[] = {
@@ -279,7 +287,7 @@ static const app_msg_codec_entry_t k_codec_table[] = {
     // ── Connectivity ─────────────────────────────────────────────────────────
     { "MsgWifiEvent",            MSG_ID_WIFI_EVENT,            MsgWifiEvent::from_json,            MsgWifiEvent::to_json           },
     { "MsgInternetStatus",       MSG_ID_INTERNET_STATUS,       MsgInternetStatus::from_json,       MsgInternetStatus::to_json      },
-    { "MsgCloudStatus",          MSG_ID_CLOUD_STATUS,          MsgCloudStatus::from_json,          MsgCloudStatus::to_json         },
+    { "MsgCubesphereStatus",      MSG_ID_CUBESPHERE_STATUS,     MsgCubesphereStatus::from_json,     MsgCubesphereStatus::to_json    },
     { "MsgMqttStatus",           MSG_ID_MQTT_STATUS,           MsgMqttStatus::from_json,           MsgMqttStatus::to_json          },
 
     // ── Time ─────────────────────────────────────────────────────────────────
@@ -422,17 +430,18 @@ static HsysModule *k_module_table[] = {
     ModulePrintBtn::instance(),
     ModuleFuel::instance(),
     ModuleBuzzer::instance(),
-    ModuleCloud::instance(),
+    ModuleCubeSphere::instance(),
     ModuleInternet::instance(),
     ModuleWifi::instance(),
     ModuleSD::instance(),
     ModuleTimeMgr::instance(),
     OtaModule::instance(),
-    ModuleWebClientOta::instance(),
+    // ModuleWebClientOta::instance(),
     ModuleWebServer::instance(),
-    ModuleMqtt::instance(),
+    // ModuleMqtt::instance(),
     ModuleDeviceInfo::instance(),
     ModulePLog::instance(),
+    ModuleHttp::instance(),
 };
 #define MODULE_TABLE_SIZE  (sizeof(k_module_table) / sizeof(k_module_table[0]))
 
@@ -455,10 +464,11 @@ static const hsys_task_desc_t k_task_table[] = {
     { "storage_task",       4096,  5,  0,   { MODULE_SPIFFS_ID,      MODULE_SD_ID,             MODULE_CONFIG_ID,     MODULE_DEVICE_INFO_ID,  MODULE_PLOG_ID, 0 } },
     { "timing_task",      3*1024,  4,  0,   { TICKER_MODULE_ID,      MODULE_TIMER_ID,          MODULE_TIMEMGR_ID,                            0 } },
     { "indicator_task",     2048,  4,  0,   { MODULE_SYSMON_ID,      MODULE_LEDS_ID,           MODULE_BUZZER_ID,                             0 } },
-    { "btn_task",           2048,  5,  0,   { MODULE_PRINT_BTN_ID,   MODULE_DEFAULT_BTN_ID,                                                  0 } },
+    { "btn_task",           4096,  5,  0,   { MODULE_PRINT_BTN_ID,   MODULE_DEFAULT_BTN_ID,                                                  0 } },
     { "fuel_task",          4096,  5,  0,   { MODULE_FUEL_ID,                                                                                0 } },
-    { "network_task1",   16*1024,  5,  0,   { MODULE_WIFI_ID,        MODULE_MQTT_ID,           MODULE_INTERNET_ID,                           0 } },
-    { "network_task2",   16*1024,  5,  0,   { MODULE_CLOUD_ID,       MODULE_WEB_CLIENT_OTA_ID, MODULE_WEB_SERVER_ID,  MODULE_OTA_ID,         0 } }
+    { "network_task1",    8*1024,  5,  0,   { MODULE_WIFI_ID,        MODULE_MQTT_ID,           MODULE_INTERNET_ID,                           0 } },
+    { "network_task2",   10*1024,  5,  0,   { MODULE_CLOUD_ID,       MODULE_WEB_CLIENT_OTA_ID, MODULE_WEB_SERVER_ID,  MODULE_OTA_ID,         0 } },
+    { "http_task",       10*1024,  5,  0,   { MODULE_HTTP_ID,                                                                                  0 } }
 };
 #define TASK_TABLE_SIZE  (sizeof(k_task_table) / sizeof(k_task_table[0]))
 
@@ -530,18 +540,14 @@ extern "C" void app_init(void)
     app_platform_pre_init();
 
     // 0c. Register the JSON message codec table and MQTT routing table
-    app_msg_codec_register(k_codec_table,
-                           (uint8_t)(sizeof(k_codec_table) / sizeof(k_codec_table[0])));
-    app_msg_mqtt_route_register(k_mqtt_route_table,
-                                (uint8_t)(sizeof(k_mqtt_route_table) / sizeof(k_mqtt_route_table[0])));
+    // app_msg_codec_register(k_codec_table,
+                        //    (uint8_t)(sizeof(k_codec_table) / sizeof(k_codec_table[0])));
+    // app_msg_mqtt_route_register(k_mqtt_route_table,
+                                // (uint8_t)(sizeof(k_mqtt_route_table) / sizeof(k_mqtt_route_table[0])));
 
-    // Wire the concrete cloud backend before modules are initialised.
-    // The cube_sphere driver singleton is defined in cube_sphere_cloud_driver.cpp.
-    ModuleCloud::instance()->set_driver(cloud_driver_cube_sphere());
-
-    // Wire SD storage into ModuleCloud for retransmission.
+    // Wire SD storage into ModuleCubeSphere for retransmission.
     // retx_mgr_init() is deferred until MsgSdReady is received at runtime.
-    ModuleCloud::instance()->set_storage(app_sd_get_storage_interface());
+    ModuleCubeSphere::instance()->set_storage(app_sd_get_storage_interface());
 
     // Wire SD storage into ModulePLog for persistent log files.
     // Logger activates on MsgSdReady; auto-logs every message ID in k_plog_msg_ids.

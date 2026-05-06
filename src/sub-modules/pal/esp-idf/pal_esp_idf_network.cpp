@@ -119,9 +119,7 @@ static void on_ping_end(esp_ping_handle_t hdl, void *args) {
     
     LOG_MSG_DEBUG(NETW_DEBUG_LOG_EN, "%d packets transmitted, %d received, time %dms",
              transmitted, received, total_time_ms);
-    
-    // Delete the ping session here in the callback as per ESP-IDF example
-    esp_ping_delete_session(hdl);
+    // Session cleanup is handled by the caller after vTaskDelay returns.
 }
 
 /*===========================================================================*/
@@ -237,10 +235,14 @@ bool pal_network_ping(const char* host, uint32_t timeout_ms) {
     LOG_MSG_INFO(NETW_DEBUG_LOG_EN, "Waiting for ping response (timeout: %d ms)...", timeout_ms);
     // Wait for ping to complete (timeout + some margin)
     vTaskDelay(pdMS_TO_TICKS(timeout_ms + 1000));
-    
+
+    // Stop and delete explicitly so the internal ping task is fully torn down
+    // before the caller can issue another ping.  on_ping_end may have already
+    // deleted the session; esp_ping_stop/delete are safe to call redundantly.
+    esp_ping_stop(ping_handle);
+    esp_ping_delete_session(ping_handle);
+
     LOG_MSG_INFO(NETW_DEBUG_LOG_EN, "Ping result: %s", ping_success ? "SUCCESS" : "FAILED");
-    
-    // Note: Session is deleted in on_ping_end callback, not here
     return ping_success;
 }
 

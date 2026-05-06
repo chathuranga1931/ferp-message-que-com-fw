@@ -14,7 +14,7 @@
 #include "msg_config_ready.h"
 #include "msg_config_get_ota.h"
 #include "msg_config_ota.h"
-#include "msg_cloud_status.h"
+#include "msg_cubesphere_status.h"
 #include "msg_internet_status.h"
 #include "msg_tick_1000ms.h"
 #include "msg_ota_start_request.h"
@@ -58,7 +58,7 @@ void ModuleWebClientOta::init()
 {
     subscribe(MsgConfigReady::ID);
     subscribe(MsgConfigOta::ID);         /* DIRECT from ModuleConfig */
-    subscribe(MsgCloudStatus::ID);       /* NOTIFICATION from ModuleCloud */
+    subscribe(MsgCubesphereStatus::ID);   /* NOTIFICATION from ModuleCubeSphere */
     subscribe(MsgInternetStatus::ID);
     subscribe(MsgTick1000ms::ID);
     subscribe(MsgOtaStartResponse::ID);  /* DIRECT from OtaModule */
@@ -194,9 +194,9 @@ void ModuleWebClientOta::on_msg_received(const hsys_msg_t &msg)
     }
 
     /* ── Cloud status — wait for REGISTERED to get device UUID ──────── */
-    case MsgCloudStatus::ID: {
-        auto p = MsgCloudStatus::deserialize(msg);
-        if (p.event == CLOUD_STATUS_REGISTERED) {
+    case MsgCubesphereStatus::ID: {
+        auto p = MsgCubesphereStatus::deserialize(msg);
+        if (p.event == CUBESPHERE_STATUS_REGISTERED) {
             strncpy(_device_id, p.device_uuid, sizeof(_device_id) - 1);
             _cloud_registered = true;
             LOG_MSG_INFO(LOG_EN, "cloud registered  uuid=%s  — OTA polling armed",

@@ -240,6 +240,17 @@ int32_t pal_http_client_set_header(pal_http_client_handle_t handle,
     return ctx->req_headers ? 0 : -1;
 }
 
+int32_t pal_http_client_clear_headers(pal_http_client_handle_t handle)
+{
+    pal_http_ctx_t *ctx = (pal_http_ctx_t *)handle;
+    if (!ctx) return -1;
+    if (ctx->req_headers) {
+        curl_slist_free_all(ctx->req_headers);
+        ctx->req_headers = nullptr;
+    }
+    return 0;
+}
+
 int32_t pal_http_client_collect_headers(pal_http_client_handle_t handle,
                                          const char **header_keys, uint8_t count)
 {

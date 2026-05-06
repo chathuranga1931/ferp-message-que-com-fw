@@ -55,7 +55,7 @@
 #include "msg_nozzle_state.h"           // MsgNozzleState         (0x0801)
 #include "msg_wifi_event.h"             // MsgWifiEvent           (0x0A00)
 #include "msg_internet_status.h"        // MsgInternetStatus      (0x0A01)
-#include "msg_cloud_status.h"           // MsgCloudStatus         (0x0A02)
+#include "msg_cubesphere_status.h"      // MsgCubesphereStatus    (0x0A02)
 #include "msg_ota_start_request.h"      // MsgOtaStartRequest     (0x0A03)
 #include "msg_ota_start_response.h"     // MsgOtaStartResponse    (0x0A04)
 #include "msg_ota_request_driver.h"     // MsgOtaRequestDriver    (0x0A05)
@@ -63,8 +63,21 @@
 #include "msg_ota_abort_request.h"      // MsgOtaAbortRequest     (0x0A07)
 #include "msg_ota_complete_notify.h"    // MsgOtaCompleteNotify   (0x0A08)
 #include "msg_ota_event.h"              // MsgOtaEvent            (0x0A09)
-#include "msg_ota_progress.h"           // MsgOtaProgress         (0x0A0A)
-
+#include "msg_ota_progress.h"           // MsgOtaProgress         (0x0A0A)// HTTP session messages
+#include "msg_http_start_request.h"          // MsgHttpStartRequest    (0x0C00)
+#include "msg_http_start_response.h"         // MsgHttpStartResponse   (0x0C01)
+#include "msg_http_set_url_request.h"        // MsgHttpSetUrlRequest   (0x0C02)
+#include "msg_http_set_url_response.h"       // MsgHttpSetUrlResponse  (0x0C03)
+#include "msg_http_set_root_ca_request.h"    // MsgHttpSetRootCaRequest (0x0C04)
+#include "msg_http_set_root_ca_response.h"   // MsgHttpSetRootCaResponse (0x0C05)
+#include "msg_http_header_request.h"         // MsgHttpHeaderRequest   (0x0C06)
+#include "msg_http_header_response.h"        // MsgHttpHeaderResponse  (0x0C07)
+#include "msg_http_body_request.h"           // MsgHttpBodyRequest     (0x0C08)
+#include "msg_http_body_response.h"          // MsgHttpBodyResponse    (0x0C09)
+#include "msg_http_send_request.h"           // MsgHttpSendRequest     (0x0C0A)
+#include "msg_http_result.h"                 // MsgHttpResult          (0x0C0B)
+#include "msg_http_abort_request.h"          // MsgHttpAbortRequest    (0x0C0C)
+#include "msg_http_response_header.h"        // MsgHttpResponseHeader  (0x0C0D)
 // ---------------------------------------------------------------------------
 // Descriptor table macro
 // Place APP_MSG_TABLE_INIT; in exactly one .cpp file (app.cpp).
@@ -108,6 +121,20 @@
         MsgOtaCompleteNotify::DESCRIPTOR,                                         \
         MsgOtaEvent::DESCRIPTOR,                                                  \
         MsgOtaProgress::DESCRIPTOR,                                               \
+        MsgHttpStartRequest::DESCRIPTOR,                                          \
+        MsgHttpStartResponse::DESCRIPTOR,                                         \
+        MsgHttpSetUrlRequest::DESCRIPTOR,                                         \
+        MsgHttpSetUrlResponse::DESCRIPTOR,                                        \
+        MsgHttpSetRootCaRequest::DESCRIPTOR,                                      \
+        MsgHttpSetRootCaResponse::DESCRIPTOR,                                     \
+        MsgHttpHeaderRequest::DESCRIPTOR,                                         \
+        MsgHttpHeaderResponse::DESCRIPTOR,                                        \
+        MsgHttpBodyRequest::DESCRIPTOR,                                           \
+        MsgHttpBodyResponse::DESCRIPTOR,                                          \
+        MsgHttpSendRequest::DESCRIPTOR,                                           \
+        MsgHttpResult::DESCRIPTOR,                                                \
+        MsgHttpAbortRequest::DESCRIPTOR,                                          \
+        MsgHttpResponseHeader::DESCRIPTOR,                                        \
     };                                                                            \
     static const uint16_t k_msg_table_count =                                    \
         (uint16_t)(sizeof(k_msg_table) / sizeof(k_msg_table[0]))

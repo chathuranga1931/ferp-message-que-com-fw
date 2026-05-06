@@ -27,6 +27,24 @@
 #include <stdio.h>
 
 #include "app.h"
+#include "pal/pal_i2c.h"
+
+// ---------------------------------------------------------------------------
+// Platform hook — runs before the module framework starts.
+// Initialise board-level peripherals that modules depend on (I2C, SPI, etc.).
+// ---------------------------------------------------------------------------
+extern "C" void app_platform_pre_init(void)
+{
+    // I2C port 0: DS1307 RTC (SDA=GPIO21, SCL=GPIO22, 100 kHz)
+    pal_i2c_config_t i2c_cfg = {};
+    i2c_cfg.mode              = PAL_I2C_MODE_MASTER;
+    i2c_cfg.sda_pin           = 21;
+    i2c_cfg.scl_pin           = 22;
+    i2c_cfg.clock_speed       = 100000;
+    i2c_cfg.sda_pullup_enable = true;
+    i2c_cfg.scl_pullup_enable = true;
+    pal_i2c_init(PAL_I2C_PORT_0, &i2c_cfg);
+}
 
 extern "C" void app_main(void)
 {

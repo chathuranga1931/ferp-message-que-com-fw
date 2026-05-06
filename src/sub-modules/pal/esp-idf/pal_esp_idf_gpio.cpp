@@ -20,6 +20,9 @@
 
 #define __TAG__ "PAL_GPIO"
 
+// Single flag shared across all GPIO init paths in this file.
+static bool s_isr_service_installed = false;
+
 /*===========================================================================*/
 /*                          HELPER FUNCTIONS                                 */
 /*===========================================================================*/
@@ -147,15 +150,14 @@ int32_t pal_gpio_config(pal_gpio_num_t gpio_num, pal_gpio_config_t config) {
         }
     }
     if (config.intr_type != PAL_GPIO_INTR_DISABLE && config.isr_callback != NULL) {
-        // Install ISR service on first use
-        static bool isr_service_installed = false;
-        if (!isr_service_installed) {
+        // Install ISR service on first use (shared flag with pal_gpio_set_interrupt)
+        if (!s_isr_service_installed) {
             ret = gpio_install_isr_service(0);
             if (ret != ESP_OK && ret != ESP_ERR_INVALID_STATE) {
                 LOG_MSG_ERROR(LOG_EN, "Failed to install ISR service for GPIO %d", gpio_num);
                 return PAL_ERROR_INIT;
             }
-            isr_service_installed = true;
+            s_isr_service_installed = true;
         }
 
         // Allocate ISR context (freed on pal_gpio_detach_interrupt)
@@ -282,15 +284,14 @@ int32_t pal_gpio_set_interrupt(pal_gpio_num_t gpio_num, pal_gpio_intr_type_t typ
     
     gpio_num_t esp_gpio = convert_gpio_num(gpio_num);
     
-    // Install GPIO ISR service if not already installed
-    static bool isr_service_installed = false;
-    if(!isr_service_installed) {
+    // Install GPIO ISR service if not already installed (shared flag with pal_gpio_config)
+    if(!s_isr_service_installed) {
         esp_err_t ret = gpio_install_isr_service(0);
         if(ret != ESP_OK && ret != ESP_ERR_INVALID_STATE) {
             LOG_MSG_ERROR(LOG_EN, "Failed to install ISR service");
             return PAL_ERROR_INIT;
         }
-        isr_service_installed = true;
+        s_isr_service_installed = true;
     }
     
     // Allocate context (Note: In production, use a context pool to avoid memory leaks)

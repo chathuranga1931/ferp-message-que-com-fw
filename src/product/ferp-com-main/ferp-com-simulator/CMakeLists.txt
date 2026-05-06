@@ -82,7 +82,7 @@ add_library(pal_mac STATIC
     ${PAL_MAC_DRV}/mac_cmd_distap.cpp
     # MQTT client (POSIX sockets, MQTT 3.1.1)
     ${PAL_MAC}/pal_mac_mqtt.cpp
-    # HTTP client (libcurl), crypto (CommonCrypto), and eFuse MAC — needed by cube_sphere_api
+    # HTTP client (libcurl), crypto (CommonCrypto), and eFuse MAC
     ${PAL_MAC}/pal_mac_http_client.cpp
     ${PAL_MAC}/pal_mac_crypto.cpp
     ${PAL_MAC}/pal_mac_efuse.cpp
@@ -90,8 +90,6 @@ add_library(pal_mac STATIC
     ${PAL_MAC}/pal_mac_fw_update.cpp
     ${APP_MODS}/module_ota/targets/ota_driver_esp32_main.c
     ${APP_MODS}/module_ota/targets/ota_driver_esp32_dt.c
-    # CubeSphere cloud driver
-    ${DRIVERS}/cube_sphere/cube_sphere_api.cpp
 )
 target_include_directories(pal_mac PUBLIC
     ${PAL}          # pal_*.h interfaces + pal_system.h
@@ -120,7 +118,6 @@ target_include_directories(pal_mac PUBLIC
     ${DISTAP_LIB}   # display_types.h, com_distap.h, cmd_distap.h
     ${ARDUINOJSON}      # ArduinoJson.h (root)
     ${ARDUINOJSON}/src  # ArduinoJson internal headers (angle-bracket includes)
-    ${DRIVERS}/cube_sphere  # cube_sphere_api.h, cube_sphere_config.h
 )
 target_link_libraries(pal_mac PRIVATE hsys_os curl)
 target_compile_definitions(pal_mac PRIVATE FERP_SIMULATOR=1)
@@ -154,7 +151,7 @@ add_library(app_messages STATIC
     ${APP_MSGS}/cloud/msg_config_get_cloud.cpp
     ${APP_MSGS}/cloud/msg_config_cloud.cpp
     ${APP_MSGS}/cloud/msg_internet_status.cpp
-    ${APP_MSGS}/cloud/msg_cloud_status.cpp
+    ${APP_MSGS}/cloud/msg_cubesphere_status.cpp
     # MQTT messages
     ${APP_MSGS}/mqtt/msg_config_get_mqtt.cpp
     ${APP_MSGS}/mqtt/msg_config_mqtt.cpp
@@ -192,6 +189,21 @@ add_library(app_messages STATIC
     ${APP_MSGS}/ota/msg_ota_complete_notify.cpp
     ${APP_MSGS}/ota/msg_ota_event.cpp
     ${APP_MSGS}/ota/msg_ota_progress.cpp
+    # HTTP session messages
+    ${APP_MSGS}/http/msg_http_start_request.cpp
+    ${APP_MSGS}/http/msg_http_start_response.cpp
+    ${APP_MSGS}/http/msg_http_set_url_request.cpp
+    ${APP_MSGS}/http/msg_http_set_url_response.cpp
+    ${APP_MSGS}/http/msg_http_set_root_ca_request.cpp
+    ${APP_MSGS}/http/msg_http_set_root_ca_response.cpp
+    ${APP_MSGS}/http/msg_http_header_request.cpp
+    ${APP_MSGS}/http/msg_http_header_response.cpp
+    ${APP_MSGS}/http/msg_http_body_request.cpp
+    ${APP_MSGS}/http/msg_http_body_response.cpp
+    ${APP_MSGS}/http/msg_http_send_request.cpp
+    ${APP_MSGS}/http/msg_http_result.cpp
+    ${APP_MSGS}/http/msg_http_abort_request.cpp
+    ${APP_MSGS}/http/msg_http_response_header.cpp
 )
 target_include_directories(app_messages PUBLIC
     ${APP_MSGS}
@@ -208,6 +220,7 @@ target_include_directories(app_messages PUBLIC
     ${APP_MODS}/module_config
     ${APP_MODS}/module_fuel/pumps   # nozzle_event.h (needed by msg_nozzle_state.h)
     ${APP_MSGS}/messages            # msg_dev_info_*.h
+    ${APP_MSGS}/http                # http_types.h, msg_http_*.h
     ${PERIPHERAL}
     ${PAL}
     ${PAL_MAC}       # esp_err.h stub
@@ -252,9 +265,8 @@ add_library(app_modules STATIC
     ${APP_MODS}/module_fuel/pumps/sanki/sanki_6_digit_1.cpp
     # Buzzer module
     ${APP_MODS}/module_buzzer/module_buzzer.cpp
-    # Cloud module (uses cloud_driver_t abstraction)
-    ${APP_MODS}/module_cloud/module_cloud.cpp
-    ${DRIVERS}/cube_sphere/cube_sphere_cloud_driver.cpp
+    # Cloud module — CubeSphere implementation embedded directly in the module
+    ${APP_MODS}/module_cubesphere/module_cubesphere.cpp
     # Internet monitor module
     ${APP_MODS}/module_internet/module_internet.cpp
     # WiFi module
@@ -276,6 +288,8 @@ add_library(app_modules STATIC
     ${APP_MODS}/module_web_server/ModuleWebServer.cpp
     # Persistent logger module
     ${APP_MODS}/module_plog/module_plog.cpp
+    # HTTP client module
+    ${APP_MODS}/module_http/module_http.cpp
     # Device info module
     ${APP_MODS}/module_device_info/module_device_info.cpp
     # Middleware: list manager + retransmission manager
@@ -298,7 +312,7 @@ target_include_directories(app_modules PUBLIC
     ${APP_MODS}/module_fuel/pumps
     ${APP_MODS}/module_fuel/pumps/sanki
     ${APP_MODS}/module_buzzer
-    ${APP_MODS}/module_cloud
+    ${APP_MODS}/module_cubesphere
     ${APP_MODS}/module_internet
     ${APP_MODS}/module_mqtt
     ${APP_MODS}/module_wifi
@@ -308,10 +322,10 @@ target_include_directories(app_modules PUBLIC
     ${APP_MODS}/module_web_client_ota  # ModuleWebClientOta.h, hsys_ota.h
     ${APP_MODS}/module_web_server      # ModuleWebServer.h
     ${APP_MODS}/module_plog            # module_plog.h
+    ${APP_MODS}/module_http            # module_http.h
     ${APP_MODS}/module_device_info     # module_device_info.h
     ${SUB_MODS}/utils               # crc32.h
     ${DRIVERS}/DS1307
-    ${DRIVERS}/cube_sphere  # cube_sphere_api.h, cube_sphere_config.h
     ${SUB_MODS}           # for ds1307.cpp: #include "pal/pal_i2c.h"
     ${APP_PHR}
     ${APP}
@@ -343,7 +357,7 @@ target_include_directories(app_product PUBLIC
     ${APP_MODS}/module_print_btn
     ${APP_MODS}/module_fuel
     ${APP_MODS}/module_buzzer
-    ${APP_MODS}/module_cloud
+    ${APP_MODS}/module_cubesphere
     ${APP_MODS}/module_internet
     ${APP_MODS}/module_mqtt
     ${APP_MODS}/module_wifi
@@ -354,6 +368,7 @@ target_include_directories(app_product PUBLIC
     ${APP_MODS}/module_web_client_ota  # ModuleWebClientOta.h
     ${APP_MODS}/module_web_server      # ModuleWebServer.h
     ${APP_MODS}/module_plog            # module_plog.h
+    ${APP_MODS}/module_http            # module_http.h
     ${APP_MODS}/module_device_info     # module_device_info.h
     ${SUB_MODS}/utils               # crc32.h (transitively needed)
     ${APP_MSGS}
@@ -367,7 +382,7 @@ target_include_directories(app_product PUBLIC
     ${MIDDLEWARE}/retransmission-manager # retransmission_manager.h
     ${PERIPHERAL}
     ${PAL}           # pal_system.h
-    ${DRIVERS}/cube_sphere  # cube_sphere_cloud_driver.h
+    ${APP_MODS}/module_cubesphere  # module_cubesphere.h
 )
 target_link_libraries(app_product PRIVATE hsys_framework app_modules app_messages pal_mac)
 

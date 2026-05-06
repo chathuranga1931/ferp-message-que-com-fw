@@ -89,7 +89,8 @@ typedef enum : uint16_t
     // ------------------------------------------------------------------
     MSG_ID_WIFI_EVENT           = 0x0A00,   ///< ModuleWifi     -> all: WiFi state change
     MSG_ID_INTERNET_STATUS      = 0x0A01,   ///< ModuleInternet -> all: internet reachability
-    MSG_ID_CLOUD_STATUS         = 0x0A02,   ///< ModuleCloud    -> all: cloud event result
+    MSG_ID_CUBESPHERE_STATUS     = 0x0A02,   ///< ModuleCubeSphere -> all: cloud event result
+    MSG_ID_CLOUD_STATUS          = MSG_ID_CUBESPHERE_STATUS,   ///< backward-compat alias
 
     // ------------------------------------------------------------------
     // OTA  (0x0A03 – 0x0A0A)
@@ -113,9 +114,27 @@ typedef enum : uint16_t
     MSG_ID_DEV_INFO_VALUE       = 0x0B02,   ///< ModuleDeviceInfo -> requester: field value response (DIRECT)
 
     // ------------------------------------------------------------------
+    // HTTP client session  (0x0C00 – 0x0C0D)
+    // ------------------------------------------------------------------
+    MSG_ID_HTTP_START_REQUEST      = 0x0C00,   ///< client → ModuleHttp: open session (DIRECT)
+    MSG_ID_HTTP_START_RESPONSE     = 0x0C01,   ///< ModuleHttp → client: session result (DIRECT)
+    MSG_ID_HTTP_SET_URL_REQUEST    = 0x0C02,   ///< client → ModuleHttp: set request URL (DIRECT)
+    MSG_ID_HTTP_SET_URL_RESPONSE   = 0x0C03,   ///< ModuleHttp → client: URL accepted (DIRECT)
+    MSG_ID_HTTP_SET_ROOT_CA_REQ    = 0x0C04,   ///< client → ModuleHttp: set CA cert (DIRECT)
+    MSG_ID_HTTP_SET_ROOT_CA_RESP   = 0x0C05,   ///< ModuleHttp → client: CA accepted (DIRECT)
+    MSG_ID_HTTP_HEADER_REQUEST     = 0x0C06,   ///< client → ModuleHttp: add request header (DIRECT)
+    MSG_ID_HTTP_HEADER_RESPONSE    = 0x0C07,   ///< ModuleHttp → client: header accepted (DIRECT)
+    MSG_ID_HTTP_BODY_REQUEST       = 0x0C08,   ///< client → ModuleHttp: set request body (DIRECT)
+    MSG_ID_HTTP_BODY_RESPONSE      = 0x0C09,   ///< ModuleHttp → client: body accepted (DIRECT)
+    MSG_ID_HTTP_SEND_REQUEST       = 0x0C0A,   ///< client → ModuleHttp: execute HTTP call (DIRECT)
+    MSG_ID_HTTP_RESULT             = 0x0C0B,   ///< ModuleHttp → client: HTTP result + body (DIRECT)
+    MSG_ID_HTTP_ABORT_REQUEST      = 0x0C0C,   ///< client → ModuleHttp: abort session (DIRECT)
+    MSG_ID_HTTP_RESPONSE_HEADER    = 0x0C0D,   ///< ModuleHttp → client: one response header (DIRECT)
+
+    // ------------------------------------------------------------------
     // Sentinel — keep one above the highest assigned ID
     // ------------------------------------------------------------------
-    MSG_ID_MAX              = 0x0B03,
+    MSG_ID_MAX              = 0x0C0E,
 
 } app_msg_id_e;
 
