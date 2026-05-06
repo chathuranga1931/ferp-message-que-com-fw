@@ -230,3 +230,11 @@
 [2026-05-06 10:52:24] MSG:MsgCloudStatus {"event":"HB_SENT","nozzle_idx":0,"device_uuid":""}
 [2026-05-06 10:53:24] MSG:MsgCloudStatus {"event":"HB_SENT","nozzle_idx":0,"device_uuid":""}
 [2026-05-06 10:54:24] MSG:MsgCloudStatus {"event":"HB_SENT","nozzle_idx":0,"device_uuid":""}
+[2026-05-07 01:59:47] MSG:MsgSdStatus {"status":0,"card_type":"SDHC (sim)","card_size_mb":1024,"free_mb":1587933}
+[2026-05-07 01:59:47] MSG:MsgTimeStatus {"epoch":1778099387,"source":2,"valid":true}
+[2026-05-07 01:59:47] MSG:MsgConfigReady {}
+[2026-05-07 01:59:47] MSG:MsgWifiEvent {"event":"STA_CONNECTED","rssi":-55,"ip":"","ssid":"MyNetwork","mac":""}
+[2026-05-07 01:59:48] MSG:MsgWifiEvent {"event":"STA_GOT_IP","rssi":-55,"ip":"192.168.1.4","ssid":"MyNetwork","mac":"12:BB:09:1B:D5:40"}
+[2026-05-06 20:29:48] MSG:MsgInternetStatus {"connected":true}
+[2026-05-06 20:29:49] MSG:MsgCubesphereStatus {"event":"REGISTERED","nozzle_idx":0,"device_uuid":"f18c50ea-d66b-47f0-98e4-29fed681873e"}
+[2026-05-06 20:29:49] MSG:MsgMqttStatus {"connected":true}

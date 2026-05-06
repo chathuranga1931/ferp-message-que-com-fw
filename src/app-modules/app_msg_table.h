@@ -78,6 +78,7 @@
 #include "msg_http_result.h"                 // MsgHttpResult          (0x0C0B)
 #include "msg_http_abort_request.h"          // MsgHttpAbortRequest    (0x0C0C)
 #include "msg_http_response_header.h"        // MsgHttpResponseHeader  (0x0C0D)
+#include "msg_http_set_stream_sink.h"        // MsgHttpSetStreamSink   (0x005E)
 // ---------------------------------------------------------------------------
 // Descriptor table macro
 // Place APP_MSG_TABLE_INIT; in exactly one .cpp file (app.cpp).
@@ -135,6 +136,7 @@
         MsgHttpResult::DESCRIPTOR,                                                \
         MsgHttpAbortRequest::DESCRIPTOR,                                          \
         MsgHttpResponseHeader::DESCRIPTOR,                                        \
+        MsgHttpSetStreamSink::DESCRIPTOR,                                         \
     };                                                                            \
     static const uint16_t k_msg_table_count =                                    \
         (uint16_t)(sizeof(k_msg_table) / sizeof(k_msg_table[0]))

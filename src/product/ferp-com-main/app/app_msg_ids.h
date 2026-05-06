@@ -94,6 +94,7 @@ typedef enum : uint16_t
     MSG_ID_HTTP_RESULT             = 0x005B,   ///< ModuleHttp → client: HTTP result + body (DIRECT)
     MSG_ID_HTTP_ABORT_REQUEST      = 0x005C,   ///< client → ModuleHttp: abort session (DIRECT)
     MSG_ID_HTTP_RESPONSE_HEADER    = 0x005D,   ///< ModuleHttp → client: one response header (DIRECT)
+    MSG_ID_HTTP_SET_STREAM_SINK    = 0x005E,   ///< client → ModuleHttp: set streaming binary write sink (DIRECT)
 
     // ------------------------------------------------------------------
     // Timer  (0x0100 – 0x010F)

@@ -31,6 +31,8 @@
 #include "http_types.h"
 #include "pal_http_client.h"
 #include "msg_http_start_request.h"
+#include "FileSystemDriver.h"   /* ota_fs_driver_t */
+#include "crc32.h"              /* crc32_update() */
 #include <stdint.h>
 
 // ---------------------------------------------------------------------------
@@ -78,6 +80,12 @@ private:
     char    _collect_keys[MSG_HTTP_MAX_COLLECT_KEYS][MODULE_HTTP_MAX_HEADER_KEY] = {};
     uint8_t _collect_count = 0U;
 
+    // Streaming binary sink (optional — set via MsgHttpSetStreamSink before SendRequest)
+    const ota_fs_driver_t *_stream_drv      = nullptr;
+    void                  *_stream_ctx      = nullptr;
+    uint32_t               _stream_crc32_expected = 0U;
+    bool                   _has_stream_sink = false;
+
     // ── Idle timer ───────────────────────────────────────────────────────────
     hsys_timer_handle_t _idle_timer    = nullptr;
     volatile bool       _idle_expired  = false;
@@ -93,6 +101,7 @@ private:
     void _handle_set_root_ca(const hsys_msg_t &msg);
     void _handle_header(const hsys_msg_t &msg);
     void _handle_body(const hsys_msg_t &msg);
+    void _handle_set_stream_sink(const hsys_msg_t &msg);
     void _handle_send(const hsys_msg_t &msg);
     void _handle_abort(const hsys_msg_t &msg);
 

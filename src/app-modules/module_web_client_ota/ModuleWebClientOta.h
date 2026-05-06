@@ -6,29 +6,28 @@
 // all configured targets.  When an update is detected it participates in the
 // standard HSYS OTA session protocol as a SOURCE:
 //
-//   1. Send MsgOtaStartRequest  → OtaModule  (request session for target_idx)
-//   2. Recv MsgOtaStartResponse ← OtaModule  (ACCEPTED or REJECTED)
-//   3. Send MsgOtaRequestDriver → OtaModule
-//   4. Recv MsgOtaDriverResponse← OtaModule  (ota_fs_driver_t + ctx)
-//   5. Call hsys_ota_download_to_fs() — blocking HTTP stream into driver
-//   6. Publish MsgOtaProgress    (during download, per chunk)
-//   7. Send MsgOtaCompleteNotify → OtaModule  (success / failure)
+//   1. Send MsgHttpStartRequest  → ModuleHttp    (POST /check)
+//   2. On MsgHttpStartResponse   → burst-send URL/CA/header/body + SendRequest
+//   3. On MsgHttpResult          → parse JSON; if update_available:
+//   4. Send MsgOtaStartRequest   → OtaModule
+//   5. On MsgOtaStartResponse    → if ACCEPTED:
+//   6. Send MsgOtaRequestDriver  → OtaModule
+//   7. On MsgOtaDriverResponse   → build download URL, send MsgHttpStartRequest
+//   8. On MsgHttpStartResponse   → burst-send SetRootCa + SetStreamSink + SetUrl + SendRequest
+//   9. On MsgHttpResult          → binary written to fs_driver by ModuleHttp
+//  10. Send MsgOtaCompleteNotify → OtaModule
 //
-// Blocking note:
-//   Steps 1b (version check) and 5 (download) are blocking HTTP calls.
-//   The module must run in a DEDICATED task (web_ota_task) so that blocking
-//   does not stall any other module.
-//
-// Configuration:
-//   Construct with a static array of web_ota_target_cfg_t descriptors.
-//   The server URL, device UUID, and root CA are read from app_config at
-//   runtime (after MsgConfigCloud is received).
+// Non-blocking: all HTTP calls go through ModuleHttp via messages.
+// This module can share any task with other non-blocking modules.
 
 #pragma once
 
 #include "hsys_module.h"
 #include "app_module_ids.h"
 #include "hsys_ota.h"           /* hsys_ota_cfg_t, hsys_ota_check_result_t */
+#include "FileSystemDriver.h"   /* ota_fs_driver_t */
+#include "http_types.h"         /* http_result_t */
+#include "pal_http_client.h"    /* pal_http_method_t */
 
 // ── Module identity ────────────────────────────────────────────────────────
 
@@ -78,17 +77,29 @@ private:
     const web_ota_target_cfg_t *_targets      = nullptr;
     uint8_t                     _target_count = 0;
 
-    // ── Runtime state ──────────────────────────────────────────────────────
+    // ── OTA module state machine ────────────────────────────────────────────
 
-    /** Internal state machine states. */
+    /** Coarse session state (OTA protocol progress). */
     typedef enum {
-        STATE_IDLE,              ///< Waiting for internet + next tick period
-        STATE_REQUESTING_SESSION,///< MsgOtaStartRequest sent; waiting for response
-        STATE_REQUESTING_DRIVER, ///< MsgOtaRequestDriver sent; waiting for response
-        STATE_DOWNLOADING,       ///< hsys_ota_download_to_fs() running (blocking)
+        STATE_IDLE,               ///< Waiting for internet + next tick period
+        STATE_HTTP_CHECK,         ///< HTTP session open/executing for version check POST
+        STATE_REQUESTING_SESSION, ///< MsgOtaStartRequest sent; waiting for response
+        STATE_REQUESTING_DRIVER,  ///< MsgOtaRequestDriver sent; waiting for response
+        STATE_HTTP_DOWNLOAD,      ///< HTTP session open/executing for firmware download
     } state_t;
 
-    state_t  _state          = STATE_IDLE;
+    // ── HTTP sub-state ──────────────────────────────────────────────────────
+
+    /** HTTP lifecycle phase within a single HTTP session. */
+    typedef enum {
+        HTTP_IDLE,       ///< No HTTP session in progress
+        HTTP_STARTING,   ///< MsgHttpStartRequest sent; awaiting MsgHttpStartResponse
+        HTTP_EXECUTING,  ///< Session open + burst sent; awaiting MsgHttpResult
+    } http_phase_t;
+
+    state_t      _state         = STATE_IDLE;
+    http_phase_t _http_phase    = HTTP_IDLE;
+
     bool     _internet_ok       = false;   ///< Set by MsgInternetStatus
     bool     _config_ready      = false;   ///< Set when MsgConfigOta received (URL + cert)
     bool     _cloud_registered  = false;   ///< Set when MsgCloudStatus(REGISTERED) received (UUID)
@@ -96,43 +107,50 @@ private:
     uint32_t _tick_count        = 0;       ///< Counts MsgTick1000ms events
     uint8_t  _next_slot         = 0;       ///< Next target slot index to check
 
-    /** Index into _targets[] for the active session. */
+    /** Index into _targets[] for the active OTA session. */
     uint8_t  _active_slot    = 0;
 
     /** Version string returned by the last successful version check. */
     char     _pending_version[HSYS_OTA_MAX_VERSION_LEN];
 
-    // ── Cached config (populated from two sources) ───────────────────────
-    // _server_url + _cert_pem : from MsgConfigOta (sent by ModuleConfig)
-    // _device_id              : from MsgCloudStatus(REGISTERED) (sent by ModuleCloud)
+    /** Expected CRC32 from check response (0 = skip verification). */
+    uint32_t _pending_crc32  = 0U;
+
+    /** Cached ota_fs_driver_t from MsgOtaDriverResponse (used in download). */
+    const ota_fs_driver_t *_dl_drv = nullptr;
+    void                  *_dl_ctx = nullptr;
+
+    // ── Cached config ──────────────────────────────────────────────────────
     char        _server_url[HSYS_OTA_MAX_URL_LEN]      = {};
     char        _device_id [HSYS_OTA_MAX_DEVICE_ID_LEN]= {};
     const char *_cert_pem  = nullptr;
 
     // ── Internal helpers ───────────────────────────────────────────────────
 
-    /**
-     * Build an hsys_ota_cfg_t for the given target slot using cached config.
-     * Returns false if config is not yet ready.
-     */
+    /** Build an hsys_ota_cfg_t for the given target slot using cached config. */
     bool _build_cfg(uint8_t slot, hsys_ota_cfg_t *out) const;
 
-    /**
-     * Perform a version check for the given slot.
-     * On success with update_available, initiates the OTA session.
-     * On no-update, increments _next_slot and resets to IDLE.
-     */
-    void _check_target(uint8_t slot);
+    /** Send MsgHttpStartRequest to ModuleHttp and transition _http_phase. */
+    void _send_http_start(pal_http_method_t method, uint32_t timeout_ms);
 
-    // ── Download progress bridge ───────────────────────────────────────────
+    /** Burst-send SetRootCa + Content-Type header + SetUrl(check) + Body + Send. */
+    void _burst_check_post(uint8_t slot);
 
-    /**
-     * Static callback passed to hsys_ota_download_to_fs().
-     * @p arg is a pointer to this ModuleWebClientOta instance.
-     */
-    static void _s_progress_cb(uint32_t bytes, uint32_t total,
-                                uint8_t pct, void *arg);
+    /** Burst-send SetRootCa + SetStreamSink + SetUrl(download) + Send. */
+    void _burst_download_get(uint8_t slot,
+                              const ota_fs_driver_t *drv, void *ctx,
+                              uint32_t expected_crc32);
 
-    /** Called from _s_progress_cb — publishes MsgOtaProgress on the bus. */
+    /** Handle MsgHttpStartResponse (common for both check and download). */
+    void _on_http_start_response(const hsys_msg_t &msg);
+
+    /** Handle MsgHttpResult for the version-check POST. */
+    void _on_check_result(const hsys_msg_t &msg);
+
+    /** Handle MsgHttpResult for the firmware download GET. */
+    void _on_download_result(const hsys_msg_t &msg);
+
+    /** Publish a MsgOtaProgress message. */
     void _publish_progress(uint32_t bytes, uint32_t total, uint8_t pct);
 };
+

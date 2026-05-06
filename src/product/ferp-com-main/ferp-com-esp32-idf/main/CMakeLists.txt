@@ -124,6 +124,7 @@ idf_component_register(
         "${D_MSGS}/http/msg_http_set_url_response.cpp"
         "${D_MSGS}/http/msg_http_set_root_ca_request.cpp"
         "${D_MSGS}/http/msg_http_set_root_ca_response.cpp"
+        "${D_MSGS}/http/msg_http_set_stream_sink.cpp"
         "${D_MSGS}/http/msg_http_header_request.cpp"
         "${D_MSGS}/http/msg_http_header_response.cpp"
         "${D_MSGS}/http/msg_http_body_request.cpp"

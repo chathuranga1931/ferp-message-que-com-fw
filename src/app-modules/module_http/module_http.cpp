@@ -28,6 +28,7 @@
 #include "msg_http_abort_request.h"
 #include "msg_http_result.h"
 #include "msg_http_response_header.h"
+#include "msg_http_set_stream_sink.h"
 
 #include "pal_logger.h"
 #include "pal_http_client.h"
@@ -81,6 +82,7 @@ void ModuleHttp::init()
     subscribe(MSG_ID_HTTP_RESULT);
     subscribe(MSG_ID_HTTP_ABORT_REQUEST);
     subscribe(MSG_ID_HTTP_RESPONSE_HEADER);
+    subscribe(MSG_ID_HTTP_SET_STREAM_SINK);
 
     LOG_MSG_INFO(MOD_HTTP_LOG_EN, "init: ready  (idle timeout %u ms)",
                  (unsigned)MODULE_HTTP_IDLE_TIMEOUT_MS);
@@ -150,6 +152,10 @@ void ModuleHttp::on_msg_received(const hsys_msg_t &msg)
 
         case MSG_ID_HTTP_BODY_REQUEST:
             _handle_body(msg);
+            break;
+
+        case MSG_ID_HTTP_SET_STREAM_SINK:
+            _handle_set_stream_sink(msg);
             break;
 
         case MSG_ID_HTTP_SEND_REQUEST:
@@ -274,6 +280,25 @@ void ModuleHttp::_handle_body(const hsys_msg_t &msg)
     _send_op_response(MSG_ID_HTTP_BODY_RESPONSE, _owner_id, HTTP_OP_OK);
 }
 
+void ModuleHttp::_handle_set_stream_sink(const hsys_msg_t &msg)
+{
+    if (!_is_owner(msg)) return;
+
+    auto p = MsgHttpSetStreamSink::deserialize(msg);
+    if (!p.fs_drv || !p.fs_ctx) {
+        _send_op_response(MSG_ID_HTTP_SET_STREAM_SINK, _owner_id, HTTP_OP_ERR_BAD_STATE);
+        return;
+    }
+    _stream_drv           = p.fs_drv;
+    _stream_ctx           = p.fs_ctx;
+    _stream_crc32_expected= p.expected_crc32;
+    _has_stream_sink      = true;
+
+    _reset_idle_timer();
+    // No dedicated response message — reuse the body response op-result ID as ACK.
+    _send_op_response(MSG_ID_HTTP_SET_STREAM_SINK, _owner_id, HTTP_OP_OK);
+}
+
 void ModuleHttp::_handle_send(const hsys_msg_t &msg)
 {
     if (!_is_owner(msg)) return;
@@ -335,8 +360,80 @@ void ModuleHttp::_execute()
         pal_http_client_set_header(handle, _hdr_keys[i], _hdr_vals[i]);
     }
 
-    // Execute HTTP call
+    // Execute HTTP call — streaming or buffered
     pal_http_response_t resp = {};
+    if (_has_stream_sink) {
+        // Streaming path: deliver binary body directly into the ota_fs_driver_t
+        struct _StreamCtx {
+            const ota_fs_driver_t *drv;
+            void                  *ctx;
+            uint32_t               crc32;
+            uint32_t               bytes;
+            bool                   fopen_done;
+            bool                   error;
+        };
+        _StreamCtx sctx{};
+        sctx.drv = _stream_drv;
+        sctx.ctx = _stream_ctx;
+        sctx.crc32 = 0U;
+
+        auto chunk_cb = [](const uint8_t *data, size_t len, void *user) -> int32_t {
+            auto *s = static_cast<_StreamCtx *>(user);
+            if (s->error || len == 0U) return s->error ? -1 : 0;
+            if (!s->fopen_done) {
+                if (s->drv->fopen(s->ctx, nullptr, OTA_FS_OPEN_WRITE) != OTA_FS_OK) {
+                    s->error = true; return -1;
+                }
+                s->fopen_done = true;
+            }
+            if (s->drv->fwrite(s->ctx, data, (uint32_t)len) != OTA_FS_OK) {
+                s->error = true; return -1;
+            }
+            s->crc32   = crc32_update(s->crc32, data, len);
+            s->bytes  += (uint32_t)len;
+            return 0;
+        };
+
+        rc = pal_http_client_get_stream(handle, chunk_cb, &sctx);
+        pal_http_client_cleanup(handle);
+        handle = nullptr;
+
+        // Determine result
+        http_result_t stream_result;
+        if (rc < 0) {
+            stream_result = HTTP_RESULT_ERROR;
+        } else if (rc != 200) {
+            stream_result = HTTP_RESULT_ERROR;
+        } else if (sctx.error || !sctx.fopen_done || sctx.bytes == 0U) {
+            stream_result = HTTP_RESULT_ERROR;
+        } else if (_stream_crc32_expected != 0U && sctx.crc32 != _stream_crc32_expected) {
+            LOG_MSG_ERROR(MOD_HTTP_LOG_EN,
+                          "_execute(stream): CRC mismatch  got=0x%08lX  expected=0x%08lX",
+                          (unsigned long)sctx.crc32, (unsigned long)_stream_crc32_expected);
+            stream_result = HTTP_RESULT_ERROR;
+        } else {
+            stream_result = HTTP_RESULT_SUCCESS;
+        }
+
+        if (stream_result == HTTP_RESULT_SUCCESS) {
+            if (_stream_drv->fclose(_stream_ctx) != OTA_FS_OK) {
+                LOG_MSG_ERROR(MOD_HTTP_LOG_EN, "_execute(stream): fclose failed");
+                stream_result = HTTP_RESULT_ERROR;
+                _stream_drv->ferase(_stream_ctx);
+            } else {
+                LOG_MSG_INFO(MOD_HTTP_LOG_EN,
+                             "_execute(stream): %lu bytes  CRC=0x%08lX",
+                             (unsigned long)sctx.bytes, (unsigned long)sctx.crc32);
+            }
+        } else {
+            if (sctx.fopen_done) _stream_drv->ferase(_stream_ctx);
+        }
+
+        _send_result(stream_result, (stream_result == HTTP_RESULT_SUCCESS) ? 200 : rc,
+                     nullptr, 0U);
+        return;
+    }
+
     if (_method == PAL_HTTP_METHOD_GET || _method == PAL_HTTP_METHOD_HEAD) {
         rc = pal_http_client_get(handle, &resp);
     } else {
@@ -513,6 +610,10 @@ void ModuleHttp::_reset_session()
     _hdr_count     = 0U;
     _body_len      = 0U;
     _collect_count = 0U;
+    _stream_drv    = nullptr;
+    _stream_ctx    = nullptr;
+    _stream_crc32_expected = 0U;
+    _has_stream_sink = false;
     memset(_hdr_keys,    0, sizeof(_hdr_keys));
     memset(_hdr_vals,    0, sizeof(_hdr_vals));
     memset(_collect_keys, 0, sizeof(_collect_keys));

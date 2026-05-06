@@ -436,7 +436,7 @@ static HsysModule *k_module_table[] = {
     ModuleSD::instance(),
     ModuleTimeMgr::instance(),
     OtaModule::instance(),
-    // ModuleWebClientOta::instance(),
+    ModuleWebClientOta::instance(),
     ModuleWebServer::instance(),
     ModuleMqtt::instance(),
     ModuleDeviceInfo::instance(),

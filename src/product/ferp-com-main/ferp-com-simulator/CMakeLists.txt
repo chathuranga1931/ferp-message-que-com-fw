@@ -196,6 +196,7 @@ add_library(app_messages STATIC
     ${APP_MSGS}/http/msg_http_set_url_response.cpp
     ${APP_MSGS}/http/msg_http_set_root_ca_request.cpp
     ${APP_MSGS}/http/msg_http_set_root_ca_response.cpp
+    ${APP_MSGS}/http/msg_http_set_stream_sink.cpp
     ${APP_MSGS}/http/msg_http_header_request.cpp
     ${APP_MSGS}/http/msg_http_header_response.cpp
     ${APP_MSGS}/http/msg_http_body_request.cpp
