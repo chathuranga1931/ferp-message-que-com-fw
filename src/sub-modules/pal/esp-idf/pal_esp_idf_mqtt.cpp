@@ -7,14 +7,17 @@
  */
 
 #include "pal_mqtt.h"
+#include "pal_logger.h"
 
 #include <string.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 #include "mqtt_client.h"
-#include "esp_log.h"
 
-static const char* TAG = "PAL_MQTT";
+#define __TAG__ "PAL_MQTT"
+#define PAL_MQTT_LOG_EN     LOG_EN
+#define PAL_MQTT_DBG_LOG_EN LOG_DIS
 
 // ============================================================================
 // Internal Client Structure
@@ -80,41 +83,41 @@ static void mqtt_event_handler(void* handler_args, esp_event_base_t base,
     
     switch (event_id) {
         case MQTT_EVENT_CONNECTED:
-            ESP_LOGI(TAG, "MQTT_EVENT_CONNECTED");
+            LOG_MSG_INFO(PAL_MQTT_LOG_EN, "MQTT_EVENT_CONNECTED");
             internal_client->is_connected = true;
             pal_event.event_type = PAL_MQTT_EVENT_CONNECTED;
             internal_client->event_callback(&pal_event);
             break;
             
         case MQTT_EVENT_DISCONNECTED:
-            ESP_LOGI(TAG, "MQTT_EVENT_DISCONNECTED");
+            LOG_MSG_INFO(PAL_MQTT_LOG_EN, "MQTT_EVENT_DISCONNECTED");
             internal_client->is_connected = false;
             pal_event.event_type = PAL_MQTT_EVENT_DISCONNECTED;
             internal_client->event_callback(&pal_event);
             break;
             
         case MQTT_EVENT_SUBSCRIBED:
-            ESP_LOGI(TAG, "MQTT_EVENT_SUBSCRIBED, msg_id=%d", event->msg_id);
+            LOG_MSG_INFO(PAL_MQTT_LOG_EN, "MQTT_EVENT_SUBSCRIBED, msg_id=%d", event->msg_id);
             pal_event.event_type = PAL_MQTT_EVENT_SUBSCRIBED;
             pal_event.data.subscribed.msg_id = event->msg_id;
             internal_client->event_callback(&pal_event);
             break;
             
         case MQTT_EVENT_UNSUBSCRIBED:
-            ESP_LOGI(TAG, "MQTT_EVENT_UNSUBSCRIBED, msg_id=%d", event->msg_id);
+            LOG_MSG_INFO(PAL_MQTT_LOG_EN, "MQTT_EVENT_UNSUBSCRIBED, msg_id=%d", event->msg_id);
             pal_event.event_type = PAL_MQTT_EVENT_UNSUBSCRIBED;
             internal_client->event_callback(&pal_event);
             break;
             
         case MQTT_EVENT_PUBLISHED:
-            ESP_LOGI(TAG, "MQTT_EVENT_PUBLISHED, msg_id=%d", event->msg_id);
+            LOG_MSG_INFO(PAL_MQTT_LOG_EN, "MQTT_EVENT_PUBLISHED, msg_id=%d", event->msg_id);
             pal_event.event_type = PAL_MQTT_EVENT_PUBLISHED;
             pal_event.data.published.msg_id = event->msg_id;
             internal_client->event_callback(&pal_event);
             break;
             
         case MQTT_EVENT_DATA:
-            ESP_LOGI(TAG, "MQTT_EVENT_DATA");
+            LOG_MSG_DEBUG(PAL_MQTT_DBG_LOG_EN, "MQTT_EVENT_DATA");
             pal_event.event_type = PAL_MQTT_EVENT_DATA;
             
             // Fill message data
@@ -132,14 +135,32 @@ static void mqtt_event_handler(void* handler_args, esp_event_base_t base,
             break;
             
         case MQTT_EVENT_ERROR:
-            ESP_LOGE(TAG, "MQTT_EVENT_ERROR");
+            LOG_MSG_ERROR(PAL_MQTT_LOG_EN, "MQTT_EVENT_ERROR");
+            if (event->error_handle) {
+                LOG_MSG_ERROR(PAL_MQTT_LOG_EN, "  error_type=%d", event->error_handle->error_type);
+                if (event->error_handle->error_type == MQTT_ERROR_TYPE_TCP_TRANSPORT) {
+                    LOG_MSG_ERROR(PAL_MQTT_LOG_EN, "  transport: esp_err=0x%x  tls_stack=0x%x  sock_errno=%d",
+                             event->error_handle->esp_tls_last_esp_err,
+                             event->error_handle->esp_tls_stack_err,
+                             event->error_handle->esp_transport_sock_errno);
+                } else if (event->error_handle->error_type == MQTT_ERROR_TYPE_CONNECTION_REFUSED) {
+                    LOG_MSG_ERROR(PAL_MQTT_LOG_EN, "  CONNACK refused: return_code=%d",
+                             event->error_handle->connect_return_code);
+                    /* MQTT 3.1.1 return codes:
+                     * 1 = unacceptable protocol version
+                     * 2 = client id rejected
+                     * 3 = server unavailable
+                     * 4 = bad username or password
+                     * 5 = not authorised */
+                }
+            }
             pal_event.event_type = PAL_MQTT_EVENT_ERROR;
             pal_event.data.error_code = -1;
             internal_client->event_callback(&pal_event);
             break;
             
         default:
-            ESP_LOGD(TAG, "MQTT event: %d", event_id);
+            LOG_MSG_DEBUG(PAL_MQTT_DBG_LOG_EN, "MQTT event: %d", event_id);
             break;
     }
 }
@@ -166,7 +187,7 @@ pal_mqtt_client_handle_t pal_mqtt_client_init(const pal_mqtt_config_t* config,
                                                void* user_data) {
     
     if (config == NULL) {
-        ESP_LOGE(TAG, "Config is NULL");
+        LOG_MSG_ERROR(PAL_MQTT_LOG_EN, "Config is NULL");
         return NULL;
     }
     
@@ -175,7 +196,7 @@ pal_mqtt_client_handle_t pal_mqtt_client_init(const pal_mqtt_config_t* config,
         (pal_mqtt_client_internal_t*)calloc(1, sizeof(pal_mqtt_client_internal_t));
     
     if (internal_client == NULL) {
-        ESP_LOGE(TAG, "Failed to allocate client structure");
+        LOG_MSG_ERROR(PAL_MQTT_LOG_EN, "Failed to allocate client structure");
         return NULL;
     }
     
@@ -246,7 +267,7 @@ pal_mqtt_client_handle_t pal_mqtt_client_init(const pal_mqtt_config_t* config,
     internal_client->esp_client = esp_mqtt_client_init(&mqtt_cfg);
     
     if (internal_client->esp_client == NULL) {
-        ESP_LOGE(TAG, "Failed to initialize MQTT client");
+        LOG_MSG_ERROR(PAL_MQTT_LOG_EN, "Failed to initialize MQTT client");
         free(internal_client);
         return NULL;
     }
@@ -257,14 +278,14 @@ pal_mqtt_client_handle_t pal_mqtt_client_init(const pal_mqtt_config_t* config,
                                    mqtt_event_handler,
                                    internal_client);
     
-    ESP_LOGI(TAG, "MQTT client initialized");
+    LOG_MSG_INFO(PAL_MQTT_LOG_EN, "MQTT client initialized");
     
     return (pal_mqtt_client_handle_t)internal_client;
 }
 
 int32_t pal_mqtt_client_start(pal_mqtt_client_handle_t client) {
     if (client == NULL) {
-        ESP_LOGE(TAG, "Client is NULL");
+        LOG_MSG_ERROR(PAL_MQTT_LOG_EN, "Client is NULL");
         return -1;
     }
     
@@ -273,11 +294,11 @@ int32_t pal_mqtt_client_start(pal_mqtt_client_handle_t client) {
     esp_err_t ret = esp_mqtt_client_start(internal_client->esp_client);
     
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to start MQTT client: %d", ret);
+        LOG_MSG_ERROR(PAL_MQTT_LOG_EN, "Failed to start MQTT client: %d", ret);
         return -1;
     }
     
-    ESP_LOGI(TAG, "MQTT client started");
+    LOG_MSG_INFO(PAL_MQTT_LOG_EN, "MQTT client started");
     return 0;
 }
 
@@ -291,13 +312,13 @@ int32_t pal_mqtt_client_stop(pal_mqtt_client_handle_t client) {
     esp_err_t ret = esp_mqtt_client_stop(internal_client->esp_client);
     
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to stop MQTT client: %d", ret);
+        LOG_MSG_ERROR(PAL_MQTT_LOG_EN, "Failed to stop MQTT client: %d", ret);
         return -1;
     }
     
     internal_client->is_connected = false;
     
-    ESP_LOGI(TAG, "MQTT client stopped");
+    LOG_MSG_INFO(PAL_MQTT_LOG_EN, "MQTT client stopped");
     return 0;
 }
 
@@ -317,13 +338,13 @@ int32_t pal_mqtt_client_destroy(pal_mqtt_client_handle_t client) {
     // Free internal structure
     free(internal_client);
     
-    ESP_LOGI(TAG, "MQTT client destroyed");
+    LOG_MSG_INFO(PAL_MQTT_LOG_EN, "MQTT client destroyed");
     return 0;
 }
 
 int32_t pal_mqtt_client_reconnect(pal_mqtt_client_handle_t client) {
     if (client == NULL) {
-        ESP_LOGE(TAG, "Client is NULL");
+        LOG_MSG_ERROR(PAL_MQTT_LOG_EN, "Client is NULL");
         return -1;
     }
     
@@ -332,11 +353,11 @@ int32_t pal_mqtt_client_reconnect(pal_mqtt_client_handle_t client) {
     esp_err_t ret = esp_mqtt_client_reconnect(internal_client->esp_client);
     
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to reconnect MQTT client: %d", ret);
+        LOG_MSG_ERROR(PAL_MQTT_LOG_EN, "Failed to reconnect MQTT client: %d", ret);
         return -1;
     }
     
-    ESP_LOGI(TAG, "MQTT client reconnecting");
+    LOG_MSG_INFO(PAL_MQTT_LOG_EN, "MQTT client reconnecting");
     return 0;
 }
 
@@ -348,7 +369,7 @@ int32_t pal_mqtt_client_subscribe(pal_mqtt_client_handle_t client,
                                    const char* topic,
                                    pal_mqtt_qos_t qos) {
     if (client == NULL || topic == NULL) {
-        ESP_LOGE(TAG, "Invalid parameters");
+        LOG_MSG_ERROR(PAL_MQTT_LOG_EN, "Invalid parameters");
         return -1;
     }
     
@@ -359,18 +380,18 @@ int32_t pal_mqtt_client_subscribe(pal_mqtt_client_handle_t client,
                                           pal_qos_to_esp_qos(qos));
     
     if (msg_id < 0) {
-        ESP_LOGE(TAG, "Failed to subscribe to topic: %s", topic);
+        LOG_MSG_ERROR(PAL_MQTT_LOG_EN, "Failed to subscribe to topic: %s", topic);
         return -1;
     }
     
-    ESP_LOGI(TAG, "Subscribed to topic: %s, msg_id=%d", topic, msg_id);
+    LOG_MSG_INFO(PAL_MQTT_LOG_EN, "Subscribed to topic: %s, msg_id=%d", topic, msg_id);
     return msg_id;
 }
 
 int32_t pal_mqtt_client_unsubscribe(pal_mqtt_client_handle_t client,
                                      const char* topic) {
     if (client == NULL || topic == NULL) {
-        ESP_LOGE(TAG, "Invalid parameters");
+        LOG_MSG_ERROR(PAL_MQTT_LOG_EN, "Invalid parameters");
         return -1;
     }
     
@@ -379,11 +400,11 @@ int32_t pal_mqtt_client_unsubscribe(pal_mqtt_client_handle_t client,
     int msg_id = esp_mqtt_client_unsubscribe(internal_client->esp_client, topic);
     
     if (msg_id < 0) {
-        ESP_LOGE(TAG, "Failed to unsubscribe from topic: %s", topic);
+        LOG_MSG_ERROR(PAL_MQTT_LOG_EN, "Failed to unsubscribe from topic: %s", topic);
         return -1;
     }
     
-    ESP_LOGI(TAG, "Unsubscribed from topic: %s, msg_id=%d", topic, msg_id);
+    LOG_MSG_INFO(PAL_MQTT_LOG_EN, "Unsubscribed from topic: %s, msg_id=%d", topic, msg_id);
     return msg_id;
 }
 
@@ -394,7 +415,7 @@ int32_t pal_mqtt_client_publish(pal_mqtt_client_handle_t client,
                                  pal_mqtt_qos_t qos,
                                  bool retain) {
     if (client == NULL || topic == NULL || data == NULL) {
-        ESP_LOGE(TAG, "Invalid parameters");
+        LOG_MSG_ERROR(PAL_MQTT_LOG_EN, "Invalid parameters");
         return -1;
     }
     
@@ -411,11 +432,11 @@ int32_t pal_mqtt_client_publish(pal_mqtt_client_handle_t client,
                                         retain ? 1 : 0);
     
     if (msg_id < 0) {
-        ESP_LOGE(TAG, "Failed to publish to topic: %s", topic);
+        LOG_MSG_ERROR(PAL_MQTT_LOG_EN, "Failed to publish to topic: %s", topic);
         return -1;
     }
     
-    ESP_LOGI(TAG, "Published to topic: %s, msg_id=%d", topic, msg_id);
+    LOG_MSG_INFO(PAL_MQTT_LOG_EN, "Published to topic: %s, msg_id=%d", topic, msg_id);
     return msg_id;
 }
 

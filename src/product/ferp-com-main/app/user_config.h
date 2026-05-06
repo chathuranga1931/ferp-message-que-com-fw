@@ -66,6 +66,10 @@
 // Middleware
 #define HSYS_CFG_LOG_EN     true    // hsys_config.cpp
 
+// PAL (ESP-IDF)
+#define PAL_MQTT_LOG_EN     LOG_EN  // pal_esp_idf_mqtt.cpp  — events, errors, connect/disconnect
+#define PAL_MQTT_DBG_LOG_EN LOG_DIS // pal_esp_idf_mqtt.cpp  — data events (verbose)
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Error code base values — required by hsys_config.h
 // ─────────────────────────────────────────────────────────────────────────────

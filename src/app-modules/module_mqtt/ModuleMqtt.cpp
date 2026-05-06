@@ -329,8 +329,8 @@ void ModuleMqtt::_on_config_mqtt(const hsys_msg_t &msg)
     }
 
     _state = STATE_WAIT_INTERNET;
-    LOG_MSG_INFO(MQTT_LOG, "config received — broker=%s:%u  state=WAIT_INTERNET",
-                 p.host, p.port);
+    LOG_MSG_INFO(MQTT_LOG, "config received — broker=%s:%u  user='%s'  client_id='%s'  state=WAIT_INTERNET",
+                 p.host, p.port, p.user, cfg.client_id);
 }
 
 // ---------------------------------------------------------------------------
