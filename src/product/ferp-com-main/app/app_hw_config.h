@@ -15,3 +15,11 @@
 // I2C port assignment
 // ---------------------------------------------------------------------------
 #define APP_HW_I2C_PORT_RTC      PAL_I2C_PORT_0    ///< I2C port used for the RTC
+
+// ---------------------------------------------------------------------------
+// SD card SPI pins  (board 2404)
+// ---------------------------------------------------------------------------
+#define APP_HW_SD_MOSI           23   ///< GPIO_NUM_23
+#define APP_HW_SD_MISO           19   ///< GPIO_NUM_19
+#define APP_HW_SD_SCK            18   ///< GPIO_NUM_18
+#define APP_HW_SD_CS             15   ///< GPIO_NUM_15

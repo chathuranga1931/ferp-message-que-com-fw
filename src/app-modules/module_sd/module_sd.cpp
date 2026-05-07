@@ -8,6 +8,8 @@
 #include "msg_sd_ready.h"
 #include "msg_sd_status.h"
 #include "pal_logger.h"
+#include "pal_sd.h"
+#include "app_hw_config.h"
 #include <string.h>
 
 #define __TAG__          "MOD_SD  "
@@ -26,7 +28,13 @@ void ModuleSD::pre_init()
 {
     LOG_MSG_INFO(MOD_SD_LOG_EN, "mounting SD card…");
 
-    int32_t rc = app_sd_init(&_card_info);
+    pal_sd_config_t sd_cfg{};
+    sd_cfg.mosi_pin = APP_HW_SD_MOSI;
+    sd_cfg.miso_pin = APP_HW_SD_MISO;
+    sd_cfg.sck_pin  = APP_HW_SD_SCK;
+    sd_cfg.cs_pin   = APP_HW_SD_CS;
+
+    int32_t rc = app_sd_init(&sd_cfg, &_card_info);
     if (rc != APP_SD_OK) {
         LOG_MSG_ERROR(MOD_SD_LOG_EN, "app_sd_init failed (%ld)", (long)rc);
         _mounted = false;

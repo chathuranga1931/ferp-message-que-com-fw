@@ -44,7 +44,7 @@ static void _unlock(void)
 
 // ── Lifecycle ─────────────────────────────────────────────────────────────────
 
-int32_t app_sd_init(app_sd_info_t *info)
+int32_t app_sd_init(const pal_sd_config_t *config, app_sd_info_t *info)
 {
     if (s_initialized) return APP_SD_OK;
 
@@ -55,7 +55,7 @@ int32_t app_sd_init(app_sd_info_t *info)
     }
 
     pal_sd_info_t pal_info{};
-    int32_t rc = pal_sd_init(nullptr, &pal_info);
+    int32_t rc = pal_sd_init(config, &pal_info);
     if (rc != PAL_OK) {
         LOG_MSG_ERROR(APP_SD_LOG_EN, "pal_sd_init failed (%ld)", (long)rc);
         return APP_SD_ERR_IO;

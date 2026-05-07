@@ -462,13 +462,15 @@ static const hsys_task_desc_t k_task_table[] = {
     //   btn_task      : debounce state machine + message publish.
     //                   Same logging headroom rule → min 2048.
     //   fuel_task      : sanki6 queue drain + nested state-machine calls.
-    //                    Large locals in _process_queues() are static → 4096 is fine.
+    //   storage_task  : SPIFFS/SD mount + JSON config + plog auto-msg codec (msg_name[48]
+    //                    + data_json[512] + line[640] + SD SPI call frames ≈ 1.3 KB per call).
+    //                    Large locals in _process_queues() are static → 6 KB needed.
     //   network_task1  : WiFi connect + ICMP ping + MQTT over TLS via mbedTLS → 8 KB.
     //   network_task2  : MODULE_CLOUD_ID is now fully message-driven (no direct TLS).
     //                    MODULE_WEB_CLIENT_OTA_ID still calls pal_http_client directly
     //                    (mbedTLS handshake ~4-6 KB) → keep at 8 KB minimum.
     //   http_task      : ModuleHttp owns all TLS for CubeSphere sessions → 10 KB.
-    { "storage_task",     4*1024,  5,  0,   { MODULE_SPIFFS_ID,      MODULE_SD_ID,             MODULE_CONFIG_ID,     MODULE_DEVICE_INFO_ID,  MODULE_PLOG_ID, 0 } },
+    { "storage_task",     6*1024,  5,  0,   { MODULE_SPIFFS_ID,      MODULE_SD_ID,             MODULE_CONFIG_ID,     MODULE_DEVICE_INFO_ID,  MODULE_PLOG_ID, 0 } },
     { "timing_task",      3*1024,  4,  0,   { TICKER_MODULE_ID,      MODULE_TIMER_ID,          MODULE_TIMEMGR_ID,                            0 } },
     { "indicator_task",   2*1024,  4,  0,   { MODULE_SYSMON_ID,      MODULE_LEDS_ID,           MODULE_BUZZER_ID,                             0 } },
     { "btn_task",         2*1024,  5,  0,   { MODULE_PRINT_BTN_ID,   MODULE_DEFAULT_BTN_ID,                                                  0 } },

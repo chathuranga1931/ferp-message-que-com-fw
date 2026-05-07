@@ -157,7 +157,7 @@ void ModuleWebClientOta::_burst_download_get(uint8_t slot,
         return;
     }
 
-    char url[HSYS_OTA_MAX_URL_LEN + 192];
+    char url[HSYS_OTA_MAX_URL_LEN + HSYS_OTA_MAX_FW_TYPE_LEN + HSYS_OTA_MAX_VERSION_LEN + HSYS_OTA_MAX_DEVICE_ID_LEN + 64];
     snprintf(url, sizeof(url),
              "%s/api/v1/firmware/download?firmware_type=%s&version=%s&device_id=%s",
              cfg.server_url, cfg.firmware_type, _pending_version, cfg.device_id);

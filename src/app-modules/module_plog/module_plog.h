@@ -43,8 +43,8 @@
 #define MODULE_PLOG_NAME            "plog"
 #define MODULE_PLOG_MAX_FILES       100    ///< log_000.txt .. log_099.txt
 #define MODULE_PLOG_LINES_PER_FILE  400    ///< rotate to next file at this threshold
-#define MODULE_PLOG_ROOT            "/sd/plog"
-#define MODULE_PLOG_STATE_FILE      "/sd/plog/state.txt"
+#define MODULE_PLOG_ROOT            "/plog"
+#define MODULE_PLOG_STATE_FILE      "/plog/state.txt"
 
 // ---------------------------------------------------------------------------
 // ModulePLog

@@ -50,11 +50,12 @@ extern "C" {
  * @brief  Initialise the SD card and internal mutex.
  *
  * Must be called once before any other app_sd_* function.
- * On success, fills *info if non-NULL.
+ * @param config  SPI pin configuration (must not be NULL on ESP-IDF).
+ * @param info    Optional — filled with card details on success.
  *
  * @return APP_SD_OK on success, negative error code otherwise.
  */
-int32_t app_sd_init(app_sd_info_t *info);
+int32_t app_sd_init(const pal_sd_config_t *config, app_sd_info_t *info);
 
 /**
  * @brief  Query free space on the SD card.
