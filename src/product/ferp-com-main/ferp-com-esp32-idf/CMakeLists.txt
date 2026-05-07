@@ -21,3 +21,6 @@ include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 add_compile_options(-include "${CMAKE_CURRENT_SOURCE_DIR}/../app/user_config.h")
 
 project(ferp-com)
+
+# Build a SPIFFS image from the data/ directory and flash it with idf.py flash.
+spiffs_create_partition_image(spiffs data FLASH_IN_PROJECT)
