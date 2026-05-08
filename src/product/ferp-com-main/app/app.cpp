@@ -68,6 +68,7 @@
 #include "app_config.h"
 #include "app_device_info.h"
 #include "app_sd.h"
+#include "app_spiffs.h"
 #include "hsys_config.h"
 #include "hsys_type.h"
 #include "hsys_task.h"
@@ -359,6 +360,79 @@ static const app_msg_mqtt_route_t k_mqtt_route_table[] = {
 };
 
 // ============================================================================
+// Web server tables (Phases 1-3)
+//
+// Phase 1 — Static file table: maps URI → filename + read driver.
+//           Only listed URIs are served; everything else gets a 404.
+//           Each entry carries a pal_http_file_driver_t that routes I/O through
+//           app_spiffs or app_sd (both mutex-protected) rather than the raw PAL.
+// Phase 2 — OTA target table: maps the ?name= query param to an OtaModule
+//           target index (0-3).
+// Phase 3 — HTTP-to-message-bus bridge route table: maps a request message ID
+//           to a destination module and expected response message ID.
+//           Entries with dest_module=0 are broadcast (publish); all others are
+//           direct sends (send).  response_id=0 means fire-and-forget.
+// ============================================================================
+
+// SPIFFS file-read driver — wraps app_spiffs_read_file_at with offset tracking.
+// ctx points to a static size_t that persists the read position across chunks.
+// When the last chunk is read (bytes_read < buf_size) the offset is reset to 0
+// so the next HTTP request starts from the beginning.
+static size_t s_spiffs_read_offset = 0;
+static int32_t _web_spiffs_read(const char *path, uint8_t *buf,
+                                 size_t buf_size, size_t *bytes_read, void *ctx)
+{
+    size_t *offset = static_cast<size_t *>(ctx);
+    int32_t rc = app_spiffs_read_file_at(path, *offset, (char *)buf, buf_size, bytes_read, 1000);
+    if (rc != APP_SPIFFS_OK) {
+        *offset = 0;
+        return rc;
+    }
+    if (*bytes_read < buf_size) {
+        *offset = 0;        // EOF reached — reset for next request
+    } else {
+        *offset += *bytes_read;
+    }
+    return APP_SPIFFS_OK;
+}
+static const pal_http_file_driver_t k_spiffs_driver = { _web_spiffs_read, &s_spiffs_read_offset };
+
+// SD file-read driver — wraps app_sd_read_file (mutex-protected)
+static int32_t _web_sd_read(const char *path, uint8_t *buf,
+                             size_t buf_size, size_t *bytes_read, void *ctx)
+{
+    (void)ctx;
+    return app_sd_read_file(path, (char *)buf, buf_size, bytes_read, 1000);
+}
+static const pal_http_file_driver_t k_sd_driver __attribute__((unused)) = { _web_sd_read, nullptr };
+
+static const ModuleWebServer::StaticFileDef k_web_pages[] = {
+    { "/",                          "index.html",                   &k_spiffs_driver },
+    { "/index.html",                "index.html",                   &k_spiffs_driver },
+    { "/styles.css",                "styles.css",                   &k_spiffs_driver },
+    { "/deviceConfigurations",      "deviceConfigurations.html",    &k_spiffs_driver },
+    { nullptr, nullptr, nullptr }  // sentinel
+};
+
+static const ModuleWebServer::OtaTargetDef k_web_ota_bins[] = {
+    { "main",          0 },
+    { "dt-bootloader", 1 },
+    { "dt-partitions", 2 },
+    { "dt-app",        3 },
+    { nullptr, 0 }                 // sentinel
+};
+
+static const ModuleWebServer::ApiMsgRouteDef k_api_routes[] = {
+    //  msg_id                    dest_module        response_id
+    { MSG_ID_CONFIG_GET_MQTT,  MODULE_CONFIG_ID,  MSG_ID_CONFIG_MQTT  },
+    { MSG_ID_CONFIG_GET_WIFI,  MODULE_CONFIG_ID,  MSG_ID_CONFIG_WIFI  },
+    { MSG_ID_CONFIG_GET_CLOUD, MODULE_CONFIG_ID,  MSG_ID_CONFIG_CLOUD },
+    { MSG_ID_CONFIG_GET_OTA,   MODULE_CONFIG_ID,  MSG_ID_CONFIG_OTA   },
+    { MSG_ID_CONFIG_SET,       (hsys_module_id_t)0, (hsys_msg_id_t)0  }, // broadcast
+    { (hsys_msg_id_t)0,        (hsys_module_id_t)0, (hsys_msg_id_t)0  }  // sentinel
+};
+
+// ============================================================================
 // Persistent log — auto-logged message ID table
 //
 // ModulePLog subscribes to every ID listed here at startup and encodes each
@@ -562,6 +636,11 @@ extern "C" void app_init(void)
     // Logger activates on MsgSdReady; auto-logs every message ID in k_plog_msg_ids.
     ModulePLog::instance()->set_storage(app_sd_get_storage_interface());
     ModulePLog::instance()->set_msg_table(k_plog_msg_ids, PLOG_MSG_TABLE_SIZE);
+
+    // Wire web server routing tables (Phases 1-3).
+    ModuleWebServer::instance()->set_static_files(k_web_pages);
+    ModuleWebServer::instance()->set_ota_targets(k_web_ota_bins);
+    ModuleWebServer::instance()->set_api_routes(k_api_routes);
 
     // 1. Config — load defaults and initialise the config handle
     app_config_init();

@@ -98,6 +98,18 @@ int32_t pal_spiffs_file_append(const char* path, const uint8_t* data, size_t siz
 int32_t pal_spiffs_file_read(const char* path, uint8_t * buffer, size_t max_size, size_t* bytes_read);
 
 /**
+ * @brief Read file content starting at a byte offset (for chunked streaming)
+ *
+ * @param path      File path (relative to SPIFFS mount point)
+ * @param offset    Byte offset to start reading from
+ * @param buffer    Buffer to store content
+ * @param max_size  Maximum bytes to read
+ * @param bytes_read Output: actual bytes read (can be NULL)
+ * @return PAL_OK on success, error code otherwise
+ */
+int32_t pal_spiffs_file_read_at(const char* path, size_t offset, uint8_t *buffer, size_t max_size, size_t *bytes_read);
+
+/**
  * @brief Check if file exists
  * 
  * @param path File path (relative to SPIFFS mount point)

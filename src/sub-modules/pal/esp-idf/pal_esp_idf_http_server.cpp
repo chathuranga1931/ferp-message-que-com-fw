@@ -139,7 +139,10 @@ int32_t pal_http_server_start(const pal_http_server_config_t* config,
     }
     
     httpd_config.lru_purge_enable = true;
-    
+    /* Enable wildcard URI matching so a "slash-star" pattern catches
+     * unregistered static files. Exact-match handlers take priority. */
+    httpd_config.uri_match_fn = httpd_uri_match_wildcard;
+
     httpd_handle_t server = NULL;
     esp_err_t ret = httpd_start(&server, &httpd_config);
     
@@ -230,7 +233,6 @@ static esp_err_t upload_handler_wrapper(httpd_req_t* req) {
     // then stream the payload data to the upload handler.
 
     char filename_buf[128] = "upload.bin";
-    const char* filename = filename_buf;
 
     // Allocate scratch buffer for receiving
     char* buf = (char*)malloc(SCRATCH_BUFSIZE);
@@ -243,7 +245,6 @@ static esp_err_t upload_handler_wrapper(httpd_req_t* req) {
     size_t received_total = 0;
     size_t offset = 0;           // offset into actual file data (past headers)
     bool headers_parsed = false;
-    bool first_call = true;
 
     // Accumulate leading bytes to parse multipart header
     // The multipart header typically looks like:
@@ -259,7 +260,6 @@ static esp_err_t upload_handler_wrapper(httpd_req_t* req) {
 
     char* header_scratch = (char*)malloc(1024);
     size_t header_scratch_len = 0;
-    size_t file_data_start_in_chunk = 0;  // position within first payload chunk
 
     if(header_scratch == NULL) {
         free(buf);
@@ -350,7 +350,6 @@ static esp_err_t upload_handler_wrapper(httpd_req_t* req) {
                     offset += payload_in_scratch;
                 }
                 // first_call handled above
-                first_call = false;
             }
             // If header not yet found, keep buffering
             continue;
@@ -614,39 +613,48 @@ int32_t pal_http_resp_send_chunk(pal_http_request_t req, const char* data, size_
     return (ret == ESP_OK) ? PAL_OK : PAL_ERROR;
 }
 
-int32_t pal_http_resp_send_file(pal_http_request_t req, const char* filepath, 
-                                 const char* content_type) {
-    if(req == NULL || filepath == NULL) {
+int32_t pal_http_req_get_uri(pal_http_request_t req, char *buf, size_t buflen)
+{
+    if (!req || !buf || buflen == 0) return PAL_ERROR_INVALID;
+    httpd_req_t *r = (httpd_req_t *)req;
+    strncpy(buf, r->uri, buflen - 1);
+    buf[buflen - 1] = '\0';
+    return PAL_OK;
+}
+
+int32_t pal_http_resp_send_file(pal_http_request_t req, const char* filepath,
+                                 const char* content_type,
+                                 const pal_http_file_driver_t *driver) {
+    if(req == NULL || filepath == NULL || driver == NULL || driver->read == NULL) {
         return PAL_ERROR_INVALID;
     }
-    
+
     httpd_req_t* request = (httpd_req_t*)req;
-    
+
     // Set content type
     const char* mime = (content_type != NULL) ? content_type : get_mime_type(filepath);
     httpd_resp_set_type(request, mime);
-    
+
     // Allocate buffer for file reading
     uint8_t * chunk = (uint8_t *)malloc(SCRATCH_BUFSIZE);
     if(chunk == NULL) {
         httpd_resp_send_500(request);
         return PAL_ERROR_NO_MEMORY;
     }
-    
+
     size_t bytes_read;
     size_t total_sent = 0;
-    
-    // Read and send file in chunks
+
+    // Read and send file via the supplied thread-safe driver
     do {
-        int32_t ret = pal_spiffs_file_read(filepath, chunk, SCRATCH_BUFSIZE, &bytes_read);
-        if(ret != PAL_OK && total_sent == 0) {
-            // File doesn't exist or error on first read
+        int32_t ret = driver->read(filepath, chunk, SCRATCH_BUFSIZE, &bytes_read, driver->ctx);
+        if(ret != 0 && total_sent == 0) {
             LOG_MSG_ERROR(HTTP_ERROR_LOG_EN, "Failed to read file: %s", filepath);
             free(chunk);
             httpd_resp_send_404(request);
             return PAL_ERROR_NOT_FOUND;
         }
-        
+
         if(bytes_read > 0) {
             if(httpd_resp_send_chunk(request, (char *)chunk, bytes_read) != ESP_OK) {
                 free(chunk);
@@ -655,10 +663,10 @@ int32_t pal_http_resp_send_file(pal_http_request_t req, const char* filepath,
             total_sent += bytes_read;
         }
     } while(bytes_read == SCRATCH_BUFSIZE);
-    
+
     // End chunked response
     httpd_resp_send_chunk(request, NULL, 0);
-    
+
     free(chunk);
     return PAL_OK;
 }

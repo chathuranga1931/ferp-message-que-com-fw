@@ -129,6 +129,28 @@ int32_t app_spiffs_read_file(const char *path, char *buffer, size_t buf_size,
     return APP_SPIFFS_OK;
 }
 
+int32_t app_spiffs_read_file_at(const char *path, size_t offset, char *buffer,
+                                size_t buf_size, size_t *bytes_read, uint32_t timeout_ms)
+{
+    if (!s_initialized)        return APP_SPIFFS_ERR_NOT_INIT;
+    if (!path || !buffer || buf_size == 0) return APP_SPIFFS_ERR_INVALID;
+
+    int32_t rc = _lock(timeout_ms);
+    if (rc != APP_SPIFFS_OK) return rc;
+
+    bool exists = false;
+    pal_spiffs_file_exists(path, &exists);
+    if (!exists) { _unlock(); return APP_SPIFFS_ERR_NOT_FOUND; }
+
+    size_t n = 0;
+    int32_t pal = pal_spiffs_file_read_at(path, offset, (uint8_t *)buffer, buf_size, &n);
+    _unlock();
+
+    if (pal != PAL_OK) { return APP_SPIFFS_ERR_IO; }
+    if (bytes_read) *bytes_read = n;
+    return APP_SPIFFS_OK;
+}
+
 int32_t app_spiffs_file_exists(const char *path, bool *exists, uint32_t timeout_ms)
 {
     if (!s_initialized)   return APP_SPIFFS_ERR_NOT_INIT;

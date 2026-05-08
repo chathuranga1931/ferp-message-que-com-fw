@@ -7,17 +7,15 @@
  * interface and HSYS OS primitives — no platform-specific code.
  *
  * Endpoints:
- *   GET  /                             → SPIFFS index.html
  *   GET  /api/config                   → current config JSON
  *   GET  /getDeviceConfigurations      → current config JSON (legacy alias)
  *   POST /api/config                   → JSON patch; triggers hot-reload
  *   POST /setDeviceConfigurationsPost  → JSON patch (legacy alias)
  *   GET  /api/status                   → {"running":true,"port":8080}
  *   GET  /api/ota/status               → {"state":"idle|uploading","bytes":N}
- *   POST /updateFirmwareBin            → multipart firmware upload, target 0
- *   POST /updateDisplayTapBootloaderBin→ multipart upload, target 1
- *   POST /updateDisplayTapPartitionsBin→ multipart upload, target 2
- *   POST /updateDisplayTapBin          → multipart upload, target 3
+ *   POST /api/ota/bin?name=<bin>       → multipart firmware upload (target from table)
+ *   POST /api/messages                 → HTTP→message-bus bridge
+ *   GET  /...                             → static file from SPIFFS (wildcard, table-driven)
  *
  * OTA upload protocol:
  *   The upload handler performs the HSYS OTA handshake:
@@ -42,6 +40,7 @@
 #include "pal_http_server.h"
 #include "app_module_ids.h"
 #include "FileSystemDriver.h"        // ota_fs_driver_t
+#include "app_msg_codec.h"           // APP_MSG_CODEC_DATA_JSON_MAX, codec API
 
 #include "msg_ota_start_response.h"
 #include "msg_ota_driver_response.h"
@@ -57,6 +56,37 @@ public:
     ModuleWebServer();
     static ModuleWebServer *instance();
 
+    /** One row maps an HTTP URI to a filename served via the supplied file driver.
+     *  Terminate the table with {nullptr, nullptr, nullptr}. */
+    struct StaticFileDef {
+        const char                   *uri;      ///< HTTP path, e.g. "/" or "/styles.css"
+        const char                   *filename; ///< filename (no leading slash), e.g. "styles.css"
+        const pal_http_file_driver_t *driver;   ///< thread-safe read driver (app_spiffs / app_sd)
+    };
+
+    /** One row maps an OTA binary name (from ?name= query param) to a target index.
+     *  Terminate the table with {nullptr, 0}. */
+    struct OtaTargetDef {
+        const char *name;        ///< Value of the ?name= query parameter, e.g. "main"
+        uint8_t     target_idx;  ///< OtaModule target index (0-3)
+    };
+
+    /** One row maps an inbound message ID to a destination and optional
+     *  expected response ID for the HTTP-to-message-bus bridge.
+     *  Terminate the table with {0, 0, 0}. */
+    struct ApiMsgRouteDef {
+        hsys_msg_id_t    msg_id;      ///< Request message to decode and send/publish
+        hsys_module_id_t dest_module; ///< Direct destination; 0 = broadcast (publish)
+        hsys_msg_id_t    response_id; ///< Expected reply ID; 0 = fire-and-forget
+    };
+
+    /** Supply the URI->filename table used by the wildcard GET handler. */
+    void set_static_files(const StaticFileDef  *table);
+    /** Supply the binary-name->target-index table used by POST /api/ota/bin. */
+    void set_ota_targets (const OtaTargetDef   *table);
+    /** Supply the HTTP-to-message-bus route table used by POST /api/messages. */
+    void set_api_routes  (const ApiMsgRouteDef *table);
+
 protected:
     void pre_init()  override;
     void init()      override;
@@ -66,29 +96,36 @@ private:
     /* ── HTTP server handle ────────────────────────────────────────────── */
     pal_http_server_handle_t m_server = nullptr;
 
+    /* ── Routing tables (set before framework init) ───────────────────── */
+    const StaticFileDef   *m_static_files     = nullptr;
+    const OtaTargetDef    *m_ota_targets      = nullptr;
+    const ApiMsgRouteDef  *m_api_routes       = nullptr;
+
     /* ── OTA handshake state ─────────────────────────────────────────── */
-    hsys_semaphore_handle_t m_start_resp_sem  = nullptr; ///< signaled by on_msg_received
-    hsys_semaphore_handle_t m_driver_resp_sem = nullptr; ///< signaled by on_msg_received
+    hsys_semaphore_handle_t m_start_resp_sem  = nullptr;
+    hsys_semaphore_handle_t m_driver_resp_sem = nullptr;
     hsys_mutex_handle_t     m_ota_lock        = nullptr;
     volatile bool           m_ota_busy        = false;
+    volatile uint8_t        m_active_ota_target = 0;
     ota_start_result_t      m_start_result    = OTA_START_REJECTED_BUSY;
     const ota_fs_driver_t  *m_ota_driver      = nullptr;
     void                   *m_ota_ctx         = nullptr;
-    volatile uint32_t       m_ota_bytes       = 0;       ///< bytes written so far
+    volatile uint32_t       m_ota_bytes       = 0;
 
-    /* ── Per-endpoint OTA context (user_ctx for upload handlers) ─────── */
-    struct OtaUpCtx {
-        ModuleWebServer *self;
-        uint8_t          target_idx;
-    };
-    OtaUpCtx m_ota_ep[4];   ///< indexed by target_idx (0-3)
+    /* ── API message-bus bridge state ────────────────────────────────── */
+    hsys_mutex_handle_t     m_api_lock        = nullptr;
+    hsys_semaphore_handle_t m_api_resp_sem    = nullptr;
+    volatile hsys_msg_id_t  m_api_wait_id     = 0;
+    char m_api_resp_data[APP_MSG_CODEC_DATA_JSON_MAX + 1];
+    char m_api_msg_name [APP_MSG_CODEC_MSG_NAME_MAX  + 1];
 
     /* ── HTTP handler callbacks (static — take self via user_ctx) ─────── */
-    static int32_t _hdl_get_root   (pal_http_request_t req, void *ctx);
-    static int32_t _hdl_get_config (pal_http_request_t req, void *ctx);
-    static int32_t _hdl_post_config(pal_http_request_t req, void *ctx);
-    static int32_t _hdl_get_status (pal_http_request_t req, void *ctx);
-    static int32_t _hdl_ota_status (pal_http_request_t req, void *ctx);
+    static int32_t _hdl_static_file (pal_http_request_t req, void *ctx);
+    static int32_t _hdl_get_config  (pal_http_request_t req, void *ctx);
+    static int32_t _hdl_post_config (pal_http_request_t req, void *ctx);
+    static int32_t _hdl_get_status  (pal_http_request_t req, void *ctx);
+    static int32_t _hdl_ota_status  (pal_http_request_t req, void *ctx);
+    static int32_t _hdl_post_message(pal_http_request_t req, void *ctx);
 
     /** Called per chunk (or once with full binary on mac PAL). */
     static int32_t _hdl_fw_upload(pal_http_request_t req,
@@ -99,12 +136,10 @@ private:
                                    bool is_final,
                                    void *user_ctx);
 
-    /* ── Helpers callable from static handlers (same class scope → access
-     *    protected HsysModule::send/publish) ────────────────────────── */
+    /* ── OTA helpers ────────────────────────────────────────────────────── */
     bool _ota_send_start_request(uint8_t target_idx, const char *ver);
     bool _ota_send_driver_request();
-    bool _ota_publish_progress(uint8_t target_idx,
-                               uint32_t written, uint32_t total);
+    bool _ota_publish_progress(uint8_t target_idx, uint32_t written, uint32_t total);
     bool _ota_send_complete_notify(bool success);
     void _trigger_config_reload();
 };

@@ -183,6 +183,16 @@ int32_t pal_http_req_get_header(pal_http_request_t req, const char* field,
 int32_t pal_http_req_get_query_param(pal_http_request_t req, const char* key,
                                       char* val, size_t val_size);
 
+/**
+ * @brief Get the request URI path (e.g. "/styles.css")
+ *
+ * @param req    Request handle
+ * @param buf    Buffer to copy the URI into
+ * @param buflen Size of buffer
+ * @return PAL_OK on success
+ */
+int32_t pal_http_req_get_uri(pal_http_request_t req, char *buf, size_t buflen);
+
 /*===========================================================================*/
 /*                         RESPONSE OPERATIONS                               */
 /*===========================================================================*/
@@ -208,15 +218,41 @@ int32_t pal_http_resp_send(pal_http_request_t req, const char* data, size_t len)
 int32_t pal_http_resp_send_chunk(pal_http_request_t req, const char* data, size_t len);
 
 /**
+ * @brief File-read driver: abstraction passed to pal_http_resp_send_file so the
+ *        caller controls which storage backend (SPIFFS, SD, etc.) is used.
+ *
+ * The read() callback must follow the same contract as app_spiffs_read_file /
+ * app_sd_read_file:
+ *   - path       : filename (no leading slash, relative to the mount point)
+ *   - buf        : output buffer
+ *   - buf_size   : capacity of buf in bytes
+ *   - bytes_read : OUT — actual bytes written into buf
+ *   - ctx        : the ctx pointer stored in the driver struct
+ *   Returns 0 on success, negative on error (file not found, I/O error, etc.)
+ */
+typedef int32_t (*pal_http_file_read_fn)(const char *path,
+                                          uint8_t    *buf,
+                                          size_t      buf_size,
+                                          size_t     *bytes_read,
+                                          void       *ctx);
+
+typedef struct {
+    pal_http_file_read_fn  read; /**< Read callback — must not be NULL */
+    void                  *ctx;  /**< Passed unchanged to read()       */
+} pal_http_file_driver_t;
+
+/**
  * @brief Send file as HTTP response
  * 
- * @param req Request handle
- * @param filepath Path to file (relative to filesystem root)
+ * @param req          Request handle
+ * @param filepath     Path to file (relative to filesystem root)
  * @param content_type MIME content type (NULL for auto-detection)
+ * @param driver       File-read driver to use (must not be NULL)
  * @return PAL_OK on success, PAL_ERROR_NOT_FOUND if file not found
  */
 int32_t pal_http_resp_send_file(pal_http_request_t req, const char* filepath, 
-                                 const char* content_type);
+                                 const char* content_type,
+                                 const pal_http_file_driver_t *driver);
 
 /**
  * @brief Set response content type

@@ -14,6 +14,7 @@
 #include "ModuleWebServer.h"
 #include "pal_logger.h"
 #include "pal_spiffs.h"
+#include "pal_http_server.h"
 
 /* HSYS messages */
 #include "msg_spiffs_ready.h"
@@ -25,6 +26,8 @@
 #include "msg_ota_progress.h"
 
 #include "app_module_ids.h"
+#include "app_msg_codec.h"
+#include "hsys_msg.h"
 
 #include <ArduinoJson.h>
 #include <string.h>
@@ -48,10 +51,8 @@ ModuleWebServer *ModuleWebServer::instance() { return &s_instance; }
 ModuleWebServer::ModuleWebServer()
     : HsysModule(MODULE_ID, "WEBSRV__")
 {
-    for (int i = 0; i < 4; i++) {
-        m_ota_ep[i].self       = this;
-        m_ota_ep[i].target_idx = (uint8_t)i;
-    }
+    memset(m_api_resp_data, 0, sizeof(m_api_resp_data));
+    memset(m_api_msg_name,  0, sizeof(m_api_msg_name));
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -62,8 +63,10 @@ void ModuleWebServer::pre_init()
 {
     /* ── Allocate synchronisation primitives ─────────────────────────────── */
     m_ota_lock        = hsys_mutex_create();
-    m_start_resp_sem  = hsys_semaphore_create(false);  /* initially unavailable */
+    m_api_lock        = hsys_mutex_create();
+    m_start_resp_sem  = hsys_semaphore_create(false);
     m_driver_resp_sem = hsys_semaphore_create(false);
+    m_api_resp_sem    = hsys_semaphore_create(false);
 
     /* ── Start HTTP server ───────────────────────────────────────────────── */
     pal_http_server_config_t cfg = {};
@@ -80,18 +83,14 @@ void ModuleWebServer::pre_init()
         return;
     }
 
-    /* ── Register URI handlers ───────────────────────────────────────────── */
-
-    /* Static root */
-    pal_http_server_register_uri(m_server, "/",
-        PAL_HTTP_GET, _hdl_get_root, this);
+    /* ── Register URI handlers (specific routes first, wildcard last) ─────── */
 
     /* Config read / write */
     pal_http_server_register_uri(m_server, "/api/config",
         PAL_HTTP_GET,  _hdl_get_config, this);
     pal_http_server_register_uri(m_server, "/api/config",
         PAL_HTTP_POST, _hdl_post_config, this);
-    /* Legacy aliases (compatible with old app URLs) */
+    /* Legacy aliases */
     pal_http_server_register_uri(m_server, "/getDeviceConfigurations",
         PAL_HTTP_GET,  _hdl_get_config, this);
     pal_http_server_register_uri(m_server, "/setDeviceConfigurationsPost",
@@ -103,21 +102,32 @@ void ModuleWebServer::pre_init()
     pal_http_server_register_uri(m_server, "/api/ota/status",
         PAL_HTTP_GET, _hdl_ota_status, this);
 
-    /* Firmware upload endpoints (multipart POST) */
-    pal_http_server_register_uri_with_upload(m_server, "/updateFirmwareBin",
-        nullptr, _hdl_fw_upload, &m_ota_ep[0]);
-    pal_http_server_register_uri_with_upload(m_server, "/updateDisplayTapBootloaderBin",
-        nullptr, _hdl_fw_upload, &m_ota_ep[1]);
-    pal_http_server_register_uri_with_upload(m_server, "/updateDisplayTapPartitionsBin",
-        nullptr, _hdl_fw_upload, &m_ota_ep[2]);
-    pal_http_server_register_uri_with_upload(m_server, "/updateDisplayTapBin",
-        nullptr, _hdl_fw_upload, &m_ota_ep[3]);
+    /* Generic OTA firmware upload: POST /api/ota/bin?name=<binary-name> */
+    pal_http_server_register_uri_with_upload(m_server, "/api/ota/bin",
+        nullptr, _hdl_fw_upload, this);
+
+    /* HTTP -> message-bus bridge */
+    pal_http_server_register_uri(m_server, "/api/messages",
+        PAL_HTTP_POST, _hdl_post_message, this);
+
+    /* Wildcard catch-all for static files — MUST be registered last */
+    pal_http_server_register_uri(m_server, "/*",
+        PAL_HTTP_GET, _hdl_static_file, this);
 }
 
 void ModuleWebServer::init()
 {
     subscribe(MsgOtaStartResponse::ID);
     subscribe(MsgOtaDriverResponse::ID);
+
+    /* Subscribe to API bridge response IDs from the route table */
+    if (m_api_routes) {
+        for (const ApiMsgRouteDef *r = m_api_routes; r->msg_id != 0; r++) {
+            if (r->response_id != 0) {
+                subscribe(r->response_id);
+            }
+        }
+    }
 
     if (m_server) {
         LOG_MSG_INFO(WEB_SRV_LOG_EN,
@@ -148,8 +158,17 @@ void ModuleWebServer::on_msg_received(const hsys_msg_t &msg)
             break;
         }
 
-        default:
+        default: {
+            /* API bridge: capture the expected response message */
+            hsys_msg_id_t wait_id = m_api_wait_id;
+            if (wait_id != 0 && msg.msg_id == wait_id) {
+                app_msg_codec_encode(&msg,
+                                     m_api_msg_name,  sizeof(m_api_msg_name),
+                                     m_api_resp_data, sizeof(m_api_resp_data));
+                hsys_semaphore_give(m_api_resp_sem);
+            }
             break;
+        }
     }
 }
 
@@ -212,10 +231,25 @@ void ModuleWebServer::_trigger_config_reload()
  * Config handlers
  * ═══════════════════════════════════════════════════════════════════════════ */
 
-int32_t ModuleWebServer::_hdl_get_root(pal_http_request_t req, void * /*ctx*/)
+int32_t ModuleWebServer::_hdl_static_file(pal_http_request_t req, void *ctx)
 {
-    pal_http_resp_set_type(req, "text/html; charset=utf-8");
-    return pal_http_resp_send_file(req, "index.html", nullptr);
+    ModuleWebServer *self = (ModuleWebServer *)ctx;
+    char uri[256];
+    if (pal_http_req_get_uri(req, uri, sizeof(uri)) != PAL_OK || uri[0] == '\0') {
+        pal_http_resp_set_status(req, 404);
+        return pal_http_resp_send(req, "Not found", 0);
+    }
+
+    if (self && self->m_static_files) {
+        for (const StaticFileDef *e = self->m_static_files; e->uri; e++) {
+            if (strcmp(e->uri, uri) == 0) {
+                return pal_http_resp_send_file(req, e->filename, nullptr, e->driver);
+            }
+        }
+    }
+
+    pal_http_resp_set_status(req, 404);
+    return pal_http_resp_send(req, "Not found", 0);
 }
 
 int32_t ModuleWebServer::_hdl_get_config(pal_http_request_t req, void * /*ctx*/)
@@ -336,9 +370,7 @@ int32_t ModuleWebServer::_hdl_fw_upload(pal_http_request_t req,
                                          bool is_final,
                                          void *user_ctx)
 {
-    OtaUpCtx       *upctx     = (OtaUpCtx *)user_ctx;
-    ModuleWebServer *self      = upctx->self;
-    uint8_t          target    = upctx->target_idx;
+    ModuleWebServer *self      = (ModuleWebServer *)user_ctx;
 
     /* ── First chunk: OTA handshake ───────────────────────────────────────── */
     if (offset == 0) {
@@ -361,6 +393,33 @@ int32_t ModuleWebServer::_hdl_fw_upload(pal_http_request_t req,
                 "{\"ok\":false,\"error\":\"ota already in progress\"}", 0);
             return PAL_ERROR;
         }
+
+        /* Resolve OTA target by ?name= query parameter */
+        char name_buf[64] = {};
+        pal_http_req_get_query_param(req, "name", name_buf, sizeof(name_buf));
+        uint8_t target = 255;
+        if (self->m_ota_targets) {
+            for (const OtaTargetDef *t = self->m_ota_targets; t->name; t++) {
+                if (strcmp(t->name, name_buf) == 0) {
+                    target = t->target_idx;
+                    break;
+                }
+            }
+        }
+        if (target == 255) {
+            LOG_MSG_WARNING(WEB_SRV_LOG_EN,
+                            "OTA: unknown target name '%s'", name_buf);
+            hsys_mutex_lock(self->m_ota_lock);
+            self->m_ota_busy = false;
+            hsys_mutex_unlock(self->m_ota_lock);
+            pal_http_resp_set_status(req, 400);
+            pal_http_resp_send(req,
+                "{\"ok\":false,\"error\":\"unknown ota target name\"}", 0);
+            return PAL_ERROR;
+        }
+        hsys_mutex_lock(self->m_ota_lock);
+        self->m_active_ota_target = target;
+        hsys_mutex_unlock(self->m_ota_lock);
 
         /* Send MsgOtaStartRequest → OtaModule */
         LOG_MSG_INFO(WEB_SRV_LOG_EN,
@@ -490,7 +549,7 @@ int32_t ModuleWebServer::_hdl_fw_upload(pal_http_request_t req,
         uint32_t total_written = self->m_ota_bytes;
         hsys_mutex_unlock(self->m_ota_lock);
 
-        self->_ota_publish_progress(target, total_written, 0);
+        self->_ota_publish_progress(self->m_active_ota_target, total_written, 0);
     }
 
     /* ── Final chunk: close and notify ────────────────────────────────────── */
@@ -532,4 +591,159 @@ int32_t ModuleWebServer::_hdl_fw_upload(pal_http_request_t req,
     }
 
     return PAL_OK;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * Table setters
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+void ModuleWebServer::set_static_files(const StaticFileDef *table)
+{
+    m_static_files = table;
+}
+
+void ModuleWebServer::set_ota_targets(const OtaTargetDef *table)
+{
+    m_ota_targets = table;
+}
+
+void ModuleWebServer::set_api_routes(const ApiMsgRouteDef *table)
+{
+    m_api_routes = table;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * HTTP -> message-bus bridge
+ *
+ * POST /api/messages
+ * Body:     {"msg":"MsgXxx","data":{...}}
+ * Response: {"ok":true,"msg":"MsgXxxResponse","data":{...}}
+ *       or  {"ok":false,"error":"..."}
+ *
+ * Only messages whose msg_id appears in m_api_routes are accepted.
+ * m_api_lock serialises concurrent HTTP requests.
+ * m_api_resp_sem blocks until on_msg_received() delivers the response.
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+int32_t ModuleWebServer::_hdl_post_message(pal_http_request_t req, void *ctx)
+{
+    ModuleWebServer *self = (ModuleWebServer *)ctx;
+
+    /* ── Read body ──────────────────────────────────────────────────────────────────── */
+    size_t content_len = pal_http_req_get_content_len(req);
+    if (content_len == 0) {
+        pal_http_resp_set_status(req, 400);
+        return pal_http_resp_send(req, "{\"ok\":false,\"error\":\"empty body\"}", 0);
+    }
+
+    static constexpr size_t k_max_body = 768;
+    char body[k_max_body + 1];
+    size_t received = 0;
+    while (received < content_len && received < k_max_body) {
+        size_t got = 0;
+        if (pal_http_req_recv(req, body + received, k_max_body - received, &got) != PAL_OK
+                || got == 0) break;
+        received += got;
+    }
+    body[received] = '\0';
+
+    /* ── Parse envelope ──────────────────────────────────────────────────────────────────── */
+    JsonDocument doc;
+    if (deserializeJson(doc, body, received) != DeserializationError::Ok) {
+        pal_http_resp_set_status(req, 400);
+        return pal_http_resp_send(req, "{\"ok\":false,\"error\":\"invalid JSON\"}", 0);
+    }
+
+    const char *msg_name = doc["msg"] | "";
+    if (msg_name[0] == '\0') {
+        pal_http_resp_set_status(req, 400);
+        return pal_http_resp_send(req, "{\"ok\":false,\"error\":\"missing msg field\"}", 0);
+    }
+
+    /* Serialise the "data" object back to a JSON string for the codec */
+    char data_json[APP_MSG_CODEC_DATA_JSON_MAX + 1];
+    if (!doc["data"].isNull()) {
+        size_t w = serializeJson(doc["data"], data_json, sizeof(data_json));
+        if (w == 0) strncpy(data_json, "{}", sizeof(data_json));
+    } else {
+        strncpy(data_json, "{}", sizeof(data_json));
+    }
+
+    /* ── Decode message from codec ───────────────────────────────────────────────────── */
+    hsys_msg_t *msg = app_msg_codec_decode(msg_name, data_json, MODULE_ID);
+    if (!msg) {
+        pal_http_resp_set_status(req, 400);
+        return pal_http_resp_send(req, "{\"ok\":false,\"error\":\"unknown message type\"}", 0);
+    }
+
+    /* ── Look up route ──────────────────────────────────────────────────────────────────── */
+    if (!self->m_api_routes) {
+        msg->ref_count = 1;
+        hsys_msg_release(msg);
+        pal_http_resp_set_status(req, 503);
+        return pal_http_resp_send(req, "{\"ok\":false,\"error\":\"no route table\"}", 0);
+    }
+
+    const ApiMsgRouteDef *route = nullptr;
+    for (const ApiMsgRouteDef *r = self->m_api_routes; r->msg_id != 0; r++) {
+        if (r->msg_id == msg->msg_id) { route = r; break; }
+    }
+    if (!route) {
+        msg->ref_count = 1;
+        hsys_msg_release(msg);
+        pal_http_resp_set_status(req, 403);
+        return pal_http_resp_send(req,
+            "{\"ok\":false,\"error\":\"message not in route table\"}", 0);
+    }
+
+    /* ── Serialise concurrent API requests ─────────────────────────────────────── */
+    hsys_mutex_lock(self->m_api_lock);
+
+    /* ── Arm the response capture and send/publish the request ───────────────── */
+    if (route->response_id != 0) {
+        self->m_api_wait_id = route->response_id;
+    }
+
+    hsys_status_t send_status;
+    if (route->dest_module != (hsys_module_id_t)0) {
+        send_status = self->send(msg, route->dest_module);
+    } else {
+        send_status = self->publish(msg);
+    }
+
+    if (send_status != HSYS_OK) {
+        self->m_api_wait_id = 0;
+        hsys_mutex_unlock(self->m_api_lock);
+        pal_http_resp_set_status(req, 500);
+        return pal_http_resp_send(req,
+            "{\"ok\":false,\"error\":\"message send failed\"}", 0);
+    }
+
+    /* ── Fire-and-forget ──────────────────────────────────────────────────────────────────── */
+    if (route->response_id == 0) {
+        hsys_mutex_unlock(self->m_api_lock);
+        pal_http_resp_set_type(req, "application/json");
+        return pal_http_resp_send(req, "{\"ok\":true}", 0);
+    }
+
+    /* ── Wait for response (5 s timeout) ────────────────────────────────────────── */
+    bool got_resp = hsys_semaphore_take_timeout(self->m_api_resp_sem, 5000);
+    self->m_api_wait_id = 0;
+    hsys_mutex_unlock(self->m_api_lock);
+
+    if (!got_resp) {
+        pal_http_resp_set_status(req, 504);
+        return pal_http_resp_send(req,
+            "{\"ok\":false,\"error\":\"response timed out\"}", 0);
+    }
+
+    /* ── Build and return JSON response ───────────────────────────────────────────── */
+    char resp[APP_MSG_CODEC_DATA_JSON_MAX + APP_MSG_CODEC_MSG_NAME_MAX + 32];
+    snprintf(resp, sizeof(resp),
+             "{\"ok\":true,\"msg\":\"%s\",\"data\":%s}",
+             self->m_api_msg_name,
+             self->m_api_resp_data);
+
+    pal_http_resp_set_type(req, "application/json");
+    return pal_http_resp_send(req, resp, 0);
 }

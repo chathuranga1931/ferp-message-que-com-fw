@@ -369,7 +369,10 @@ static void _handle_connection(mac_http_server_t *srv, int client_fd)
 
     for (int i = 0; i < entry_count; i++) {
         mac_uri_entry_t *e = &entries_copy[i];
-        if (strcmp(e->uri, req.path) != 0) continue;
+        /* Support simple "/*" wildcard: matches any path */
+        bool matched = (strcmp(e->uri, req.path) == 0) ||
+                       (e->uri[0] == '/' && e->uri[1] == '*' && e->uri[2] == '\0');
+        if (!matched) continue;
         if (e->method != pal_method) continue;
 
         if (e->upload_handler) {
@@ -476,6 +479,15 @@ int32_t pal_http_server_stop(pal_http_server_handle_t server_handle)
     mac_http_server_t *srv = (mac_http_server_t *)server_handle;
     close(srv->server_fd);
     srv->server_fd = -1;
+    return PAL_OK;
+}
+
+int32_t pal_http_req_get_uri(pal_http_request_t req, char *buf, size_t buflen)
+{
+    if (!req || !buf || buflen == 0) return PAL_ERROR_INVALID;
+    mac_req_ctx_t *r = (mac_req_ctx_t *)req;
+    strncpy(buf, r->path, buflen - 1);
+    buf[buflen - 1] = '\0';
     return PAL_OK;
 }
 
@@ -674,22 +686,22 @@ int32_t pal_http_resp_send_chunk(pal_http_request_t req,
 }
 
 int32_t pal_http_resp_send_file(pal_http_request_t req, const char *filepath,
-                                 const char *content_type)
+                                 const char *content_type,
+                                 const pal_http_file_driver_t *driver)
 {
-    if (!req || !filepath) return PAL_ERROR_INVALID;
+    if (!req || !filepath || !driver || !driver->read) return PAL_ERROR_INVALID;
 
     const char *mime = content_type ? content_type : _get_mime_type(filepath);
     pal_http_resp_set_type(req, mime);
 
-    /* Read from SPIFFS into a 4 KB scratch buffer and stream to client */
+    /* Read via the supplied thread-safe driver into a 4 KB scratch buffer */
     static constexpr size_t k_chunk = 4096;
     uint8_t *buf = (uint8_t *)malloc(k_chunk);
     if (!buf) return PAL_ERROR_NO_MEMORY;
 
-    /* For simplicity, read the full file (SPIFFS PAL has no seek) */
     size_t bytes_read = 0;
-    int32_t ret = pal_spiffs_file_read(filepath, buf, k_chunk, &bytes_read);
-    if (ret != PAL_OK || bytes_read == 0) {
+    int32_t ret = driver->read(filepath, buf, k_chunk, &bytes_read, driver->ctx);
+    if (ret != 0 || bytes_read == 0) {
         free(buf);
         return pal_http_resp_send_404(req);
     }
@@ -710,7 +722,7 @@ int32_t pal_http_resp_send_file(pal_http_request_t req, const char *filepath,
     } else {
         /* Larger file: stream without Content-Length */
         pal_http_resp_send_chunk(req, (const char *)buf, bytes_read);
-        /* TODO: loop for larger SPIFFS files (pal_spiffs does not support seek) */
+        /* TODO: loop for files larger than k_chunk (driver does not support seek) */
         pal_http_resp_send_chunk(req, nullptr, 0);
     }
 

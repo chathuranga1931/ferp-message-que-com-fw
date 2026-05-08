@@ -27,6 +27,7 @@
 #include "msg_config_get_mqtt.h"
 #include "msg_config_get_dt.h"
 #include "msg_config_get_ota.h"
+#include "msg_config_set.h"
 #include "msg_config_wifi.h"
 #include "msg_config_cloud.h"
 #include "msg_config_mqtt.h"
@@ -61,6 +62,7 @@ void ModuleConfig::init()
     }
 
     subscribe(MSG_ID_SPIFFS_READY);
+    subscribe(MSG_ID_CONFIG_SET);
     subscribe(MSG_ID_CONFIG_GET_WIFI);
     subscribe(MSG_ID_CONFIG_GET_CLOUD);
     subscribe(MSG_ID_CONFIG_GET_MQTT);
@@ -76,7 +78,7 @@ void ModuleConfig::init()
         LOG_MSG_ERROR(MOD_CONFIG_LOG_EN, "JSON buf alloc failed — config will use defaults");
     }
 
-    LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "config handle initialised, subscribed to SPIFFS_READY + typed config gets");
+    LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "config handle initialised, subscribed to SPIFFS_READY + CONFIG_SET + typed config gets");
 }
 
 // ── Message handler ───────────────────────────────────────────────────────────
@@ -88,6 +90,10 @@ void ModuleConfig::on_msg_received(const hsys_msg_t &msg)
         case MSG_ID_SPIFFS_READY:
             LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "SPIFFS ready — loading config");
             _load_and_save();
+            break;
+
+        case MSG_ID_CONFIG_SET:
+            _apply_config_set(MsgConfigSet::deserialize(msg));
             break;
 
         case MSG_ID_CONFIG_GET_WIFI:
@@ -300,4 +306,62 @@ void ModuleConfig::_send_config_ota(hsys_module_id_t requester)
         LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "  check_interval_s = %u",     (unsigned)p.check_interval_s);
         LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "  root_ca          = %s", p.root_ca ? "***" : "(null)");
     }
+}
+
+// ── MsgConfigSet handler ──────────────────────────────────────────────────────
+
+void ModuleConfig::_apply_config_set(const MsgConfigSet::Payload &p)
+{
+    uint16_t table_size = 0;
+    config_t *table = app_config_get_table(&table_size);
+
+    // Find the entry matching the key name
+    for (uint16_t i = 0; i < table_size; i++) {
+        if (strncmp(table[i].name, p.key, MsgConfigSet::KEY_MAX_LEN) != 0) continue;
+
+        // Apply the value directly into the live config struct pointer
+        switch (p.type) {
+            case HSYS_TYPE_STRING:
+                strncpy(static_cast<char *>(table[i].p_global_value),
+                        p.value.as_str,
+                        table[i].max_length - 1);
+                static_cast<char *>(table[i].p_global_value)[table[i].max_length - 1] = '\0';
+                LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "ConfigSet: %s = \"%s\"", p.key, p.value.as_str);
+                break;
+            case HSYS_TYPE_UINT32:
+                *static_cast<uint32_t *>(table[i].p_global_value) = p.value.as_uint32;
+                LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "ConfigSet: %s = %lu", p.key, (unsigned long)p.value.as_uint32);
+                break;
+            case HSYS_TYPE_BOOL:
+                *static_cast<bool *>(table[i].p_global_value) = p.value.as_bool;
+                LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "ConfigSet: %s = %s", p.key, p.value.as_bool ? "true" : "false");
+                break;
+            default:
+                LOG_MSG_WARNING(MOD_CONFIG_LOG_EN, "ConfigSet: unknown type %d for key '%s'", (int)p.type, p.key);
+                return;
+        }
+
+        // Persist to SPIFFS using a pool buffer
+        char *buf = static_cast<char *>(hsys_pool_alloc(static_cast<uint16_t>(k_json_buf_size)));
+        if (!buf) {
+            LOG_MSG_WARNING(MOD_CONFIG_LOG_EN, "ConfigSet: no pool buf — value applied but not saved");
+            return;
+        }
+        size_t json_len = 0;
+        int32_t rc = hsys_config_convert_to_json(&m_config_handle, buf, k_json_buf_size, &json_len);
+        if (rc == CONFIG_SUCCESS && json_len > 0) {
+            rc = app_spiffs_write_file(k_config_file, buf, 5000);
+            if (rc == APP_SPIFFS_OK) {
+                LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "ConfigSet: saved %zu bytes", json_len);
+            } else {
+                LOG_MSG_WARNING(MOD_CONFIG_LOG_EN, "ConfigSet: SPIFFS write failed (%ld)", (long)rc);
+            }
+        } else {
+            LOG_MSG_WARNING(MOD_CONFIG_LOG_EN, "ConfigSet: json convert failed (%ld)", (long)rc);
+        }
+        hsys_pool_free(buf);
+        return;
+    }
+
+    LOG_MSG_WARNING(MOD_CONFIG_LOG_EN, "ConfigSet: unknown key '%s'", p.key);
 }

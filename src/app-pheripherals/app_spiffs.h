@@ -83,6 +83,21 @@ int32_t app_spiffs_read_file(const char *path, char *buffer, size_t buf_size,
                              size_t *bytes_read, uint32_t timeout_ms);
 
 /**
+ * @brief  Read a file starting at a byte offset (for chunked HTTP streaming).
+ *         No NUL terminator is appended — buf_size bytes are usable for data.
+ *
+ * @param  path        File path relative to SPIFFS mount
+ * @param  offset      Byte offset to start reading from
+ * @param  buffer      Caller-supplied buffer
+ * @param  buf_size    Maximum bytes to read
+ * @param  bytes_read  OUT — actual bytes read (may be NULL)
+ * @param  timeout_ms  Mutex acquire timeout in milliseconds
+ * @return APP_SPIFFS_OK on success
+ */
+int32_t app_spiffs_read_file_at(const char *path, size_t offset, char *buffer,
+                                size_t buf_size, size_t *bytes_read, uint32_t timeout_ms);
+
+/**
  * @brief  Check whether a file exists.
  *
  * @param  path        File path relative to SPIFFS mount

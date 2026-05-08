@@ -269,6 +269,28 @@ int32_t pal_spiffs_file_read(const char* path, uint8_t * buffer, size_t max_size
     return PAL_OK;
 }
 
+int32_t pal_spiffs_file_read_at(const char* path, size_t offset, uint8_t *buffer, size_t max_size, size_t *bytes_read)
+{
+    if (!is_initialized)             return PAL_ERROR_INIT;
+    if (!path || !buffer)            return PAL_ERROR_INVALID;
+
+    char full_path[256];
+    build_full_path(path, full_path, sizeof(full_path));
+
+    struct stat st;
+    if (stat(full_path, &st) != 0)   return PAL_ERROR_NOT_FOUND;
+
+    FILE *file = fopen(full_path, "r");
+    if (!file)                       return PAL_ERROR_IO;
+
+    if (offset > 0) fseek(file, (long)offset, SEEK_SET);
+    size_t n = fread(buffer, 1, max_size, file);
+    fclose(file);
+
+    if (bytes_read) *bytes_read = n;
+    return PAL_OK;
+}
+
 int32_t pal_spiffs_file_exists(const char* path, bool* exists) {
     if(!is_initialized) {
         return PAL_ERROR_INIT;

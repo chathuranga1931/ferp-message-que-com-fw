@@ -3,6 +3,7 @@
 #include "hsys_module.h"
 #include "hsys_config.h"     // config_handle_t, config_t
 #include "hsys_pool.h"       // hsys_pool_alloc / hsys_pool_free
+#include "msg_config_set.h"  // MsgConfigSet::Payload
 
 // ---------------------------------------------------------------------------
 // Module identity
@@ -44,6 +45,7 @@ private:
 
     // ── Internal helpers ─────────────────────────────────────────────────────
     void _load_and_save();
+    void _apply_config_set(const MsgConfigSet::Payload &p);
     void _send_config_wifi (hsys_module_id_t requester);
     void _send_config_cloud(hsys_module_id_t requester);
     void _send_config_mqtt (hsys_module_id_t requester);
