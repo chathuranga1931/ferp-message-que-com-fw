@@ -128,6 +128,7 @@ typedef enum : uint16_t
     MSG_ID_CONFIG_GET_MQTT      = 0x0305,   ///< Any -> ModuleConfig: request MQTT config (DIRECT response)
     MSG_ID_CONFIG_GET_DT        = 0x0306,   ///< Any -> ModuleConfig: request Device/HW config (DIRECT response)
     MSG_ID_CONFIG_GET_OTA       = 0x030B,   ///< Any -> ModuleConfig: request OTA config (DIRECT response)
+    MSG_ID_CONFIG_GET_KEY       = 0x030D,   ///< Any -> ModuleConfig: request one field by CFG_KEY_* (DIRECT response)
 
     // Typed domain config responses
     MSG_ID_CONFIG_WIFI          = 0x0307,   ///< ModuleConfig -> ModuleWifi:  WiFi credentials
@@ -135,11 +136,12 @@ typedef enum : uint16_t
     MSG_ID_CONFIG_MQTT          = 0x0309,   ///< ModuleConfig -> ModuleMqtt:  MQTT broker settings
     MSG_ID_CONFIG_DT            = 0x030A,   ///< ModuleConfig -> ModuleFuel:  display-type / HW settings
     MSG_ID_CONFIG_OTA           = 0x030C,   ///< ModuleConfig -> ModuleWebClientOta: OTA server config
+    MSG_ID_CONFIG_VALUE         = 0x030E,   ///< ModuleConfig -> requester: single-field binary value response
 
     // ------------------------------------------------------------------
     // Sentinel — keep one above the highest assigned ID
     // ------------------------------------------------------------------
-    MSG_ID_MAX              = 0x030D,   ///< = 781; highest used is 0x030C (CONFIG_OTA)
+    MSG_ID_MAX              = 0x030F,   ///< = 783; highest used is 0x030E (CONFIG_VALUE)
 
 } app_msg_id_e;
 

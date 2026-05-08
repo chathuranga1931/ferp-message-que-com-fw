@@ -69,10 +69,100 @@
 <br>
 
 <script>
-    // -------------------------------------------------------------------------
-    // Low-level helper: POST /api/messages and return parsed response data.
-    // Returns a Promise that resolves to the response data object, or rejects.
-    // -------------------------------------------------------------------------
+    // =========================================================================
+    // CFG_KEY_* constants  (must match app_config.h)
+    // =========================================================================
+    var CFG_KEY_WIFI_SSID            = 0x1001;
+    var CFG_KEY_WIFI_PASSWORD        = 0x1002;
+    var CFG_KEY_CLOUD_URL            = 0x2001;
+    var CFG_KEY_CLOUD_SECRET         = 0x2002;
+    var CFG_KEY_CLOUD_HB_ENABLED     = 0x2003;
+    var CFG_KEY_CLOUD_HB_INTERVAL_S  = 0x2004;
+    var CFG_KEY_OTA_SERVER_URL       = 0x3001;
+    var CFG_KEY_OTA_CHECK_INTERVAL_S = 0x3002;
+    var CFG_KEY_MQTT_HOST            = 0x4001;
+    var CFG_KEY_MQTT_PORT            = 0x4002;
+    var CFG_KEY_MQTT_USER            = 0x4003;
+    var CFG_KEY_MQTT_PASSWORD        = 0x4004;
+    var CFG_KEY_DISPLAY_TYPE         = 0x6001;
+    var CFG_KEY_STABILIZE_DELAY_MS   = 0x6002;
+    var CFG_KEY_EN_RETX              = 0x6003;
+    var CFG_KEY_NOZZLE_SWAP          = 0x6004;
+    var CFG_KEY_TOT_CNT              = 0x6005;
+    var CFG_KEY_TOT_DUR              = 0x6006;
+    var CFG_KEY_PRINTER_URL          = 0x7001;
+    var CFG_KEY_PRINTER_COPY_COUNT   = 0x7002;
+    var CFG_KEY_PRINT_DELAY_MS       = 0x7003;
+    var CFG_KEY_LOG_UDP_ENABLED      = 0x8001;
+    var CFG_KEY_LOG_UDP_SERVER_IP    = 0x8002;
+    var CFG_KEY_LOG_UDP_PORT         = 0x8003;
+    var CFG_KEY_DT_LOG_RATE          = 0x8004;
+    var CFG_KEY_ENABLE_NID_PRINT     = 0x9001;
+    var CFG_KEY_ENABLE_NID_CLOUD     = 0x9002;
+
+    // Type constants  (must match hsys_type_t)
+    var TYPE_STRING = 0;
+    var TYPE_UINT32 = 1;
+    var TYPE_BOOL   = 2;
+
+    // =========================================================================
+    // Binary encode helpers
+    // =========================================================================
+
+    // String → byte array  (UTF-8, no NUL terminator sent — size carries length)
+    function encodeString(str) {
+        var bytes = [];
+        for (var i = 0; i < str.length; i++) {
+            var code = str.charCodeAt(i);
+            if (code < 0x80) {
+                bytes.push(code);
+            } else if (code < 0x800) {
+                bytes.push(0xC0 | (code >> 6));
+                bytes.push(0x80 | (code & 0x3F));
+            } else {
+                bytes.push(0xE0 | (code >> 12));
+                bytes.push(0x80 | ((code >> 6) & 0x3F));
+                bytes.push(0x80 | (code & 0x3F));
+            }
+        }
+        return bytes;
+    }
+
+    // uint32 → 4 bytes LE
+    function encodeUint32(v) {
+        v = v >>> 0;
+        return [v & 0xFF, (v >> 8) & 0xFF, (v >> 16) & 0xFF, (v >> 24) & 0xFF];
+    }
+
+    // bool → 1 byte
+    function encodeBool(v) { return [v ? 1 : 0]; }
+
+    // =========================================================================
+    // Binary decode helpers
+    // =========================================================================
+
+    // byte array → string  (trim trailing NUL bytes)
+    function decodeString(arr) {
+        var s = "";
+        for (var i = 0; i < arr.length; i++) {
+            if (arr[i] === 0) break;
+            s += String.fromCharCode(arr[i]);
+        }
+        return s;
+    }
+
+    // 4 bytes LE → uint32
+    function decodeUint32(arr) {
+        if (!arr || arr.length < 4) return 0;
+        return ((arr[3] << 24) | (arr[2] << 16) | (arr[1] << 8) | arr[0]) >>> 0;
+    }
+
+    // 1 byte → bool
+    function decodeBool(arr) { return arr && arr[0] !== 0; }
+
+    // =========================================================================
+    // Low-level helper: POST /api/messages, return parsed response data.
+    // =========================================================================
     function apiMsg(msgName, data) {
         return new Promise(function(resolve, reject) {
             var xhr = new XMLHttpRequest();
@@ -99,23 +189,43 @@
         });
     }
 
-    // -------------------------------------------------------------------------
-    // Helper: fire-and-forget MsgConfigSet for a single key/value pair.
-    // type: "string" | "uint32" | "bool"
-    // -------------------------------------------------------------------------
-    function cfgSet(key, type, value) {
-        var xhr = new XMLHttpRequest();
-        xhr.open("POST", "/api/messages", true);
-        xhr.setRequestHeader("Content-Type", "application/json");
-        xhr.send(JSON.stringify({
-            msg: "MsgConfigSet",
-            data: { key: key, type: type, value: String(value) }
-        }));
+    // =========================================================================
+    // cfgGet(key)  → Promise<JS value>
+    // Sends MsgConfigGetKey, receives MsgConfigValue, decodes based on type.
+    // =========================================================================
+    function cfgGet(key) {
+        return apiMsg("MsgConfigGetKey", { key: key }).then(function(d) {
+            var arr  = d.data  || [];
+            var type = d.type;
+            if (type === TYPE_UINT32) return decodeUint32(arr);
+            if (type === TYPE_BOOL)   return decodeBool(arr);
+            return decodeString(arr);
+        });
     }
 
-    // -------------------------------------------------------------------------
+    // =========================================================================
+    // cfgSet(key, type, jsValue)  → fire-and-forget
+    // =========================================================================
+    function cfgSet(key, type, jsValue) {
+        var bytes;
+        if (type === TYPE_UINT32) {
+            bytes = encodeUint32(parseInt(jsValue, 10) || 0);
+        } else if (type === TYPE_BOOL) {
+            bytes = encodeBool(!!jsValue);
+        } else {
+            bytes = encodeString(String(jsValue));
+        }
+        apiMsg("MsgConfigSet", {
+            key:  key,
+            type: type,
+            size: bytes.length,
+            data: bytes
+        }).catch(function(e) { console.error("cfgSet key=0x" + key.toString(16) + " failed:", e); });
+    }
+
+    // =========================================================================
     // Populate display-type dropdown
-    // -------------------------------------------------------------------------
+    // =========================================================================
     function populateDisplayType(selectedIndex) {
         var items = ["None", "Censtar-6", "Censtar-7", "Censtar-8",
                      "Hongyang-7", "Wayne-6", "Sanki-6"];
@@ -130,67 +240,66 @@
         sel.selectedIndex = selectedIndex || 0;
     }
 
-    // -------------------------------------------------------------------------
-    // onLoadBody — fetch all config sections via message bus
-    // -------------------------------------------------------------------------
+    // =========================================================================
+    // onLoadBody — fetch each config field individually by CFG_KEY_*
+    // =========================================================================
     function onLoadBody() {
-        // WiFi — via message bus (MsgConfigGetWifi → MsgConfigWifi)
-        apiMsg("MsgConfigGetWifi", {}).then(function(d) {
-            document.getElementById("id_ssid").value     = d.ssid     || "";
-            document.getElementById("id_password").value = d.password || "";
-        }).catch(function(e) { console.error("WiFi fetch failed:", e); });
+        cfgGet(CFG_KEY_WIFI_SSID).then(function(v) {
+            document.getElementById("id_ssid").value = v;
+        }).catch(function(e) { console.error("ssid:", e); });
 
-        // MQTT — via message bus (MsgConfigGetMqtt → MsgConfigMqtt)
-        apiMsg("MsgConfigGetMqtt", {}).then(function(d) {
-            document.getElementById("id_mqtt_host").value     = d.host     || "";
-            document.getElementById("id_mqtt_port").value     = d.port     || 1883;
-            document.getElementById("id_mqtt_user").value     = d.user     || "";
-            document.getElementById("id_mqtt_password").value = d.password || "";
-        }).catch(function(e) { console.error("MQTT fetch failed:", e); });
+        cfgGet(CFG_KEY_WIFI_PASSWORD).then(function(v) {
+            document.getElementById("id_password").value = v;
+        }).catch(function(e) { console.error("password:", e); });
 
-        // Hardware / printer fields — via GET /api/config (raw config JSON)
-        var xhr = new XMLHttpRequest();
-        xhr.open("GET", "/api/config", true);
-        xhr.onreadystatechange = function() {
-            if (xhr.readyState !== 4 || xhr.status !== 200) return;
-            try {
-                var d = JSON.parse(xhr.responseText);
-                populateDisplayType(d.display_type || 0);
-                document.getElementById("id_printer_URL").value        = d.printer_url || "";
-                document.getElementById("id_printer_copy_count").value = d.p_cpy_cnt   || 1;
-            } catch(e) {
-                console.error("Config fetch failed:", e);
-                populateDisplayType(0);
-            }
-        };
-        xhr.send();
+        cfgGet(CFG_KEY_DISPLAY_TYPE).then(function(v) {
+            populateDisplayType(v);
+        }).catch(function(e) { populateDisplayType(0); console.error("display_type:", e); });
+
+        cfgGet(CFG_KEY_MQTT_HOST).then(function(v) {
+            document.getElementById("id_mqtt_host").value = v;
+        }).catch(function(e) { console.error("mqtt_host:", e); });
+
+        cfgGet(CFG_KEY_MQTT_PORT).then(function(v) {
+            document.getElementById("id_mqtt_port").value = v || 1883;
+        }).catch(function(e) { console.error("mqtt_port:", e); });
+
+        cfgGet(CFG_KEY_MQTT_USER).then(function(v) {
+            document.getElementById("id_mqtt_user").value = v;
+        }).catch(function(e) { console.error("mqtt_user:", e); });
+
+        cfgGet(CFG_KEY_MQTT_PASSWORD).then(function(v) {
+            document.getElementById("id_mqtt_password").value = v;
+        }).catch(function(e) { console.error("mqtt_password:", e); });
+
+        cfgGet(CFG_KEY_PRINTER_URL).then(function(v) {
+            document.getElementById("id_printer_URL").value = v;
+        }).catch(function(e) { console.error("printer_url:", e); });
+
+        cfgGet(CFG_KEY_PRINTER_COPY_COUNT).then(function(v) {
+            document.getElementById("id_printer_copy_count").value = v || 1;
+        }).catch(function(e) { console.error("printer_copy_count:", e); });
     }
 
-    // -------------------------------------------------------------------------
-    // saveConfiguration — send one MsgConfigSet per changed key
-    // -------------------------------------------------------------------------
+    // =========================================================================
+    // saveConfiguration — send one MsgConfigSet per field
+    // =========================================================================
     function saveConfiguration() {
-        // WiFi
-        cfgSet("ssid",          "string",  document.getElementById("id_ssid").value);
-        cfgSet("password",      "string",  document.getElementById("id_password").value);
-        cfgSet("display_type",  "uint32",  document.getElementById("id_display_type").selectedIndex);
-
-        // MQTT
-        cfgSet("mqtt_host",     "string",  document.getElementById("id_mqtt_host").value);
-        cfgSet("mqtt_port",     "uint32",  document.getElementById("id_mqtt_port").value);
-        cfgSet("mqtt_user",     "string",  document.getElementById("id_mqtt_user").value);
-        cfgSet("mqtt_pass",     "string",  document.getElementById("id_mqtt_password").value);
-
-        // Printer
-        cfgSet("printer_url",   "string",  document.getElementById("id_printer_URL").value);
-        cfgSet("p_cpy_cnt",     "uint32",  document.getElementById("id_printer_copy_count").value);
-
+        cfgSet(CFG_KEY_WIFI_SSID,          TYPE_STRING, document.getElementById("id_ssid").value);
+        cfgSet(CFG_KEY_WIFI_PASSWORD,      TYPE_STRING, document.getElementById("id_password").value);
+        cfgSet(CFG_KEY_DISPLAY_TYPE,       TYPE_UINT32, document.getElementById("id_display_type").selectedIndex);
+        cfgSet(CFG_KEY_MQTT_HOST,          TYPE_STRING, document.getElementById("id_mqtt_host").value);
+        cfgSet(CFG_KEY_MQTT_PORT,          TYPE_UINT32, document.getElementById("id_mqtt_port").value);
+        cfgSet(CFG_KEY_MQTT_USER,          TYPE_STRING, document.getElementById("id_mqtt_user").value);
+        cfgSet(CFG_KEY_MQTT_PASSWORD,      TYPE_STRING, document.getElementById("id_mqtt_password").value);
+        cfgSet(CFG_KEY_PRINTER_URL,        TYPE_STRING, document.getElementById("id_printer_URL").value);
+        cfgSet(CFG_KEY_PRINTER_COPY_COUNT, TYPE_UINT32, document.getElementById("id_printer_copy_count").value);
         alert("Configuration saved.");
     }
 
-    // -------------------------------------------------------------------------
+    // =========================================================================
     // reboot
-    // -------------------------------------------------------------------------
+    // =========================================================================
     function reboot() {
         var xhr = new XMLHttpRequest();
         xhr.open("GET", "reboot", true);
@@ -210,3 +319,4 @@
 
 </body>
 </html>
+

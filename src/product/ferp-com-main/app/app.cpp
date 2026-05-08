@@ -79,7 +79,9 @@
 #include "msg_config_get_wifi.h"
 #include "msg_config_get_cloud.h"
 #include "msg_config_get_ota.h"
+#include "msg_config_get_key.h"
 #include "msg_config_set.h"
+#include "msg_config_value.h"
 #include "msg_config_mqtt.h"
 #include "msg_config_wifi.h"
 #include "msg_fuel_pumped.h"
@@ -263,6 +265,7 @@ static const app_msg_codec_entry_t k_codec_table[] = {
     { "MsgConfigGetOta",         MSG_ID_CONFIG_GET_OTA,        MsgConfigGetOta::from_json,         MsgConfigGetOta::to_json        },
     { "MsgConfigGetDT",          MSG_ID_CONFIG_GET_DT,         MsgConfigGetDT::from_json,          MsgConfigGetDT::to_json         },
     { "MsgConfigGet",            MSG_ID_CONFIG_GET,            MsgConfigGet::from_json,            MsgConfigGet::to_json           },
+    { "MsgConfigGetKey",         MSG_ID_CONFIG_GET_KEY,        MsgConfigGetKey::from_json,         MsgConfigGetKey::to_json        },
     { "MsgConfigSet",            MSG_ID_CONFIG_SET,            MsgConfigSet::from_json,            MsgConfigSet::to_json           },
 
     // ── Config responses ──────────────────────────────────────────────────────
@@ -271,6 +274,7 @@ static const app_msg_codec_entry_t k_codec_table[] = {
     { "MsgConfigCloud",          MSG_ID_CONFIG_CLOUD,          MsgConfigCloud::from_json,          MsgConfigCloud::to_json         },
     { "MsgConfigOta",            MSG_ID_CONFIG_OTA,            MsgConfigOta::from_json,            MsgConfigOta::to_json           },
     { "MsgConfigReady",          MSG_ID_CONFIG_READY,          MsgConfigReady::from_json,          MsgConfigReady::to_json         },
+    { "MsgConfigValue",          MSG_ID_CONFIG_VALUE,          MsgConfigValue::from_json,          MsgConfigValue::to_json         },
 
     // ── Fuel / dispenser ─────────────────────────────────────────────────────
     { "MsgFuelPumped",           MSG_ID_FUEL_PUMPED,           MsgFuelPumped::from_json,           MsgFuelPumped::to_json          },
@@ -428,6 +432,7 @@ static const ModuleWebServer::ApiMsgRouteDef k_api_routes[] = {
     { MSG_ID_CONFIG_GET_WIFI,  MODULE_CONFIG_ID,  MSG_ID_CONFIG_WIFI  },
     { MSG_ID_CONFIG_GET_CLOUD, MODULE_CONFIG_ID,  MSG_ID_CONFIG_CLOUD },
     { MSG_ID_CONFIG_GET_OTA,   MODULE_CONFIG_ID,  MSG_ID_CONFIG_OTA   },
+    { MSG_ID_CONFIG_GET_KEY,   MODULE_CONFIG_ID,  MSG_ID_CONFIG_VALUE },
     { MSG_ID_CONFIG_SET,       (hsys_module_id_t)0, (hsys_msg_id_t)0  }, // broadcast
     { (hsys_msg_id_t)0,        (hsys_module_id_t)0, (hsys_msg_id_t)0  }  // sentinel
 };

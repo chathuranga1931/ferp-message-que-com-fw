@@ -73,6 +73,8 @@ idf_component_register(
         "${D_MSGS}/configs/msg_config_ready.cpp"
         "${D_MSGS}/configs/msg_config_set.cpp"
         "${D_MSGS}/configs/msg_config_get.cpp"
+        "${D_MSGS}/configs/msg_config_get_key.cpp"
+        "${D_MSGS}/configs/msg_config_value.cpp"
         # WiFi messages
         "${D_MSGS}/wifi/msg_config_get_wifi.cpp"
         "${D_MSGS}/wifi/msg_config_wifi.cpp"

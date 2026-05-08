@@ -143,6 +143,8 @@ add_library(app_messages STATIC
     ${APP_MSGS}/configs/msg_config_ready.cpp
     ${APP_MSGS}/configs/msg_config_set.cpp
     ${APP_MSGS}/configs/msg_config_get.cpp
+    ${APP_MSGS}/configs/msg_config_get_key.cpp
+    ${APP_MSGS}/configs/msg_config_value.cpp
     # WiFi messages
     ${APP_MSGS}/wifi/msg_config_get_wifi.cpp
     ${APP_MSGS}/wifi/msg_config_wifi.cpp

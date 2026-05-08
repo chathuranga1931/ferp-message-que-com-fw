@@ -1,9 +1,11 @@
 #pragma once
 
 #include "hsys_module.h"
-#include "hsys_config.h"     // config_handle_t, config_t
-#include "hsys_pool.h"       // hsys_pool_alloc / hsys_pool_free
-#include "msg_config_set.h"  // MsgConfigSet::Payload
+#include "hsys_config.h"       // config_handle_t, config_t
+#include "hsys_pool.h"         // hsys_pool_alloc / hsys_pool_free
+#include "msg_config_set.h"    // MsgConfigSet
+#include "msg_config_get_key.h" // MsgConfigGetKey
+#include "msg_config_value.h"   // MsgConfigValue
 
 // ---------------------------------------------------------------------------
 // Module identity
@@ -45,10 +47,11 @@ private:
 
     // ── Internal helpers ─────────────────────────────────────────────────────
     void _load_and_save();
-    void _apply_config_set(const MsgConfigSet::Payload &p);
-    void _send_config_wifi (hsys_module_id_t requester);
-    void _send_config_cloud(hsys_module_id_t requester);
-    void _send_config_mqtt (hsys_module_id_t requester);
-    void _send_config_dt   (hsys_module_id_t requester);
-    void _send_config_ota  (hsys_module_id_t requester);
+    void _apply_config_set   (const hsys_msg_t &msg);
+    void _send_config_value  (uint16_t key, hsys_module_id_t requester);
+    void _send_config_wifi   (hsys_module_id_t requester);
+    void _send_config_cloud  (hsys_module_id_t requester);
+    void _send_config_mqtt   (hsys_module_id_t requester);
+    void _send_config_dt     (hsys_module_id_t requester);
+    void _send_config_ota    (hsys_module_id_t requester);
 };

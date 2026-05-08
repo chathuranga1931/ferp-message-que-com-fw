@@ -27,7 +27,9 @@
 #include "msg_config_get_mqtt.h"
 #include "msg_config_get_dt.h"
 #include "msg_config_get_ota.h"
+#include "msg_config_get_key.h"
 #include "msg_config_set.h"
+#include "msg_config_value.h"
 #include "msg_config_wifi.h"
 #include "msg_config_cloud.h"
 #include "msg_config_mqtt.h"
@@ -63,6 +65,7 @@ void ModuleConfig::init()
 
     subscribe(MSG_ID_SPIFFS_READY);
     subscribe(MSG_ID_CONFIG_SET);
+    subscribe(MSG_ID_CONFIG_GET_KEY);
     subscribe(MSG_ID_CONFIG_GET_WIFI);
     subscribe(MSG_ID_CONFIG_GET_CLOUD);
     subscribe(MSG_ID_CONFIG_GET_MQTT);
@@ -78,7 +81,7 @@ void ModuleConfig::init()
         LOG_MSG_ERROR(MOD_CONFIG_LOG_EN, "JSON buf alloc failed — config will use defaults");
     }
 
-    LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "config handle initialised, subscribed to SPIFFS_READY + CONFIG_SET + typed config gets");
+    LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "config handle initialised, subscribed to SPIFFS_READY + CONFIG_SET + CONFIG_GET_KEY + typed config gets");
 }
 
 // ── Message handler ───────────────────────────────────────────────────────────
@@ -93,8 +96,14 @@ void ModuleConfig::on_msg_received(const hsys_msg_t &msg)
             break;
 
         case MSG_ID_CONFIG_SET:
-            _apply_config_set(MsgConfigSet::deserialize(msg));
+            _apply_config_set(msg);
             break;
+
+        case MSG_ID_CONFIG_GET_KEY: {
+            auto p = MsgConfigGetKey::deserialize(msg);
+            _send_config_value(p.key, p.source_module_id);
+            break;
+        }
 
         case MSG_ID_CONFIG_GET_WIFI:
             _send_config_wifi(MsgConfigGetWifi::deserialize(msg).source_module_id);
@@ -310,34 +319,50 @@ void ModuleConfig::_send_config_ota(hsys_module_id_t requester)
 
 // ── MsgConfigSet handler ──────────────────────────────────────────────────────
 
-void ModuleConfig::_apply_config_set(const MsgConfigSet::Payload &p)
+void ModuleConfig::_apply_config_set(const hsys_msg_t &msg)
 {
+    uint16_t    key       = MsgConfigSet::get_key(msg);
+    hsys_type_t type      = MsgConfigSet::get_type(msg);
+    uint32_t    data_size = MsgConfigSet::get_data_size(msg);
+    const void *data      = MsgConfigSet::get_data(msg);
+
+    if (!data || data_size == 0) {
+        LOG_MSG_WARNING(MOD_CONFIG_LOG_EN, "ConfigSet: empty payload");
+        return;
+    }
+
     uint16_t table_size = 0;
     config_t *table = app_config_get_table(&table_size);
 
-    // Find the entry matching the key name
     for (uint16_t i = 0; i < table_size; i++) {
-        if (strncmp(table[i].name, p.key, MsgConfigSet::KEY_MAX_LEN) != 0) continue;
+        if (table[i].key != key) continue;
 
-        // Apply the value directly into the live config struct pointer
-        switch (p.type) {
-            case HSYS_TYPE_STRING:
-                strncpy(static_cast<char *>(table[i].p_global_value),
-                        p.value.as_str,
-                        table[i].max_length - 1);
-                static_cast<char *>(table[i].p_global_value)[table[i].max_length - 1] = '\0';
-                LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "ConfigSet: %s = \"%s\"", p.key, p.value.as_str);
+        switch (type) {
+            case HSYS_TYPE_STRING: {
+                char *dst = static_cast<char *>(table[i].p_global_value);
+                uint32_t copy = (data_size < table[i].max_length) ? data_size : (table[i].max_length - 1);
+                memcpy(dst, data, copy);
+                dst[copy] = '\0';
+                LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "ConfigSet key=0x%04X = \"%s\"", key, dst);
                 break;
+            }
             case HSYS_TYPE_UINT32:
-                *static_cast<uint32_t *>(table[i].p_global_value) = p.value.as_uint32;
-                LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "ConfigSet: %s = %lu", p.key, (unsigned long)p.value.as_uint32);
+                if (data_size >= 4U) {
+                    uint32_t v = 0;
+                    memcpy(&v, data, 4U);
+                    *static_cast<uint32_t *>(table[i].p_global_value) = v;
+                    LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "ConfigSet key=0x%04X = %lu", key, (unsigned long)v);
+                }
                 break;
             case HSYS_TYPE_BOOL:
-                *static_cast<bool *>(table[i].p_global_value) = p.value.as_bool;
-                LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "ConfigSet: %s = %s", p.key, p.value.as_bool ? "true" : "false");
+                if (data_size >= 1U) {
+                    bool v = (*static_cast<const uint8_t *>(data)) != 0U;
+                    *static_cast<bool *>(table[i].p_global_value) = v;
+                    LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "ConfigSet key=0x%04X = %s", key, v ? "true" : "false");
+                }
                 break;
             default:
-                LOG_MSG_WARNING(MOD_CONFIG_LOG_EN, "ConfigSet: unknown type %d for key '%s'", (int)p.type, p.key);
+                LOG_MSG_WARNING(MOD_CONFIG_LOG_EN, "ConfigSet: unknown type %d for key 0x%04X", (int)type, key);
                 return;
         }
 
@@ -363,5 +388,48 @@ void ModuleConfig::_apply_config_set(const MsgConfigSet::Payload &p)
         return;
     }
 
-    LOG_MSG_WARNING(MOD_CONFIG_LOG_EN, "ConfigSet: unknown key '%s'", p.key);
+    LOG_MSG_WARNING(MOD_CONFIG_LOG_EN, "ConfigSet: unknown key 0x%04X", key);
+}
+
+// ── MsgConfigGetKey / MsgConfigValue ─────────────────────────────────────────
+
+void ModuleConfig::_send_config_value(uint16_t key, hsys_module_id_t requester)
+{
+    uint16_t table_size = 0;
+    config_t *table = app_config_get_table(&table_size);
+
+    for (uint16_t i = 0; i < table_size; i++) {
+        if (table[i].key != key) continue;
+
+        const void *data      = table[i].p_global_value;
+        uint32_t    data_size = 0U;
+        hsys_type_t type      = table[i].type;
+
+        switch (type) {
+            case HSYS_TYPE_STRING:
+                data_size = (uint32_t)strnlen(static_cast<const char *>(data), table[i].max_length);
+                break;
+            case HSYS_TYPE_UINT32:
+                data_size = 4U;
+                break;
+            case HSYS_TYPE_BOOL:
+                data_size = 1U;
+                break;
+            default:
+                data_size = table[i].max_length;
+                break;
+        }
+
+        hsys_msg_t *out = MsgConfigValue::create(id(), requester, key, type, data, data_size);
+        if (out) {
+            send(out, requester);
+            LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "MsgConfigValue key=0x%04X (%u bytes) -> module %u",
+                         key, data_size, (unsigned)requester);
+        } else {
+            LOG_MSG_ERROR(MOD_CONFIG_LOG_EN, "MsgConfigValue: pool alloc failed for key 0x%04X", key);
+        }
+        return;
+    }
+
+    LOG_MSG_WARNING(MOD_CONFIG_LOG_EN, "MsgConfigGetKey: unknown key 0x%04X", key);
 }

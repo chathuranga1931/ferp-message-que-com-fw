@@ -30,6 +30,8 @@
 #include "msg_config_ready.h"
 #include "msg_config_get.h"
 #include "msg_config_set.h"
+#include "msg_config_get_key.h"
+#include "msg_config_value.h"
 #include "msg_config_get_wifi.h"
 #include "msg_config_get_cloud.h"
 #include "msg_config_get_mqtt.h"
@@ -143,6 +145,14 @@ void sim_msg_inject_handle(const char *cmd_json)
 
         case MSG_ID_CONFIG_SET:
             _publish(MsgConfigSet::from_json(payload_buf, src), msg_id);
+            break;
+
+        case MSG_ID_CONFIG_GET_KEY:
+            _publish(MsgConfigGetKey::from_json(payload_buf, src), msg_id);
+            break;
+
+        case MSG_ID_CONFIG_VALUE:
+            _publish(MsgConfigValue::from_json(payload_buf, src), msg_id);
             break;
 
         case MSG_ID_CONFIG_GET_WIFI:

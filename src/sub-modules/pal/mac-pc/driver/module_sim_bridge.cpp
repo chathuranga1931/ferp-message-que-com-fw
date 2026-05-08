@@ -30,11 +30,13 @@
 // ── Config ──
 #include "msg_config_ready.h"
 #include "msg_config_set.h"
+#include "msg_config_value.h"
 #include "msg_config_get.h"
 #include "msg_config_get_wifi.h"
 #include "msg_config_get_cloud.h"
 #include "msg_config_get_mqtt.h"
 #include "msg_config_get_dt.h"
+#include "msg_config_get_key.h"
 // ── Fuel / dispenser ──
 #include "msg_default_btn.h"
 #include "msg_printer_btn.h"
@@ -77,6 +79,8 @@ void ModuleSimBridge::init()
     subscribe(MSG_ID_CONFIG_GET_CLOUD);
     subscribe(MSG_ID_CONFIG_GET_MQTT);
     subscribe(MSG_ID_CONFIG_GET_DT);
+    subscribe(MSG_ID_CONFIG_GET_KEY);
+    subscribe(MSG_ID_CONFIG_VALUE);
     // ── Fuel / dispenser / buttons ──
     subscribe(MSG_ID_DEFAULT_BTN);
     subscribe(MSG_ID_PRINTER_BTN);
@@ -191,23 +195,28 @@ void ModuleSimBridge::on_msg_received(const hsys_msg_t &msg)
             break;
 
         case MSG_ID_CONFIG_SET: {
-            auto p = MsgConfigSet::deserialize(msg);
-            char val[160];
-            switch (p.type) {
-                case HSYS_TYPE_BOOL:
-                    snprintf(val, sizeof(val), "%s",
-                             p.value.as_bool ? "true" : "false");
-                    break;
-                case HSYS_TYPE_UINT32:
-                    snprintf(val, sizeof(val), "%u",
-                             (unsigned)p.value.as_uint32);
-                    break;
-                default:  // HSYS_TYPE_STRING
-                    snprintf(val, sizeof(val), "\"%s\"", p.value.as_str);
-                    break;
+            // Binary wire format: key(2) type(1) pad(1) size(4) data[]
+            uint16_t    key  = MsgConfigSet::get_key(msg);
+            uint8_t     type = (uint8_t)MsgConfigSet::get_type(msg);
+            uint32_t    sz   = MsgConfigSet::get_data_size(msg);
+            const uint8_t *d = (const uint8_t *)MsgConfigSet::get_data(msg);
+            // Build compact human-readable JSON for the bridge log
+            char vbuf[160] = {};
+            if (type == HSYS_TYPE_BOOL && sz >= 1U) {
+                snprintf(vbuf, sizeof(vbuf), "%s", d[0] ? "true" : "false");
+            } else if (type == HSYS_TYPE_UINT32 && sz >= 4U) {
+                uint32_t v = 0; memcpy(&v, d, 4U);
+                snprintf(vbuf, sizeof(vbuf), "%u", (unsigned)v);
+            } else {
+                uint32_t cp = sz < (sizeof(vbuf) - 3U) ? sz : (sizeof(vbuf) - 3U);
+                vbuf[0] = '"';
+                memcpy(vbuf + 1, d, cp);
+                vbuf[cp + 1] = '"';
+                vbuf[cp + 2] = '\0';
             }
             snprintf(data, sizeof(data),
-                     "{\"key\":\"%s\",\"value\":%s}", p.key, val);
+                     "{\"key\":0x%04X,\"type\":%u,\"value\":%s}",
+                     (unsigned)key, (unsigned)type, vbuf);
             _send_json("MSG_CONFIG_SET", data);
             break;
         }
@@ -246,6 +255,23 @@ void ModuleSimBridge::on_msg_received(const hsys_msg_t &msg)
             snprintf(data, sizeof(data),
                      "{\"requester\":%u}", (unsigned)p.source_module_id);
             _send_json("MSG_CONFIG_GET_DT", data);
+            break;
+        }
+
+        case MSG_ID_CONFIG_GET_KEY: {
+            auto p = MsgConfigGetKey::deserialize(msg);
+            snprintf(data, sizeof(data),
+                     "{\"key\":%u,\"requester\":%u}",
+                     (unsigned)p.key, (unsigned)p.source_module_id);
+            _send_json("MSG_CONFIG_GET_KEY", data);
+            break;
+        }
+
+        case MSG_ID_CONFIG_VALUE: {
+            // Forward to Python UI as JSON byte array (same format as HTTP API)
+            char json_buf[512] = {};
+            MsgConfigValue::to_json(&msg, json_buf, sizeof(json_buf));
+            _send_json("MSG_CONFIG_VALUE", json_buf);
             break;
         }
 
