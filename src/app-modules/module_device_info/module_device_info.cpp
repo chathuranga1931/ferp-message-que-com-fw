@@ -9,6 +9,8 @@
 #include "msg_dev_info_value.h"
 #include "app_msg_ids.h"
 #include "pal_logger.h"
+#include "pal_efuse.h"
+#include <stdio.h>
 #include <string.h>
 
 #define __TAG__           "MOD_DINF"
@@ -30,6 +32,30 @@ ModuleDeviceInfo *ModuleDeviceInfo::instance() { return &s_instance; }
 
 void ModuleDeviceInfo::init()
 {
+    // Populate hw_address from eFuse MAC before the info table is registered,
+    // so the field is valid from the very first read.
+    {
+        uint8_t mac[6] = {};
+        if (pal_efuse_get_mac(mac, sizeof(mac)) == PAL_OK) {
+            app_device_info_t *di = app_device_info_get();
+            snprintf(di->hw_address, sizeof(di->hw_address),
+                     "%02x%02x%02x%02x%02x%02x",
+                     mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+            // Mark the hw_address table entry valid
+            uint16_t count = 0;
+            dev_info_entry_t *table = app_device_info_get_table(&count);
+            for (uint16_t i = 0; i < count; i++) {
+                if (table[i].key == DEV_INFO_KEY_HW_ADDRESS) {
+                    table[i].is_valid = true;
+                    break;
+                }
+            }
+            LOG_MSG_INFO(MOD_DINF_LOG_EN, "hw_address: %s", di->hw_address);
+        } else {
+            LOG_MSG_ERROR(MOD_DINF_LOG_EN, "pal_efuse_get_mac failed");
+        }
+    }
+
     uint16_t count = 0;
     dev_info_entry_t *table = app_device_info_get_table(&count);
 
@@ -106,6 +132,27 @@ void ModuleDeviceInfo::_handle_write(const hsys_msg_t &msg)
     } else {
         LOG_MSG_INFO(MOD_DINF_LOG_EN,
                      "wrote key=0x%04X from module %u", (unsigned)p.key, (unsigned)msg.sender_id);
+        // Broadcast the new value so subscribers (e.g. ModuleMqtt) can react
+        MsgDevInfoValue::Payload notif{};
+        notif.key      = p.key;
+        notif.type     = p.type;
+        notif.is_valid = true;
+        switch (p.type) {
+            case HSYS_TYPE_STRING:
+                snprintf(notif.value.as_str, sizeof(notif.value.as_str),
+                         "%s", p.value.as_str);
+                break;
+            case HSYS_TYPE_UINT32:
+                notif.value.as_uint32 = p.value.as_uint32;
+                break;
+            case HSYS_TYPE_BOOL:
+                notif.value.as_bool = p.value.as_bool;
+                break;
+            default:
+                break;
+        }
+        hsys_msg_t *notif_msg = MsgDevInfoValue::create(id(), (hsys_module_id_t)0, notif);
+        if (notif_msg) publish(notif_msg);
     }
 }
 

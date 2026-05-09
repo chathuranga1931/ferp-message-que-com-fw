@@ -1,0 +1,17 @@
+{
+  "msg_id": "0x0043",
+  "fields": [
+    {
+      "name": "key",
+      "label": "Key Updated",
+      "type": "enum",
+      "options": [
+        { "label": "DEVICE_UUID  (0xA001)", "value": 40961 },
+        { "label": "DEVICE_GROUP (0xA002)", "value": 40962 },
+        { "label": "HW_ADDRESS   (0xA003)", "value": 40963 }
+      ],
+      "default": 40961
+    }
+  ],
+  "direction": "resp"
+}

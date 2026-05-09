@@ -68,13 +68,26 @@ private:
     // ── PAL handle ────────────────────────────────────────────────────────────
     pal_mqtt_client_handle_t _client = nullptr;
 
-    // ── Topics ────────────────────────────────────────────────────────────────
+    // ── Topics — MAC-based (always active once config is received) ───────────
     char _cmd_topic[MODULE_MQTT_TOPIC_MAX]      = {};  ///< subscribe (host → device)
     char _resp_topic[MODULE_MQTT_TOPIC_MAX]     = {};  ///< publish (response to cmd)
     char _evt_topic[MODULE_MQTT_TOPIC_MAX]      = {};  ///< publish (unsolicited events)
     char _ota_ctrl_topic[MODULE_MQTT_TOPIC_MAX] = {};  ///< subscribe (OTA control JSON)
     char _ota_data_topic[MODULE_MQTT_TOPIC_MAX] = {};  ///< subscribe (OTA binary chunks)
     char _ota_resp_topic[MODULE_MQTT_TOPIC_MAX] = {};  ///< publish (OTA status JSON)
+
+    // ── Topics — UUID-based (subscribed once cloud UUID is provisioned) ──────
+    bool _uuid_active                                  = false;
+    char _uuid_cmd_topic[MODULE_MQTT_TOPIC_MAX]      = {};
+    char _uuid_resp_topic[MODULE_MQTT_TOPIC_MAX]     = {};
+    char _uuid_ota_ctrl_topic[MODULE_MQTT_TOPIC_MAX] = {};
+    char _uuid_ota_data_topic[MODULE_MQTT_TOPIC_MAX] = {};
+    char _uuid_ota_resp_topic[MODULE_MQTT_TOPIC_MAX] = {};
+
+    // ── Active response-topic tracking ────────────────────────────────────────
+    // Set per incoming command: points to MAC or UUID resp/ota-resp topic.
+    const char *_active_resp_topic     = nullptr;  ///< resp topic for current cmd cycle
+    const char *_active_ota_resp_topic = nullptr;  ///< ota/resp topic for current OTA session
 
     // ── Sequence tracking ─────────────────────────────────────────────────────
     uint32_t _last_cmd_seq  = 0;
@@ -106,7 +119,9 @@ private:
     void _on_pal_disconnected();
     void _on_pal_data(const pal_mqtt_message_t *m);
     void _on_outbound_msg(const hsys_msg_t &msg, bool is_evt);
+    void _on_dev_info_modified(const hsys_msg_t &msg);
     void _build_topics(const char *dev_type, const char *group, const char *device_id);
+    void _build_uuid_topics(const char *group, const char *uuid_topic_id);
     void _publish_envelope(const char *topic, uint32_t seq,
                            const char *msg_name, const char *data_json);
 

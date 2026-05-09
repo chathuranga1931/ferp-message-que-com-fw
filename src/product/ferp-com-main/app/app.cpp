@@ -114,6 +114,8 @@
 #include "msg_timer_stop_response.h"
 #include "msg_timer_alarm.h"
 #include "msg_tick_1000ms.h"
+#include "msg_dev_info_read.h"
+#include "msg_dev_info_value.h"
 
 // ============================================================================
 // Device configuration — single in-memory instance
@@ -208,7 +210,13 @@ config_t *app_config_get_table(uint16_t *out_size)
 // Device identity — runtime-only, never persisted to flash
 // ============================================================================
 
-static app_device_info_t s_device_info = {};
+#define APP_DEVICE_GROUP  "default"
+
+static app_device_info_t s_device_info = {
+    .device_uuid  = {},
+    .device_group = APP_DEVICE_GROUP,
+    .hw_address   = {},
+};
 
 const hsys_module_id_t k_dev_info_perm_cloud_write[]    = { MODULE_CUBESPHERE_ID };
 const uint8_t          k_dev_info_perm_cloud_write_count = 1;
@@ -232,7 +240,17 @@ static dev_info_entry_t k_dev_info_table[] = {
         HSYS_TYPE_STRING,
         s_device_info.device_group,
         sizeof(s_device_info.device_group),
-        false
+        true   // pre-populated with hardcoded default at boot
+    },
+    {
+        DEV_INFO_KEY_HW_ADDRESS,
+        "hw_address",
+        nullptr, 0,   // no writers — hardware-only, set by ModuleDeviceInfo::init()
+        nullptr, 0,
+        HSYS_TYPE_STRING,
+        s_device_info.hw_address,
+        sizeof(s_device_info.hw_address),
+        false   // set to true by ModuleDeviceInfo after eFuse read
     },
 };
 #define DEV_INFO_TABLE_SIZE  (sizeof(k_dev_info_table) / sizeof(k_dev_info_table[0]))
@@ -314,6 +332,10 @@ static const app_msg_codec_entry_t k_codec_table[] = {
     { "MsgTimerStopResponse",    MSG_ID_TIMER_STOP_RESPONSE,   MsgTimerStopResponse::from_json,    MsgTimerStopResponse::to_json   },
     { "MsgTimerAlarm",           MSG_ID_TIMER_ALARM,           MsgTimerAlarm::from_json,           MsgTimerAlarm::to_json          },
     { "MsgTick1000ms",           MSG_ID_TICK_1000MS,           MsgTick1000ms::from_json,           MsgTick1000ms::to_json          },
+
+    // ── Device info ───────────────────────────────────────────────────────────
+    { "MsgDevInfoRead",          MSG_ID_DEV_INFO_READ,         MsgDevInfoRead::from_json,          MsgDevInfoRead::to_json         },
+    { "MsgDevInfoValue",         MSG_ID_DEV_INFO_VALUE,        MsgDevInfoValue::from_json,         MsgDevInfoValue::to_json        },
 };
 
 // ============================================================================
@@ -337,6 +359,7 @@ static const app_msg_mqtt_route_t k_mqtt_route_table[] = {
     { MSG_ID_CONFIG_GET_OTA,        MODULE_CONFIG_ID,     false },
     { MSG_ID_CONFIG_GET_DT,         MODULE_CONFIG_ID,     false },
     { MSG_ID_CONFIG_GET,            MODULE_CONFIG_ID,     false },
+    { MSG_ID_CONFIG_GET_KEY,        MODULE_CONFIG_ID,     false },
     { MSG_ID_CONFIG_SET,            (hsys_module_id_t)0,  true  }, // broadcast, multicast
 
     // ── Fuel / dispenser → broadcast ─────────────────────────────────────────
@@ -432,9 +455,10 @@ static const ModuleWebServer::ApiMsgRouteDef k_api_routes[] = {
     { MSG_ID_CONFIG_GET_WIFI,  MODULE_CONFIG_ID,  MSG_ID_CONFIG_WIFI  },
     { MSG_ID_CONFIG_GET_CLOUD, MODULE_CONFIG_ID,  MSG_ID_CONFIG_CLOUD },
     { MSG_ID_CONFIG_GET_OTA,   MODULE_CONFIG_ID,  MSG_ID_CONFIG_OTA   },
-    { MSG_ID_CONFIG_GET_KEY,   MODULE_CONFIG_ID,  MSG_ID_CONFIG_VALUE },
-    { MSG_ID_CONFIG_SET,       (hsys_module_id_t)0, (hsys_msg_id_t)0  }, // broadcast
-    { (hsys_msg_id_t)0,        (hsys_module_id_t)0, (hsys_msg_id_t)0  }  // sentinel
+    { MSG_ID_CONFIG_GET_KEY,   MODULE_CONFIG_ID,      MSG_ID_CONFIG_VALUE  },
+    { MSG_ID_CONFIG_SET,       (hsys_module_id_t)0,  (hsys_msg_id_t)0     }, // broadcast
+    { MSG_ID_DEV_INFO_READ,    MODULE_DEVICE_INFO_ID, MSG_ID_DEV_INFO_VALUE },
+    { (hsys_msg_id_t)0,        (hsys_module_id_t)0,  (hsys_msg_id_t)0     }  // sentinel
 };
 
 // ============================================================================

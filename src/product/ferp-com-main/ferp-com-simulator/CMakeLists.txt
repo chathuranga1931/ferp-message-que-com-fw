@@ -177,9 +177,9 @@ add_library(app_messages STATIC
     # System messages (extended)
     ${APP_MSGS}/system/msg_persist_log.cpp
     # Device info messages
-    ${APP_MSGS}/messages/msg_dev_info_read.cpp
-    ${APP_MSGS}/messages/msg_dev_info_write.cpp
-    ${APP_MSGS}/messages/msg_dev_info_value.cpp
+    ${APP_MSGS}/deviceInfo/msg_dev_info_read.cpp
+    ${APP_MSGS}/deviceInfo/msg_dev_info_write.cpp
+    ${APP_MSGS}/deviceInfo/msg_dev_info_value.cpp
     # OTA messages
     ${APP_MSGS}/ota/msg_config_get_ota.cpp
     ${APP_MSGS}/ota/msg_config_ota.cpp
@@ -222,7 +222,7 @@ target_include_directories(app_messages PUBLIC
     ${APP}           # app_msg_ids.h
     ${APP_MODS}/module_config
     ${APP_MODS}/module_fuel/pumps   # nozzle_event.h (needed by msg_nozzle_state.h)
-    ${APP_MSGS}/messages            # msg_dev_info_*.h
+    ${APP_MSGS}/deviceInfo           # msg_dev_info_*.h
     ${APP_MSGS}/http                # http_types.h, msg_http_*.h
     ${PERIPHERAL}
     ${PAL}
@@ -376,7 +376,7 @@ target_include_directories(app_product PUBLIC
     ${SUB_MODS}/utils               # crc32.h (transitively needed)
     ${APP_MSGS}
     ${APP_MSGS}/system               # msg_persist_log.h
-    ${APP_MSGS}/messages             # msg_dev_info_*.h
+    ${APP_MSGS}/deviceInfo             # msg_dev_info_*.h
     ${HSYS_OS}
     ${PAL_MAC}       # esp_err.h stub
     ${DISTAP_LIB}    # display_types.h (transitively needed by module_fuel.h)

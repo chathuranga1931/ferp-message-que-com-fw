@@ -76,6 +76,7 @@ typedef enum : uint16_t
     MSG_ID_DEV_INFO_READ        = 0x0040,   ///< Any -> ModuleDeviceInfo: read a field by key (DIRECT response)
     MSG_ID_DEV_INFO_WRITE       = 0x0041,   ///< Permitted -> ModuleDeviceInfo: write a field by key
     MSG_ID_DEV_INFO_VALUE       = 0x0042,   ///< ModuleDeviceInfo -> requester: field value response (DIRECT)
+    MSG_ID_DEV_INFO_MODIFIED    = 0x0043,   ///< ModuleDeviceInfo -> all: a field was updated (key only)
 
     // ------------------------------------------------------------------
     // HTTP client session  (0x0050 – 0x005F)

@@ -22,6 +22,7 @@ import queue
 import time
 from typing import List, Dict, Tuple, Optional
 from datetime import datetime
+from pathlib import Path
 
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
@@ -159,6 +160,16 @@ class WebAPITransport:
         d = resp.get("data", {})
         return int(d.get("type", 0)), list(d.get("data", []))
 
+    def get_dev_info_value(self, key: int) -> Tuple[bool, str]:
+        payload = {"msg": "MsgDevInfoRead", "data": {"key": key, "source_module_id": 0}}
+        r = self._session.post(self.url, json=payload, timeout=self.timeout)
+        r.raise_for_status()
+        resp = r.json()
+        if not resp.get("ok"):
+            raise TransportError(f"Device error for dev info key 0x{key:04X}")
+        d = resp.get("data", {})
+        return bool(d.get("is_valid", False)), str(d.get("value", ""))
+
     def set_value(self, key: int, type_id: int, data: List[int]) -> None:
         payload = {"msg": "MsgConfigSet", "data": {
             "key": key, "type": type_id, "size": len(data), "data": data
@@ -171,7 +182,8 @@ class WebAPITransport:
 
 
 class MQTTTransport:
-    def __init__(self, host: str, port: int, cmd_topic: str, evt_topic: str):
+    def __init__(self, host: str, port: int, cmd_topic: str, evt_topic: str,
+                 log_fn=None):
         try:
             import paho.mqtt.client as mqtt_mod
             self._mqtt_mod = mqtt_mod
@@ -181,6 +193,7 @@ class MQTTTransport:
         self.port = port
         self.cmd_topic = cmd_topic
         self.evt_topic = evt_topic
+        self._log_fn = log_fn or (lambda msg, lvl: None)
         self._response_queue: queue.Queue = queue.Queue()
         self._connected = False
         self._client = self._make_client()
@@ -201,18 +214,26 @@ class MQTTTransport:
     def _on_connect(self, client, userdata, flags, reason_code, properties=None):
         if (hasattr(reason_code, 'is_failure') and not reason_code.is_failure) or reason_code == 0:
             self._connected = True
+            self._log_fn(f"MQTT connected to {self.host}:{self.port}", "info")
+            self._log_fn(f"MQTT SUBSCRIBE  {self.evt_topic}", "info")
             client.subscribe(self.evt_topic)
+        else:
+            self._log_fn(f"MQTT connect refused: {reason_code}", "error")
 
     def _on_disconnect(self, client, userdata, flags=None, reason_code=None, properties=None):
         self._connected = False
+        self._log_fn(f"MQTT disconnected (reason={reason_code})", "warn")
 
     def _on_message(self, client, userdata, msg):
+        raw = msg.payload.decode('utf-8')
+        self._log_fn(f"MQTT RX  [{msg.topic}]  {raw}", "info")
         try:
-            self._response_queue.put(json.loads(msg.payload.decode('utf-8')))
-        except Exception:
-            pass
+            self._response_queue.put(json.loads(raw))
+        except Exception as exc:
+            self._log_fn(f"MQTT RX parse error: {exc}", "error")
 
     def connect(self) -> None:
+        self._log_fn(f"MQTT connecting to {self.host}:{self.port} ...", "info")
         self._client.connect(self.host, self.port, keepalive=60)
         self._client.loop_start()
         deadline = time.time() + 5.0
@@ -229,22 +250,28 @@ class MQTTTransport:
     def get_value(self, key: int) -> Tuple[int, List[int]]:
         while not self._response_queue.empty():
             self._response_queue.get_nowait()
-        self._client.publish(self.cmd_topic,
-                             json.dumps({"msg": "MsgConfigGetKey", "data": {"key": key}}))
+        payload = json.dumps({"msg": "MsgConfigGetKey", "data": {"key": key}})
+        self._log_fn(f"MQTT TX  [{self.cmd_topic}]  {payload}", "info")
+        self._client.publish(self.cmd_topic, payload)
         try:
             resp = self._response_queue.get(timeout=5.0)
         except queue.Empty:
+            self._log_fn(f"MQTT response timeout for key 0x{key:04X} — no message on [{self.evt_topic}]", "error")
             raise TransportError(f"MQTT response timeout for key 0x{key:04X}")
         d = resp.get("data", {})
         return int(d.get("type", 0)), list(d.get("data", []))
 
     def set_value(self, key: int, type_id: int, data: List[int]) -> None:
-        self._client.publish(self.cmd_topic,
-                             json.dumps({"msg": "MsgConfigSet", "data": {
-                                 "key": key, "type": type_id,
-                                 "size": len(data), "data": data
-                             }}))
+        payload = json.dumps({"msg": "MsgConfigSet", "data": {
+            "key": key, "type": type_id,
+            "size": len(data), "data": data
+        }})
+        self._log_fn(f"MQTT TX  [{self.cmd_topic}]  {payload}", "info")
+        self._client.publish(self.cmd_topic, payload)
         time.sleep(0.1)
+
+    def get_dev_info_value(self, key: int) -> Tuple[bool, str]:
+        raise TransportError("DevInfo read not supported via MQTT transport")
 
 
 class UARTTransport:
@@ -294,6 +321,62 @@ class UARTTransport:
             "key": key, "type": type_id, "size": len(data), "data": data
         }})
 
+    def get_dev_info_value(self, key: int) -> Tuple[bool, str]:
+        raise TransportError("DevInfo read not supported via UART transport")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SETTINGS & DEVICES
+# ═══════════════════════════════════════════════════════════════════════════════
+
+SETTINGS_FILE = Path.home() / ".ferp-config-tool.json"
+DEVICES_FILE  = Path(__file__).parent / "ferp_devices.json"
+NETWORK_FILE  = Path(__file__).parent / "ferp_network_config.json"
+
+
+def _load_settings() -> dict:
+    try:
+        if SETTINGS_FILE.exists():
+            return json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        pass
+    return {}
+
+
+def _save_settings(data: dict) -> None:
+    try:
+        SETTINGS_FILE.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    except Exception:
+        pass
+
+
+def _load_devices() -> list:
+    """Load device list from ferp_devices.json next to main.py."""
+    try:
+        if DEVICES_FILE.exists():
+            return json.loads(DEVICES_FILE.read_text(encoding="utf-8")).get("devices", [])
+    except Exception:
+        pass
+    return []
+
+
+def _load_network_config() -> dict:
+    """Load broker / topic-prefix / port config from ferp_network_config.json."""
+    try:
+        if NETWORK_FILE.exists():
+            return json.loads(NETWORK_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        pass
+    return {}
+
+
+# Convenience accessors with safe defaults
+def _net_mqtt(cfg: dict) -> dict:
+    return cfg.get("mqtt", {})
+
+def _net_webapi(cfg: dict) -> dict:
+    return cfg.get("webapi", {})
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # WORKER THREAD
@@ -317,6 +400,7 @@ class WorkerSignals(QObject):
     connected    = pyqtSignal(bool, str)       # (success, message)
     progress     = pyqtSignal(int, int)        # (current, total)
     batch_done   = pyqtSignal()
+    dev_info_read = pyqtSignal(int, bool, str) # (key, is_valid, value_str)
 
 
 class Worker(QThread):
@@ -401,6 +485,16 @@ class Worker(QThread):
                 self.signals.write_done.emit(key, True)
                 self.signals.log.emit(f"WRITE 0x{key:04X} = {value_str!r}  OK", "info")
 
+            elif op == "read_dev_info":
+                key = task[1]
+                if not self._transport:
+                    raise TransportError("Not connected")
+                self.signals.log.emit(f"DEV INFO READ 0x{key:04X} ...", "info")
+                is_valid, value = self._transport.get_dev_info_value(key)
+                self.signals.dev_info_read.emit(key, is_valid, value)
+                validity = "" if is_valid else " (not valid)"
+                self.signals.log.emit(f"DEV INFO 0x{key:04X} = {value!r}{validity}", "info")
+
             elif op == "write_all":
                 if not self._transport:
                     raise TransportError("Not connected")
@@ -453,15 +547,27 @@ COL_WRITE   = 6
 # MAIN WINDOW
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
+def _vsep() -> QFrame:
+    """Thin vertical separator widget for use inside HBoxLayouts."""
+    sep = QFrame()
+    sep.setFrameShape(QFrame.Shape.VLine)
+    sep.setFrameShadow(QFrame.Shadow.Sunken)
+    return sep
+
+
 class MainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
         self.setWindowTitle("FERP Config Tool")
-        self.resize(1150, 820)
+        self.resize(1150, 860)
 
         self._connected  = False
         self._key_row: Dict[int, int] = {}
+        self._settings      = _load_settings()      # load before _build_ui
+        self._devices       = _load_devices()       # load before _build_ui
+        self._network_cfg   = _load_network_config() # load before _build_ui
 
         self._worker = Worker()
         self._worker.signals.log.connect(self._on_log)
@@ -470,9 +576,11 @@ class MainWindow(QMainWindow):
         self._worker.signals.connected.connect(self._on_connected)
         self._worker.signals.progress.connect(self._on_progress)
         self._worker.signals.batch_done.connect(self._on_batch_done)
+        self._worker.signals.dev_info_read.connect(self._on_dev_info_read)
         self._worker.start()
 
         self._build_ui()
+        self._load_settings_to_ui()
         self._apply_style()
 
     # ── UI Construction ────────────────────────────────────────────────────────
@@ -486,11 +594,14 @@ class MainWindow(QMainWindow):
 
         root.addWidget(self._build_connection_panel())
         root.addWidget(self._build_toolbar())
+        root.addWidget(self._build_devinfo_panel())
 
         splitter = QSplitter(Qt.Orientation.Vertical)
         splitter.addWidget(self._build_table())
         splitter.addWidget(self._build_console())
-        splitter.setSizes([560, 200])
+        splitter.setSizes([420, 280])
+        splitter.setCollapsible(0, False)
+        splitter.setCollapsible(1, False)
         root.addWidget(splitter, 1)
 
     # ── Connection Panel ───────────────────────────────────────────────────────
@@ -541,6 +652,20 @@ class MainWindow(QMainWindow):
         w = QWidget()
         lay = QHBoxLayout(w)
         lay.setContentsMargins(0, 0, 0, 0)
+
+        if self._devices:
+            lay.addWidget(QLabel("Device:"))
+            self._webapi_device = QComboBox()
+            self._webapi_device.setFixedWidth(200)
+            self._webapi_device.addItem("— select device —", None)
+            for d in self._devices:
+                self._webapi_device.addItem(d.get("label", d.get("ip", "?")), d)
+            self._webapi_device.currentIndexChanged.connect(self._on_device_webapi_selected)
+            lay.addWidget(self._webapi_device)
+            lay.addWidget(_vsep())
+        else:
+            self._webapi_device = None
+
         lay.addWidget(QLabel("IP Address:"))
         self._webapi_ip = QLineEdit("192.168.4.1")
         self._webapi_ip.setPlaceholderText("e.g. 192.168.4.1")
@@ -549,7 +674,8 @@ class MainWindow(QMainWindow):
         lay.addWidget(QLabel("Port:"))
         self._webapi_port = QSpinBox()
         self._webapi_port.setRange(1, 65535)
-        self._webapi_port.setValue(8080)
+        _wa_default_port = _net_webapi(self._network_cfg).get("default_port", 8080)
+        self._webapi_port.setValue(_wa_default_port)
         self._webapi_port.setFixedWidth(75)
         lay.addWidget(self._webapi_port)
         lay.addStretch()
@@ -559,23 +685,49 @@ class MainWindow(QMainWindow):
         w = QWidget()
         lay = QHBoxLayout(w)
         lay.setContentsMargins(0, 0, 0, 0)
+
+        if self._devices:
+            lay.addWidget(QLabel("Device:"))
+            self._mqtt_device = QComboBox()
+            self._mqtt_device.setFixedWidth(200)
+            self._mqtt_device.addItem("— select device —", None)
+            for d in self._devices:
+                self._mqtt_device.addItem(d.get("label", d.get("mac", "?")), d)
+            self._mqtt_device.currentIndexChanged.connect(self._on_device_mqtt_selected)
+            lay.addWidget(self._mqtt_device)
+            lay.addWidget(_vsep())
+        else:
+            self._mqtt_device = None
+
         lay.addWidget(QLabel("Broker:"))
-        self._mqtt_host = QLineEdit("localhost")
-        self._mqtt_host.setFixedWidth(130)
+        _mqtt_cfg     = _net_mqtt(self._network_cfg)
+        _brokers      = _mqtt_cfg.get("brokers", ["localhost"])
+        _default_port = int(_mqtt_cfg.get("default_port", 1883))
+        _cmd_prefix   = _mqtt_cfg.get("cmd_topic_prefix",  "ferp/ferp-com")
+        _resp_prefix  = _mqtt_cfg.get("resp_topic_prefix", "ferp/ferp-com")
+        self._mqtt_cmd_prefix  = _cmd_prefix
+        self._mqtt_resp_prefix = _resp_prefix
+        self._mqtt_host = QComboBox()
+        self._mqtt_host.setEditable(True)
+        self._mqtt_host.setFixedWidth(160)
+        for b in _brokers:
+            self._mqtt_host.addItem(b)
+        if not _brokers:
+            self._mqtt_host.addItem("localhost")
         lay.addWidget(self._mqtt_host)
         lay.addWidget(QLabel("Port:"))
         self._mqtt_port = QSpinBox()
         self._mqtt_port.setRange(1, 65535)
-        self._mqtt_port.setValue(1883)
+        self._mqtt_port.setValue(_default_port)
         self._mqtt_port.setFixedWidth(70)
         lay.addWidget(self._mqtt_port)
         lay.addWidget(QLabel("Cmd topic:"))
-        self._mqtt_cmd = QLineEdit("ferp/ferp-com/cmd")
-        self._mqtt_cmd.setFixedWidth(170)
+        self._mqtt_cmd = QLineEdit(f"{_cmd_prefix}/cmd")
+        self._mqtt_cmd.setFixedWidth(210)
         lay.addWidget(self._mqtt_cmd)
-        lay.addWidget(QLabel("Evt topic:"))
-        self._mqtt_evt = QLineEdit("ferp/ferp-com/evt")
-        self._mqtt_evt.setFixedWidth(170)
+        lay.addWidget(QLabel("Resp topic:"))
+        self._mqtt_evt = QLineEdit(f"{_resp_prefix}/resp")
+        self._mqtt_evt.setFixedWidth(210)
         lay.addWidget(self._mqtt_evt)
         lay.addStretch()
         return w
@@ -630,6 +782,12 @@ class MainWindow(QMainWindow):
         self._write_all_btn.clicked.connect(self._on_write_all)
         lay.addWidget(self._write_all_btn)
 
+        save_btn = QPushButton("💾  Save Settings")
+        save_btn.setFixedHeight(30)
+        save_btn.setToolTip(f"Save connection settings to {SETTINGS_FILE}")
+        save_btn.clicked.connect(self._on_save_settings)
+        lay.addWidget(save_btn)
+
         lay.addStretch(1)
 
         self._progress = QProgressBar()
@@ -639,6 +797,51 @@ class MainWindow(QMainWindow):
         lay.addWidget(self._progress)
 
         return w
+
+    # ── Device Info Panel ──────────────────────────────────────────────────────
+
+    # Key constants matching app_device_info.h
+    _DEV_INFO_KEYS = [
+        (0xA001, "Device UUID",  "device_uuid"),
+        (0xA002, "Device Group", "device_group"),
+        (0xA003, "HW Address",   "hw_address"),
+    ]
+
+    def _build_devinfo_panel(self) -> QGroupBox:
+        box = QGroupBox("Device Info")
+        lay = QHBoxLayout(box)
+        lay.setSpacing(12)
+        lay.setContentsMargins(8, 4, 8, 4)
+
+        self._devinfo_fields: Dict[int, QLineEdit] = {}
+        self._devinfo_btns:   Dict[int, QPushButton] = {}
+
+        for key, label, _ in self._DEV_INFO_KEYS:
+            lay.addWidget(QLabel(f"{label}:"))
+            edit = QLineEdit()
+            edit.setReadOnly(True)
+            edit.setPlaceholderText("—")
+            edit.setMinimumWidth(200)
+            self._devinfo_fields[key] = edit
+            lay.addWidget(edit, 1)
+
+            btn = QPushButton("↺")
+            btn.setFixedSize(28, 22)
+            btn.setToolTip(f"Read {label} from device")
+            btn.setEnabled(False)
+            btn.clicked.connect(lambda _, k=key: self._on_read_dev_info_key(k))
+            self._devinfo_btns[key] = btn
+            lay.addWidget(btn)
+
+        ref_all = QPushButton("↺ All")
+        ref_all.setFixedHeight(24)
+        ref_all.setToolTip("Read all device info fields from device")
+        ref_all.setEnabled(False)
+        ref_all.clicked.connect(self._on_read_all_dev_info)
+        self._devinfo_refresh_all_btn = ref_all
+        lay.addWidget(ref_all)
+
+        return box
 
     # ── Config Table ───────────────────────────────────────────────────────────
 
@@ -809,8 +1012,9 @@ class MainWindow(QMainWindow):
                 transport = WebAPITransport(self._webapi_ip.text(), self._webapi_port.value())
             elif idx == 1:
                 transport = MQTTTransport(
-                    self._mqtt_host.text(), self._mqtt_port.value(),
-                    self._mqtt_cmd.text(),  self._mqtt_evt.text()
+                    self._mqtt_host.currentText(), self._mqtt_port.value(),
+                    self._mqtt_cmd.text(),  self._mqtt_evt.text(),
+                    log_fn=self._worker.signals.log.emit
                 )
             else:
                 transport = UARTTransport(
@@ -836,6 +1040,13 @@ class MainWindow(QMainWindow):
             self._connect_btn.setText("Connect")
             self._read_all_btn.setEnabled(False)
             self._write_all_btn.setEnabled(False)
+        for btn in self._devinfo_btns.values():
+            btn.setEnabled(success)
+        self._devinfo_refresh_all_btn.setEnabled(success)
+        if not success:
+            for edit in self._devinfo_fields.values():
+                edit.clear()
+                edit.setPlaceholderText("—")
 
     def _on_uart_scan(self):
         try:
@@ -943,6 +1154,120 @@ class MainWindow(QMainWindow):
     def _on_log(self, msg: str, level: str):
         self._log(msg, level)
 
+    # ── Settings persist ─────────────────────────────────────────────────────────────
+
+    def _load_settings_to_ui(self):
+        s = self._settings
+        if not s:
+            return
+        idx = int(s.get("transport", 0))
+        self._transport_combo.setCurrentIndex(idx)
+        self._config_stack.setCurrentIndex(idx)
+        # WebAPI
+        if s.get("webapi_ip"):
+            self._webapi_ip.setText(s["webapi_ip"])
+        if s.get("webapi_port"):
+            self._webapi_port.setValue(int(s["webapi_port"]))
+        # MQTT
+        if s.get("mqtt_host"):
+            self._mqtt_host.setCurrentText(s["mqtt_host"])
+        if s.get("mqtt_port"):
+            self._mqtt_port.setValue(int(s["mqtt_port"]))
+        if s.get("mqtt_cmd"):
+            self._mqtt_cmd.setText(s["mqtt_cmd"])
+        if s.get("mqtt_evt"):
+            self._mqtt_evt.setText(s["mqtt_evt"])
+        # UART
+        if s.get("uart_port"):
+            self._uart_port.setText(s["uart_port"])
+        if s.get("uart_baud"):
+            self._uart_baud.setCurrentText(str(s["uart_baud"]))
+
+    def _collect_settings(self) -> dict:
+        return {
+            "transport":   self._transport_combo.currentIndex(),
+            "webapi_ip":   self._webapi_ip.text(),
+            "webapi_port": self._webapi_port.value(),
+            "mqtt_host":   self._mqtt_host.currentText(),
+            "mqtt_port":   self._mqtt_port.value(),
+            "mqtt_cmd":    self._mqtt_cmd.text(),
+            "mqtt_evt":    self._mqtt_evt.text(),
+            "uart_port":   self._uart_port.text(),
+            "uart_baud":   self._uart_baud.currentText(),
+        }
+
+    def _on_save_settings(self):
+        _save_settings(self._collect_settings())
+        self._log(f"Settings saved → {SETTINGS_FILE}", "info")
+
+    # ── Device selection ────────────────────────────────────────────────────────────
+
+    # Mapping from ferp_devices.json field → DevInfo key (app_device_info.h)
+    _DEVINFO_FROM_DEVICE = {
+        0xA001: "uuid",   # Device UUID
+        0xA002: "group",  # Device Group
+        0xA003: "mac",    # HW Address
+    }
+
+    def _apply_device_to_devinfo(self, d: dict):
+        """Populate Device Info panel fields from a device dict entry."""
+        for key, field in self._DEVINFO_FROM_DEVICE.items():
+            edit = self._devinfo_fields.get(key)
+            if edit is None:
+                continue
+            value = d.get(field, "")
+            edit.setText(value)
+            edit.setPlaceholderText("—" if value else "(not set)")
+
+    def _on_device_webapi_selected(self, idx: int):
+        if self._webapi_device is None:
+            return
+        d = self._webapi_device.itemData(idx)
+        if d is None:
+            return
+        ip = d.get("ip", "")
+        if ip:
+            self._webapi_ip.setText(ip)
+        self._apply_device_to_devinfo(d)
+        self._log(f"Device selected: {d.get('label', ip or '?')}  (IP {ip})", "info")
+
+    def _on_device_mqtt_selected(self, idx: int):
+        if self._mqtt_device is None:
+            return
+        d = self._mqtt_device.itemData(idx)
+        if d is None:
+            return
+        mac   = d.get("mac", "")
+        uuid_ = d.get("uuid", "")
+        group = d.get("group", "default")
+        dev_id = uuid_ if uuid_ else mac
+        if dev_id:
+            self._mqtt_cmd.setText(f"{self._mqtt_cmd_prefix}/{group}/{dev_id}/cmd")
+            self._mqtt_evt.setText(f"{self._mqtt_resp_prefix}/{group}/{dev_id}/resp")
+        self._apply_device_to_devinfo(d)
+        self._log(f"Device selected: {d.get('label', dev_id or '?')}  (ID {dev_id})", "info")
+
+    # ── Slots — device info ────────────────────────────────────────────────────
+
+    def _on_read_dev_info_key(self, key: int):
+        if not self._connected:
+            self._log("Not connected", "warn")
+            return
+        self._worker.enqueue(("read_dev_info", key))
+
+    def _on_read_all_dev_info(self):
+        if not self._connected:
+            return
+        for key, _, _ in self._DEV_INFO_KEYS:
+            self._worker.enqueue(("read_dev_info", key))
+
+    def _on_dev_info_read(self, key: int, is_valid: bool, value: str):
+        edit = self._devinfo_fields.get(key)
+        if edit is None:
+            return
+        edit.setText(value if is_valid else "")
+        edit.setPlaceholderText("—" if is_valid else "(not set)")
+
     def _log(self, msg: str, level: str = "info"):
         ts = datetime.now().strftime("%H:%M:%S.%f")[:-3]
         color = {"info": "#1565C0", "warn": "#E65100", "error": "#B71C1C"}.get(level, "#212121")
@@ -955,6 +1280,7 @@ class MainWindow(QMainWindow):
     # ── Lifecycle ──────────────────────────────────────────────────────────────
 
     def closeEvent(self, event):
+        _save_settings(self._collect_settings())
         self._worker.stop()
         self._worker.wait(2000)
         event.accept()

@@ -105,9 +105,9 @@ idf_component_register(
         "${D_MSGS}/fuel/msg_nozzle_state.cpp"
         "${D_MSGS}/fuel/msg_printer_btn.cpp"
         # Device info messages
-        "${D_MSGS}/messages/msg_dev_info_read.cpp"
-        "${D_MSGS}/messages/msg_dev_info_write.cpp"
-        "${D_MSGS}/messages/msg_dev_info_value.cpp"
+        "${D_MSGS}/deviceInfo/msg_dev_info_read.cpp"
+        "${D_MSGS}/deviceInfo/msg_dev_info_write.cpp"
+        "${D_MSGS}/deviceInfo/msg_dev_info_value.cpp"
         # OTA messages
         "${D_MSGS}/ota/msg_config_get_ota.cpp"
         "${D_MSGS}/ota/msg_config_ota.cpp"
@@ -135,11 +135,6 @@ idf_component_register(
         "${D_MSGS}/http/msg_http_result.cpp"
         "${D_MSGS}/http/msg_http_abort_request.cpp"
         "${D_MSGS}/http/msg_http_response_header.cpp"
-
-        # Device info messages
-        "${D_MSGS}/messages/msg_dev_info_read.cpp"
-        "${D_MSGS}/messages/msg_dev_info_write.cpp"
-        "${D_MSGS}/messages/msg_dev_info_value.cpp"
 
         # ── App peripherals ───────────────────────────────────────────────
         "${D_PHER}/app_spiffs.cpp"
@@ -235,7 +230,7 @@ idf_component_register(
         "${D_MSGS}/system"
         "${D_MSGS}/timer"
         "${D_MSGS}/wifi"
-        "${D_MSGS}/messages"
+        "${D_MSGS}/deviceInfo"
         "${D_MSGS}/http"
         "${D_PHER}"
         # Generic peripheral

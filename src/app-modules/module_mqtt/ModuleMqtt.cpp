@@ -15,6 +15,7 @@
 #include "msg_config_mqtt.h"
 #include "msg_config_wifi.h"
 #include "msg_config_get_mqtt.h"
+#include "msg_config_value.h"
 #include "msg_internet_status.h"
 #include "msg_fuel_pumped.h"
 #include "msg_nozzle_state.h"
@@ -23,6 +24,7 @@
 #include "msg_config_cloud.h"
 #include "msg_config_ota.h"
 #include "msg_mqtt_status.h"
+#include "msg_dev_info_value.h"
 
 // OTA source messages
 #include "msg_ota_start_request.h"
@@ -96,6 +98,7 @@ void ModuleMqtt::init()
     subscribe(MsgConfigWifi::ID);    // DIRECT response from ModuleConfig
     subscribe(MsgConfigCloud::ID);   // DIRECT response from ModuleConfig
     subscribe(MsgConfigOta::ID);     // DIRECT response from ModuleConfig
+    subscribe(MsgConfigValue::ID);   // DIRECT response from ModuleConfig (MsgConfigGetKey)
     subscribe(MsgFuelPumped::ID);    // NOTIFICATION → evt
     subscribe(MsgNozzleState::ID);   // NOTIFICATION → evt
     subscribe(MsgOtaEvent::ID);      // NOTIFICATION → evt
@@ -104,6 +107,9 @@ void ModuleMqtt::init()
     // OTA source — responses from OtaModule
     subscribe(MsgOtaStartResponse::ID);  // DIRECT from OtaModule
     subscribe(MsgOtaDriverResponse::ID); // DIRECT from OtaModule
+
+    // Device identity — notified when a field is updated by permitted writer
+    subscribe(MsgDevInfoValue::ID);
 
     LOG_MSG_INFO(MQTT_LOG, "init — state=WAIT_CONFIG");
 }
@@ -153,6 +159,12 @@ void ModuleMqtt::on_msg_received(const hsys_msg_t &msg)
             break;
 
         case MsgConfigOta::ID:
+            if (_state == STATE_CONNECTED && msg.receiver_id == id()) {
+                _on_outbound_msg(msg, false /*resp*/);
+            }
+            break;
+
+        case MsgConfigValue::ID:
             if (_state == STATE_CONNECTED && msg.receiver_id == id()) {
                 _on_outbound_msg(msg, false /*resp*/);
             }
@@ -269,6 +281,14 @@ void ModuleMqtt::on_msg_received(const hsys_msg_t &msg)
             break;
         }
 
+        case MsgDevInfoValue::ID:
+            // Broadcast notification from ModuleDeviceInfo after a successful write
+            // (receiver_id == 0 means broadcast, not a direct read response)
+            if (msg.receiver_id == (hsys_module_id_t)0) {
+                _on_dev_info_modified(msg);
+            }
+            break;
+
         default:
             break;
     }
@@ -307,16 +327,14 @@ void ModuleMqtt::_on_config_mqtt(const hsys_msg_t &msg)
     cfg.keepalive            = 60;
     cfg.reconnect_timeout_ms = 5000;
 
-    // Build topic paths using runtime device identity.
-    // device_uuid / device_group are populated by ModuleDeviceInfo after
-    // the cloud module writes them; until then the buffers are empty strings.
+    // Build topic paths using hardware MAC address + hardcoded device group.
+    // hw_address is populated by ModuleDeviceInfo::init() from eFuse before any
+    // module runs, so it is always valid here.
     const app_device_info_t *dev_info = app_device_info_get();
-    char dev_id[40];
-    uuid_to_topic_id(dev_info->device_uuid, dev_id, sizeof(dev_id));
-    _build_topics("ferp-com", dev_info->device_group, dev_id);
+    _build_topics("ferp-com", dev_info->device_group, dev_info->hw_address);
 
-    // Use device_uuid as client ID (truncated to fit)
-    strncpy(cfg.client_id, dev_info->device_uuid, sizeof(cfg.client_id) - 1);
+    // Use hw_address as MQTT client ID (stable across reboots, unique per device)
+    strncpy(cfg.client_id, dev_info->hw_address, sizeof(cfg.client_id) - 1);
 
     if (_client) {
         pal_mqtt_client_destroy(_client);
@@ -388,9 +406,22 @@ void ModuleMqtt::_on_pal_connected()
     pal_mqtt_client_subscribe(_client, _ota_ctrl_topic, PAL_MQTT_QOS_1);
     pal_mqtt_client_subscribe(_client, _ota_data_topic, PAL_MQTT_QOS_1);
 
-    LOG_MSG_INFO(MQTT_LOG, "cmd topic: %s", _cmd_topic);
-    LOG_MSG_INFO(MQTT_LOG, "ota/ctrl:  %s", _ota_ctrl_topic);
-    LOG_MSG_INFO(MQTT_LOG, "ota/data:  %s", _ota_data_topic);
+    LOG_MSG_INFO(MQTT_LOG, "mac cmd topic:      %s", _cmd_topic);
+    LOG_MSG_INFO(MQTT_LOG, "mac ota/ctrl topic: %s", _ota_ctrl_topic);
+    LOG_MSG_INFO(MQTT_LOG, "mac ota/data topic: %s", _ota_data_topic);
+
+    if (_uuid_active) {
+        pal_mqtt_client_subscribe(_client, _uuid_cmd_topic,      PAL_MQTT_QOS_1);
+        pal_mqtt_client_subscribe(_client, _uuid_ota_ctrl_topic, PAL_MQTT_QOS_1);
+        pal_mqtt_client_subscribe(_client, _uuid_ota_data_topic, PAL_MQTT_QOS_1);
+        LOG_MSG_INFO(MQTT_LOG, "uuid cmd topic:      %s", _uuid_cmd_topic);
+        LOG_MSG_INFO(MQTT_LOG, "uuid ota/ctrl topic: %s", _uuid_ota_ctrl_topic);
+        LOG_MSG_INFO(MQTT_LOG, "uuid ota/data topic: %s", _uuid_ota_data_topic);
+    }
+
+    // Default response topics to MAC-based until a cmd overrides them
+    _active_resp_topic     = _resp_topic;
+    _active_ota_resp_topic = _ota_resp_topic;
 }
 
 // ---------------------------------------------------------------------------
@@ -435,6 +466,7 @@ void ModuleMqtt::_on_pal_data(const pal_mqtt_message_t *m)
     // Route OTA topics before JSON envelope parsing
     if (m->topic_len == strlen(_ota_ctrl_topic) &&
         strncmp(m->topic, _ota_ctrl_topic, m->topic_len) == 0) {
+        _active_ota_resp_topic = _ota_resp_topic;
         _handle_ota_ctrl(m);
         return;
     }
@@ -442,6 +474,19 @@ void ModuleMqtt::_on_pal_data(const pal_mqtt_message_t *m)
         strncmp(m->topic, _ota_data_topic, m->topic_len) == 0) {
         _handle_ota_data(m);
         return;
+    }
+    if (_uuid_active) {
+        if (m->topic_len == strlen(_uuid_ota_ctrl_topic) &&
+            strncmp(m->topic, _uuid_ota_ctrl_topic, m->topic_len) == 0) {
+            _active_ota_resp_topic = _uuid_ota_resp_topic;
+            _handle_ota_ctrl(m);
+            return;
+        }
+        if (m->topic_len == strlen(_uuid_ota_data_topic) &&
+            strncmp(m->topic, _uuid_ota_data_topic, m->topic_len) == 0) {
+            _handle_ota_data(m);
+            return;
+        }
     }
 
     // Parse envelope: { "seq": N, "msg": "...", "data": {...} }
@@ -468,6 +513,16 @@ void ModuleMqtt::_on_pal_data(const pal_mqtt_message_t *m)
     }
 
     _last_cmd_seq = seq;
+
+    // Determine which resp topic to use for the response based on which
+    // cmd topic this message arrived on.
+    if (_uuid_active &&
+        m->topic_len == strlen(_uuid_cmd_topic) &&
+        strncmp(m->topic, _uuid_cmd_topic, m->topic_len) == 0) {
+        _active_resp_topic = _uuid_resp_topic;
+    } else {
+        _active_resp_topic = _resp_topic;
+    }
 
     LOG_MSG_INFO(MQTT_LOG, "cmd seq=%u msg='%s'", seq, msg_name);
 
@@ -518,7 +573,8 @@ void ModuleMqtt::_on_outbound_msg(const hsys_msg_t &msg, bool is_evt)
     // For responses, echo back the last received cmd seq; for events, use 0
     uint32_t seq = is_evt ? 0U : _last_cmd_seq;
 
-    const char *topic = is_evt ? _evt_topic : _resp_topic;
+    const char *topic = is_evt ? _evt_topic
+                               : (_active_resp_topic ? _active_resp_topic : _resp_topic);
     _publish_envelope(topic, seq, msg_name, data_json);
 }
 
@@ -541,6 +597,52 @@ void ModuleMqtt::_build_topics(const char *dev_type, const char *group,
              "ferp/%s/%s/%s/ota/data", dev_type, group, device_id);
     snprintf(_ota_resp_topic, sizeof(_ota_resp_topic),
              "ferp/%s/%s/%s/ota/resp", dev_type, group, device_id);
+}
+
+// ---------------------------------------------------------------------------
+// _build_uuid_topics
+// ---------------------------------------------------------------------------
+
+void ModuleMqtt::_build_uuid_topics(const char *group, const char *uuid_topic_id)
+{
+    snprintf(_uuid_cmd_topic,      sizeof(_uuid_cmd_topic),
+             "ferp/ferp-com/%s/%s/cmd",      group, uuid_topic_id);
+    snprintf(_uuid_resp_topic,     sizeof(_uuid_resp_topic),
+             "ferp/ferp-com/%s/%s/resp",     group, uuid_topic_id);
+    snprintf(_uuid_ota_ctrl_topic, sizeof(_uuid_ota_ctrl_topic),
+             "ferp/ferp-com/%s/%s/ota/ctrl", group, uuid_topic_id);
+    snprintf(_uuid_ota_data_topic, sizeof(_uuid_ota_data_topic),
+             "ferp/ferp-com/%s/%s/ota/data", group, uuid_topic_id);
+    snprintf(_uuid_ota_resp_topic, sizeof(_uuid_ota_resp_topic),
+             "ferp/ferp-com/%s/%s/ota/resp", group, uuid_topic_id);
+}
+
+// ---------------------------------------------------------------------------
+// _on_dev_info_modified  — react when cloud module provisions device UUID
+// ---------------------------------------------------------------------------
+
+void ModuleMqtt::_on_dev_info_modified(const hsys_msg_t &msg)
+{
+    auto p = MsgDevInfoValue::deserialize(msg);
+    if (p.key != DEV_INFO_KEY_DEVICE_UUID) return;
+
+    // Read the freshly-written UUID directly from the live device info struct
+    const app_device_info_t *dev_info = app_device_info_get();
+    if (dev_info->device_uuid[0] == '\0') return;
+
+    char uuid_id[40];
+    uuid_to_topic_id(dev_info->device_uuid, uuid_id, sizeof(uuid_id));
+    _build_uuid_topics(dev_info->device_group, uuid_id);
+    _uuid_active = true;
+
+    LOG_MSG_INFO(MQTT_LOG, "UUID provisioned — uuid cmd topic: %s", _uuid_cmd_topic);
+
+    if (_state == STATE_CONNECTED && _client) {
+        pal_mqtt_client_subscribe(_client, _uuid_cmd_topic,      PAL_MQTT_QOS_1);
+        pal_mqtt_client_subscribe(_client, _uuid_ota_ctrl_topic, PAL_MQTT_QOS_1);
+        pal_mqtt_client_subscribe(_client, _uuid_ota_data_topic, PAL_MQTT_QOS_1);
+        LOG_MSG_INFO(MQTT_LOG, "subscribed to UUID topics");
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -584,6 +686,7 @@ void ModuleMqtt::s_pal_event_cb(pal_mqtt_event_data_t *ev)
         case PAL_MQTT_EVENT_ERROR:
             LOG_MSG_WARNING(MQTT_LOG, "PAL MQTT error code=%d", (int)ev->data.error_code);
             break;
+
         default:
             break;
     }
@@ -614,10 +717,10 @@ void ModuleMqtt::_ota_reset()
 void ModuleMqtt::_publish_ota_resp(const char *json)
 {
     if (!_client || !json) return;
+    const char *topic = _active_ota_resp_topic ? _active_ota_resp_topic : _ota_resp_topic;
     size_t len = strlen(json);
-    pal_mqtt_client_publish(_client, _ota_resp_topic,
-                            json, len, PAL_MQTT_QOS_1, false);
-    LOG_MSG_INFO(MQTT_LOG, "ota/resp: %s", json);
+    pal_mqtt_client_publish(_client, topic, json, len, PAL_MQTT_QOS_1, false);
+    LOG_MSG_INFO(MQTT_LOG, "ota/resp [%s]: %s", topic, json);
 }
 
 // ---------------------------------------------------------------------------

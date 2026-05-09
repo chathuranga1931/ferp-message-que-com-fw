@@ -1,0 +1,14 @@
+{
+  "mqtt": {
+    "brokers": [
+      "localhost",
+      "broker.emqx.io"
+    ],
+    "default_port": 1883,
+    "cmd_topic_prefix":  "ferp/ferp-com",
+    "resp_topic_prefix": "ferp/ferp-com"
+  },
+  "webapi": {
+    "default_port": 8080
+  }
+}
