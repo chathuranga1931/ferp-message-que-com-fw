@@ -100,9 +100,9 @@
     var CFG_KEY_ENABLE_NID_PRINT     = 0x9001;
     var CFG_KEY_ENABLE_NID_CLOUD     = 0x9002;
 
-    // Type constants  (must match hsys_type_t)
-    var TYPE_STRING = 0;
-    var TYPE_UINT32 = 1;
+    // Type constants  (must match hsys_type_t in hsys_type.h)
+    var TYPE_UINT32 = 0;
+    var TYPE_STRING = 1;
     var TYPE_BOOL   = 2;
 
     // =========================================================================
@@ -241,44 +241,49 @@
     }
 
     // =========================================================================
-    // onLoadBody — fetch each config field individually by CFG_KEY_*
+    // onLoadBody — fetch each config field sequentially (one request at a time)
+    //              to avoid overwhelming the ESP32 HTTP server socket limit.
     // =========================================================================
     function onLoadBody() {
-        cfgGet(CFG_KEY_WIFI_SSID).then(function(v) {
-            document.getElementById("id_ssid").value = v;
-        }).catch(function(e) { console.error("ssid:", e); });
+        var steps = [
+            function() { return cfgGet(CFG_KEY_WIFI_SSID).then(function(v) {
+                document.getElementById("id_ssid").value = v;
+            }).catch(function(e) { console.error("ssid:", e); }); },
 
-        cfgGet(CFG_KEY_WIFI_PASSWORD).then(function(v) {
-            document.getElementById("id_password").value = v;
-        }).catch(function(e) { console.error("password:", e); });
+            function() { return cfgGet(CFG_KEY_WIFI_PASSWORD).then(function(v) {
+                document.getElementById("id_password").value = v;
+            }).catch(function(e) { console.error("password:", e); }); },
 
-        cfgGet(CFG_KEY_DISPLAY_TYPE).then(function(v) {
-            populateDisplayType(v);
-        }).catch(function(e) { populateDisplayType(0); console.error("display_type:", e); });
+            function() { return cfgGet(CFG_KEY_DISPLAY_TYPE).then(function(v) {
+                populateDisplayType(v);
+            }).catch(function(e) { populateDisplayType(0); console.error("display_type:", e); }); },
 
-        cfgGet(CFG_KEY_MQTT_HOST).then(function(v) {
-            document.getElementById("id_mqtt_host").value = v;
-        }).catch(function(e) { console.error("mqtt_host:", e); });
+            function() { return cfgGet(CFG_KEY_MQTT_HOST).then(function(v) {
+                document.getElementById("id_mqtt_host").value = v;
+            }).catch(function(e) { console.error("mqtt_host:", e); }); },
 
-        cfgGet(CFG_KEY_MQTT_PORT).then(function(v) {
-            document.getElementById("id_mqtt_port").value = v || 1883;
-        }).catch(function(e) { console.error("mqtt_port:", e); });
+            function() { return cfgGet(CFG_KEY_MQTT_PORT).then(function(v) {
+                document.getElementById("id_mqtt_port").value = v || 1883;
+            }).catch(function(e) { console.error("mqtt_port:", e); }); },
 
-        cfgGet(CFG_KEY_MQTT_USER).then(function(v) {
-            document.getElementById("id_mqtt_user").value = v;
-        }).catch(function(e) { console.error("mqtt_user:", e); });
+            function() { return cfgGet(CFG_KEY_MQTT_USER).then(function(v) {
+                document.getElementById("id_mqtt_user").value = v;
+            }).catch(function(e) { console.error("mqtt_user:", e); }); },
 
-        cfgGet(CFG_KEY_MQTT_PASSWORD).then(function(v) {
-            document.getElementById("id_mqtt_password").value = v;
-        }).catch(function(e) { console.error("mqtt_password:", e); });
+            function() { return cfgGet(CFG_KEY_MQTT_PASSWORD).then(function(v) {
+                document.getElementById("id_mqtt_password").value = v;
+            }).catch(function(e) { console.error("mqtt_password:", e); }); },
 
-        cfgGet(CFG_KEY_PRINTER_URL).then(function(v) {
-            document.getElementById("id_printer_URL").value = v;
-        }).catch(function(e) { console.error("printer_url:", e); });
+            function() { return cfgGet(CFG_KEY_PRINTER_URL).then(function(v) {
+                document.getElementById("id_printer_URL").value = v;
+            }).catch(function(e) { console.error("printer_url:", e); }); },
 
-        cfgGet(CFG_KEY_PRINTER_COPY_COUNT).then(function(v) {
-            document.getElementById("id_printer_copy_count").value = v || 1;
-        }).catch(function(e) { console.error("printer_copy_count:", e); });
+            function() { return cfgGet(CFG_KEY_PRINTER_COPY_COUNT).then(function(v) {
+                document.getElementById("id_printer_copy_count").value = v || 1;
+            }).catch(function(e) { console.error("printer_copy_count:", e); }); },
+        ];
+
+        steps.reduce(function(chain, step) { return chain.then(step); }, Promise.resolve());
     }
 
     // =========================================================================
