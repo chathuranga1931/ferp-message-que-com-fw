@@ -130,13 +130,13 @@ class TransportError(Exception):
 
 
 class WebAPITransport:
-    def __init__(self, ip: str, timeout: float = 3.0):
+    def __init__(self, ip: str, port: int = 8080, timeout: float = 3.0):
         try:
             import requests
             self._requests = requests
         except ImportError:
             raise TransportError("requests not installed — run: pip install requests")
-        self.url = f"http://{ip.strip()}/api/messages"
+        self.url = f"http://{ip.strip()}:{port}/api/messages"
         self.timeout = timeout
         self._session = self._requests.Session()
 
@@ -546,6 +546,12 @@ class MainWindow(QMainWindow):
         self._webapi_ip.setPlaceholderText("e.g. 192.168.4.1")
         self._webapi_ip.setFixedWidth(160)
         lay.addWidget(self._webapi_ip)
+        lay.addWidget(QLabel("Port:"))
+        self._webapi_port = QSpinBox()
+        self._webapi_port.setRange(1, 65535)
+        self._webapi_port.setValue(8080)
+        self._webapi_port.setFixedWidth(75)
+        lay.addWidget(self._webapi_port)
         lay.addStretch()
         return w
 
@@ -800,7 +806,7 @@ class MainWindow(QMainWindow):
         idx = self._transport_combo.currentIndex()
         try:
             if idx == 0:
-                transport = WebAPITransport(self._webapi_ip.text())
+                transport = WebAPITransport(self._webapi_ip.text(), self._webapi_port.value())
             elif idx == 1:
                 transport = MQTTTransport(
                     self._mqtt_host.text(), self._mqtt_port.value(),

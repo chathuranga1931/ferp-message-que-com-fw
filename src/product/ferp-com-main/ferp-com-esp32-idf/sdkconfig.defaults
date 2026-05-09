@@ -18,3 +18,8 @@ CONFIG_MBEDTLS_DYNAMIC_BUFFER=y
 CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM=3
 CONFIG_ESP_WIFI_DYNAMIC_RX_BUFFER_NUM=8
 CONFIG_ESP_WIFI_DYNAMIC_TX_BUFFER_NUM=8
+
+# HTTP server: automatically evict the oldest half-open connection when the
+# socket pool is full, instead of rejecting new connections.
+# Prevents the httpd from locking up after a burst of timed-out requests.
+CONFIG_HTTPD_PURGE_CONNECTIONS=y
