@@ -55,4 +55,4 @@ echo "Installing requirements..."
 
 # ── 5. Run the tool ────────────────────────────────────────────────────────────
 echo "Starting FERP Device Tool..."
-"$VENV_DIR/bin/python" main.py
+"$VENV_DIR/bin/python" sim_ui.py

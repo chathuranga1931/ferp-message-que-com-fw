@@ -1,0 +1,30 @@
+{
+  "msg_id": "0x030A",
+  "fields": [
+    {
+      "name": "display_type",
+      "label": "Display Type",
+      "type": "uint32",
+      "default": 0
+    },
+    {
+      "name": "stabilize_delay_ms",
+      "label": "Stabilize Delay (ms)",
+      "type": "uint32",
+      "default": 500
+    },
+    {
+      "name": "printer_url",
+      "label": "Printer URL",
+      "type": "string",
+      "default": "http://printer.local/print"
+    },
+    {
+      "name": "printer_copy_count",
+      "label": "Printer Copy Count",
+      "type": "uint32",
+      "default": 1
+    }
+  ],
+  "direction": "resp"
+}

@@ -1,0 +1,42 @@
+{
+  "msg_id": "0x0204",
+  "fields": [
+    {
+      "name": "epoch",
+      "label": "Unix Epoch",
+      "type": "uint32",
+      "default": 0
+    },
+    {
+      "name": "source",
+      "label": "Time Source",
+      "type": "enum",
+      "options": [
+        {
+          "label": "None",
+          "value": 0
+        },
+        {
+          "label": "Backup",
+          "value": 1
+        },
+        {
+          "label": "RTC",
+          "value": 2
+        },
+        {
+          "label": "NTP",
+          "value": 3
+        }
+      ],
+      "default": 0
+    },
+    {
+      "name": "valid",
+      "label": "Valid",
+      "type": "bool",
+      "default": 0
+    }
+  ],
+  "direction": "resp"
+}

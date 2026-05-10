@@ -1,0 +1,30 @@
+{
+  "msg_id": "0x0A0A",
+  "fields": [
+    {
+      "name": "target_idx",
+      "label": "Target Index",
+      "type": "uint8",
+      "default": 0
+    },
+    {
+      "name": "percent",
+      "label": "Progress (%)",
+      "type": "uint8",
+      "default": 0
+    },
+    {
+      "name": "bytes_written",
+      "label": "Bytes Written",
+      "type": "uint32",
+      "default": 0
+    },
+    {
+      "name": "total_bytes",
+      "label": "Total Bytes",
+      "type": "uint32",
+      "default": 0
+    }
+  ],
+  "direction": "resp"
+}

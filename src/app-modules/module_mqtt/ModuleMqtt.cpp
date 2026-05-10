@@ -65,19 +65,31 @@ static void uuid_to_topic_id(const char *uuid, char *out, size_t out_len)
     out[j] = '\0';
 }
 
-/** Map OTA target name string to target_idx.  Returns 0xFF on failure. */
-static uint8_t resolve_ota_target(const char *name)
+// ---------------------------------------------------------------------------
+// set_ota_targets / _resolve_ota_target
+// ---------------------------------------------------------------------------
+
+void ModuleMqtt::set_ota_targets(const mqtt_ota_target_t *table, uint8_t count)
+{
+    _ota_name_table       = table;
+    _ota_name_table_count = count;
+}
+
+/** Resolve a wire-protocol OTA target name to target_idx.
+ *  Accepts a decimal numeric string ("0", "1", ...) or any name present in
+ *  the table supplied via set_ota_targets().  Returns 0xFF on failure. */
+uint8_t ModuleMqtt::_resolve_ota_target(const char *name) const
 {
     if (!name || name[0] == '\0') return 0xFF;
-    // Accept numeric string directly
+    // Accept decimal integer string directly
     char *end;
     long v = strtol(name, &end, 10);
     if (*end == '\0' && end != name && v >= 0 && v < 255) return (uint8_t)v;
-    // Named targets
-    if (strcmp(name, "main") == 0 || strcmp(name, "esp32-main") == 0) return 0;
-    if (strcmp(name, "dt-boot") == 0 || strcmp(name, "esp32-dt-boot") == 0) return 1;
-    if (strcmp(name, "dt-part") == 0 || strcmp(name, "esp32-dt-part") == 0) return 2;
-    if (strcmp(name, "dt-fw")   == 0 || strcmp(name, "esp32-dt-fw")   == 0) return 3;
+    // Walk the app-supplied name table
+    for (uint8_t i = 0; i < _ota_name_table_count; i++) {
+        if (_ota_name_table[i].name && strcmp(name, _ota_name_table[i].name) == 0)
+            return _ota_name_table[i].target_idx;
+    }
     return 0xFF;
 }
 
@@ -282,10 +294,12 @@ void ModuleMqtt::on_msg_received(const hsys_msg_t &msg)
         }
 
         case MsgDevInfoValue::ID:
-            // Broadcast notification from ModuleDeviceInfo after a successful write
-            // (receiver_id == 0 means broadcast, not a direct read response)
             if (msg.receiver_id == (hsys_module_id_t)0) {
+                // Broadcast notification from ModuleDeviceInfo after a successful write
                 _on_dev_info_modified(msg);
+            } else {
+                // Direct read response — forward to the resp topic so the tool receives it
+                _on_outbound_msg(msg, false);
             }
             break;
 
@@ -762,7 +776,7 @@ void ModuleMqtt::_handle_ota_ctrl(const pal_mqtt_message_t *m)
         uint32_t    size    = doc["data"]["size"]    | (uint32_t)0;
         const char *version = doc["data"]["version"] | "";
 
-        uint8_t target_idx = resolve_ota_target(target);
+        uint8_t target_idx = _resolve_ota_target(target);
         if (target_idx == 0xFF) {
             char resp[MODULE_MQTT_OTA_RESP_MAX];
             snprintf(resp, sizeof(resp),

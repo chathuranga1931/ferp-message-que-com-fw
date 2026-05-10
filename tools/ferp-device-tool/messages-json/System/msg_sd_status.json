@@ -1,0 +1,44 @@
+{
+  "msg_id": "0x0203",
+  "fields": [
+    {
+      "name": "status",
+      "label": "Status",
+      "type": "enum",
+      "options": [
+        {
+          "label": "Mounted",
+          "value": 0
+        },
+        {
+          "label": "Not Found",
+          "value": 1
+        },
+        {
+          "label": "Error",
+          "value": 2
+        }
+      ],
+      "default": 0
+    },
+    {
+      "name": "card_type",
+      "label": "Card Type",
+      "type": "string",
+      "default": "SDHC (sim)"
+    },
+    {
+      "name": "card_size_mb",
+      "label": "Card Size (MB)",
+      "type": "uint32",
+      "default": 1024
+    },
+    {
+      "name": "free_mb",
+      "label": "Free Space (MB)",
+      "type": "uint32",
+      "default": 900
+    }
+  ],
+  "direction": "resp"
+}

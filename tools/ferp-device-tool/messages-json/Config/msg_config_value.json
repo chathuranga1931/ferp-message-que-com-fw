@@ -1,0 +1,35 @@
+{
+  "msg_id": "0x030E",
+  "fields": [
+    {
+      "name": "key",
+      "label": "Config Key",
+      "type": "uint16",
+      "default": 0
+    },
+    {
+      "name": "type",
+      "label": "Value Type",
+      "type": "enum",
+      "options": [
+        { "label": "STRING", "value": 0 },
+        { "label": "UINT32", "value": 1 },
+        { "label": "BOOL",   "value": 2 }
+      ],
+      "default": 0
+    },
+    {
+      "name": "data_size",
+      "label": "Data Size (bytes)",
+      "type": "uint32",
+      "default": 0
+    },
+    {
+      "name": "data",
+      "label": "Data (hex bytes / string)",
+      "type": "string",
+      "default": ""
+    }
+  ],
+  "direction": "resp"
+}

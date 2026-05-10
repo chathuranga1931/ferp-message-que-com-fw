@@ -14,5 +14,20 @@
       "uuid": "",
       "group": "default"
     }
-  ]
+  ],
+  "ota_targets": {
+    "mqtt": [
+      { "label": "Main MCU (esp32-main)",       "name": "esp32-main"    },
+      { "label": "Main MCU — short alias",       "name": "main"          },
+      { "label": "DispTap bootloader (dt-boot)", "name": "esp32-dt-boot" },
+      { "label": "DispTap partitions (dt-part)", "name": "esp32-dt-part" },
+      { "label": "DispTap firmware (dt-fw)",     "name": "esp32-dt-fw"   }
+    ],
+    "webapi": [
+      { "label": "Main MCU",          "name": "main"          },
+      { "label": "DispTap bootloader","name": "dt-bootloader"  },
+      { "label": "DispTap partitions","name": "dt-partitions"  },
+      { "label": "DispTap firmware",  "name": "dt-app"         }
+    ]
+  }
 }

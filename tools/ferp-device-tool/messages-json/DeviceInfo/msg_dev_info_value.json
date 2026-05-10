@@ -1,0 +1,40 @@
+{
+  "msg_id": "0x0042",
+  "direction": "resp",
+  "fields": [
+    {
+      "name": "key",
+      "label": "Key (DEV_INFO_KEY_*)",
+      "type": "enum",
+      "options": [
+        { "label": "DEVICE_UUID  (0xA001)", "value": 40961 },
+        { "label": "DEVICE_GROUP (0xA002)", "value": 40962 },
+        { "label": "HW_ADDRESS   (0xA003)", "value": 40963 }
+      ],
+      "default": 40961
+    },
+    {
+      "name": "type",
+      "label": "Value Type",
+      "type": "enum",
+      "options": [
+        { "label": "STRING  (1)", "value": 1 },
+        { "label": "UINT32  (0)", "value": 0 },
+        { "label": "BOOL    (2)", "value": 2 }
+      ],
+      "default": 1
+    },
+    {
+      "name": "is_valid",
+      "label": "Is Valid",
+      "type": "bool",
+      "default": false
+    },
+    {
+      "name": "value",
+      "label": "Value (string)",
+      "type": "string",
+      "default": ""
+    }
+  ]
+}

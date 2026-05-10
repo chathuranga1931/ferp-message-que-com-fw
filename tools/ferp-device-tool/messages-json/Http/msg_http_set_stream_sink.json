@@ -1,0 +1,13 @@
+{
+  "msg_id": "0x005E",
+  "fields": [
+    {
+      "name": "expected_crc32",
+      "label": "Expected CRC32",
+      "type": "uint32",
+      "default": 0,
+      "placeholder": "0 = skip CRC check"
+    }
+  ],
+  "direction": "cmd"
+}

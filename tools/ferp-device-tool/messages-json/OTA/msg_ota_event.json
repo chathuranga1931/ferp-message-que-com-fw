@@ -1,0 +1,42 @@
+{
+  "msg_id": "0x0A09",
+  "fields": [
+    {
+      "name": "event",
+      "label": "Event",
+      "type": "enum",
+      "options": [
+        {
+          "label": "SESSION_STARTED",
+          "value": 0
+        },
+        {
+          "label": "SESSION_ABORTED",
+          "value": 1
+        },
+        {
+          "label": "COMPLETE",
+          "value": 2
+        },
+        {
+          "label": "TIMEOUT",
+          "value": 3
+        }
+      ],
+      "default": 0
+    },
+    {
+      "name": "target_idx",
+      "label": "Target Index",
+      "type": "uint8",
+      "default": 0
+    },
+    {
+      "name": "version",
+      "label": "Version",
+      "type": "string",
+      "default": ""
+    }
+  ],
+  "direction": "resp"
+}

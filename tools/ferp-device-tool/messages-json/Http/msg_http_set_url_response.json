@@ -1,0 +1,19 @@
+{
+  "msg_id": "0x0053",
+  "fields": [
+    {
+      "name": "result",
+      "label": "Op Result",
+      "type": "enum",
+      "options": [
+        { "label": "HTTP_OP_OK",               "value": 0 },
+        { "label": "HTTP_OP_ERR_BAD_SESSION",  "value": 1 },
+        { "label": "HTTP_OP_ERR_URL_TOO_LONG", "value": 2 },
+        { "label": "HTTP_OP_ERR_HEADERS_FULL", "value": 3 },
+        { "label": "HTTP_OP_ERR_BAD_STATE",    "value": 4 }
+      ],
+      "default": 0
+    }
+  ],
+  "direction": "resp"
+}

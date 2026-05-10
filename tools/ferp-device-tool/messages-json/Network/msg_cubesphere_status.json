@@ -1,0 +1,32 @@
+{
+  "msg_id": "0x0A02",
+  "fields": [
+    {
+      "name": "event",
+      "label": "Event",
+      "type": "enum",
+      "options": [
+        { "label": "REGISTERED",      "value": 0 },
+        { "label": "REGISTER_FAILED", "value": 1 },
+        { "label": "PUMPED_SUCCESS",  "value": 2 },
+        { "label": "PUMPED_FAILED",   "value": 3 },
+        { "label": "HB_SENT",         "value": 4 },
+        { "label": "HB_FAILED",       "value": 5 }
+      ],
+      "default": 0
+    },
+    {
+      "name": "nozzle_idx",
+      "label": "Nozzle Index",
+      "type": "uint8",
+      "default": 0
+    },
+    {
+      "name": "device_uuid",
+      "label": "Device UUID",
+      "type": "string",
+      "default": ""
+    }
+  ],
+  "direction": "resp"
+}

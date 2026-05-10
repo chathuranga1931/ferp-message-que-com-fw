@@ -40,6 +40,18 @@
 #define MODULE_MQTT_OTA_RESP_MAX 128
 
 // ---------------------------------------------------------------------------
+// MQTT OTA target name entry
+//
+// Maps a wire-protocol target name string (e.g. "main", "esp32-main") to the
+// OtaModule target_idx.  The table is supplied by app.cpp via set_ota_targets().
+// ---------------------------------------------------------------------------
+
+typedef struct {
+    const char *name;       ///< Name accepted on the wire (e.g. "main", "esp32-main")
+    uint8_t     target_idx; ///< Corresponding OtaModule target_idx
+} mqtt_ota_target_t;
+
+// ---------------------------------------------------------------------------
 // ModuleMqtt
 // ---------------------------------------------------------------------------
 
@@ -49,6 +61,10 @@ public:
     ModuleMqtt() : HsysModule(MODULE_MQTT_ID, MODULE_MQTT_NAME) {}
 
     static ModuleMqtt *instance();
+
+    /** Supply the OTA target name → index mapping.  Call from app_init()
+     *  before hsys_module_init().  The array must have static lifetime. */
+    void set_ota_targets(const mqtt_ota_target_t *table, uint8_t count);
 
 protected:
     void init()                                  override;
@@ -130,6 +146,12 @@ private:
     void _handle_ota_data(const pal_mqtt_message_t *m);
     void _publish_ota_resp(const char *json);
     void _ota_reset();
+
+    // ── OTA target name table (supplied by app.cpp) ───────────────────────────
+    const mqtt_ota_target_t *_ota_name_table      = nullptr;
+    uint8_t                  _ota_name_table_count = 0;
+
+    uint8_t _resolve_ota_target(const char *name) const;
 
     // PAL event callback (static trampoline)
     static void s_pal_event_cb(pal_mqtt_event_data_t *ev);

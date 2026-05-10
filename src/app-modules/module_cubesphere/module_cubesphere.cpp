@@ -27,6 +27,8 @@
 #include "msg_http_send_request.h"
 #include "msg_http_result.h"
 #include "msg_http_response_header.h"
+#include "msg_dev_info_write.h"
+#include "app_device_info.h"
 
 #include "pal_logger.h"
 #include "pal_efuse.h"
@@ -488,6 +490,15 @@ void ModuleCubeSphere::_on_reg_step2_result(const hsys_msg_t &msg)
     strncpy(_cs_net_cfg.agent_uuid,                  dev_id, CS_SIZE_UUID   - 1);
     strncpy(_cs_net_cfg.basic_authentication_base64, b64,    CS_SIZE_SECRET - 1);
     LOG_MSG_DEBUG(CSP_LOG_EN, "reg step2 OK — device_id=%s", _cs_net_cfg.agent_uuid);
+
+    // Push the cloud-assigned UUID into DeviceInfo so the rest of the system
+    // (ModuleMqtt UUID topics, DevInfo bar, etc.) sees the provisioned identity.
+    {
+        hsys_msg_t *w = MsgDevInfoWrite::create_str(
+            id(), DEV_INFO_KEY_DEVICE_UUID, _cs_net_cfg.agent_uuid);
+        if (w) publish(w);
+    }
+
     _start_reg_step_3();
 }
 

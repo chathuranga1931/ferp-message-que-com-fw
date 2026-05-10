@@ -37,7 +37,7 @@ typedef enum : uint8_t {
 class MsgCloudStatus : public IHsysMsg
 {
 public:
-    static constexpr hsys_msg_id_t ID = MSG_ID_CLOUD_STATUS;
+    static constexpr hsys_msg_id_t ID = MSG_ID_CUBESPHERE_STATUS;
 
     struct Payload {
         cloud_status_event_t event;

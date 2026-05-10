@@ -138,8 +138,19 @@ class OtaSession:
         t.start()
 
     def abort(self) -> None:
-        """Request a graceful abort.  The background thread will stop soon."""
+        """Request a graceful abort.
+
+        Sends ota_abort to the device immediately (from the calling thread, while
+        the MQTT network loop is still running) and unblocks any in-progress
+        ctrl/chunk wait so the session thread exits without waiting for the full
+        timeout.
+        """
         self._abort_flag.set()
+        # Send from the calling thread — _run() may be blocked on a chunk wait.
+        self._send_abort()
+        # Unblock in-progress event waits so the session thread exits promptly.
+        self._ctrl_evt.set()
+        self._chunk_evt.set()
 
     # ── MQTT callbacks ────────────────────────────────────────────────────────
 
@@ -190,18 +201,27 @@ class OtaSession:
         self._chunk_evt.clear()
         self._last_resp = None
         frame = struct.pack(">I", offset) + data
-        self._client.publish(_ota_data(self.base), frame, qos=1)
+        # Use QoS 0 for data chunks: the OTA protocol has its own application-level
+        # ACK (ota_resp), so MQTT-level retransmission (QoS 1) is redundant and
+        # harmful — it causes the broker/paho to redeliver old chunks that the device
+        # already processed, triggering spurious out-of-order errors and resync loops.
+        self._client.publish(_ota_data(self.base), frame, qos=0)
         if not self._chunk_evt.wait(timeout=self.chunk_timeout):
             return None
         return self._last_resp
 
     def _send_abort(self) -> None:
+        """Publish ota_abort and wait for paho to transmit it (up to 2 s)."""
         if self._client:
-            self._client.publish(
-                _ota_ctrl(self.base),
-                json.dumps({"seq": 99, "cmd": "ota_abort"}),
-                qos=1,
-            )
+            try:
+                info = self._client.publish(
+                    _ota_ctrl(self.base),
+                    json.dumps({"seq": 99, "cmd": "ota_abort"}),
+                    qos=1,
+                )
+                info.wait_for_publish(timeout=2.0)
+            except Exception:
+                pass
 
     # ── Main session flow ─────────────────────────────────────────────────────
 
@@ -246,6 +266,12 @@ class OtaSession:
         self.on_log(f"Connected. OTA resp: {_ota_resp(self.base)}")
 
         # ── 1. ota_start ──────────────────────────────────────────────────────
+        if self._abort_flag.is_set():
+            self.on_log("Abort requested before ota_start.")
+            self._client.loop_stop()
+            self.on_done(False)
+            return
+
         self.on_log("→ ota_start …")
         resp = self._send_ctrl({
             "seq": 1,
@@ -257,6 +283,11 @@ class OtaSession:
                 "crc32":   f"0x{fw_crc:08X}",
             },
         })
+        if self._abort_flag.is_set():
+            self.on_log("Abort requested during ota_start.")
+            self._client.loop_stop()
+            self.on_done(False)
+            return
         if resp is None or resp.get("status") != "ok":
             code = (resp or {}).get("code", "no response")
             self.on_log(f"[error] ota_start rejected: {code}")
@@ -274,8 +305,9 @@ class OtaSession:
         with open(self.firmware_path, "rb") as fh:
             while offset < fw_size:
                 if self._abort_flag.is_set():
-                    self.on_log("Abort requested — sending ota_abort")
-                    self._send_abort()
+                    self.on_log("Abort requested.")
+                    # ota_abort was already published by abort() from the caller
+                    # thread; just stop the network loop and exit.
                     self._client.loop_stop()
                     self.on_done(False)
                     return

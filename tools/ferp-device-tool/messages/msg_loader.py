@@ -40,15 +40,15 @@ import os
 import warnings
 
 # ---------------------------------------------------------------------------
-# Locate the shared JSON messages directory
+# Locate the messages JSON directory (bundled alongside this tool)
 # ---------------------------------------------------------------------------
 # Layout:
-#   <repo>/tools/ferp-mqtt-tool/messages/msg_loader.py   ← this file
-#   <repo>/src/app-messages/messages/                     ← JSON source
+#   <tool>/messages/msg_loader.py   ← this file
+#   <tool>/messages-json/           ← JSON message definitions (local copy)
 #
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 MSGS_DIR  = os.path.normpath(
-    os.path.join(_THIS_DIR, "..", "..", "..", "src", "app-messages", "messages")
+    os.path.join(_THIS_DIR, "..", "messages-json")
 )
 
 

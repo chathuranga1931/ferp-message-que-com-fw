@@ -1,0 +1,18 @@
+{
+  "msg_id": "0x005D",
+  "fields": [
+    {
+      "name": "key",
+      "label": "Header Name",
+      "type": "string",
+      "default": ""
+    },
+    {
+      "name": "value",
+      "label": "Header Value",
+      "type": "string",
+      "default": ""
+    }
+  ],
+  "direction": "resp"
+}

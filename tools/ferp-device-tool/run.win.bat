@@ -10,6 +10,23 @@ set SCRIPT_DIR=%~dp0
 
 cd /d "%SCRIPT_DIR%"
 
+REM ── 0. Sync messages-json from repo source (if available) ──────────────────
+set SRC_MSGS=..\..\src\app-messages\messages
+if exist "%SRC_MSGS%\" (
+    echo Syncing messages-json from repo source...
+    if exist "messages-json\" rmdir /s /q messages-json
+    robocopy "%SRC_MSGS%" "messages-json" /e /mir /njh /njs /ndl /nc /ns /np > nul
+    if errorlevel 8 (
+        echo WARNING: Failed to sync messages-json from repo source.
+    ) else (
+        echo messages-json updated.
+    )
+) else (
+    echo NOTE: Repo source messages not found -- running with existing messages-json.
+    echo       The message definitions may not be up to date.
+    echo       ^(Expected: %SCRIPT_DIR%%SRC_MSGS%^)
+)
+
 REM ── 1. Find python ─────────────────────────────────────────────────────────
 set PYTHON=
 for %%c in (python3.13 python3 python) do (

@@ -61,8 +61,8 @@
 #include "module_plog.h"
 #include "module_http.h"
 
-#include "app_ota_config.h"
-#include "app_web_ota_config.h"  /* k_web_ota_targets[] + ModuleWebClientOta singleton */
+#include "ota_driver_esp32_main.h"
+#include "ota_driver_esp32_dt.h"
 
 #include "app_msg_table.h"
 #include "app_config.h"
@@ -72,6 +72,8 @@
 #include "hsys_config.h"
 #include "hsys_type.h"
 #include "hsys_task.h"
+
+#include "version.h"
 
 // Codec registry
 #include "app_msg_codec.h"
@@ -216,6 +218,8 @@ static app_device_info_t s_device_info = {
     .device_uuid  = {},
     .device_group = APP_DEVICE_GROUP,
     .hw_address   = {},
+    .fw_version   = FW_VERSION,
+    .hw_version   = HW_VERSION,
 };
 
 const hsys_module_id_t k_dev_info_perm_cloud_write[]    = { MODULE_CUBESPHERE_ID };
@@ -251,6 +255,26 @@ static dev_info_entry_t k_dev_info_table[] = {
         s_device_info.hw_address,
         sizeof(s_device_info.hw_address),
         false   // set to true by ModuleDeviceInfo after eFuse read
+    },
+    {
+        DEV_INFO_KEY_FW_VERSION,
+        "fw_version",
+        nullptr, 0,   // no writers — compile-time constant, never changed at runtime
+        nullptr, 0,
+        HSYS_TYPE_STRING,
+        s_device_info.fw_version,
+        sizeof(s_device_info.fw_version),
+        true    // pre-populated from APP_FW_VERSION #define at startup
+    },
+    {
+        DEV_INFO_KEY_HW_VERSION,
+        "hw_version",
+        nullptr, 0,   // no writers — compile-time constant, never changed at runtime
+        nullptr, 0,
+        HSYS_TYPE_STRING,
+        s_device_info.hw_version,
+        sizeof(s_device_info.hw_version),
+        true    // pre-populated from APP_HW_VERSION #define at startup
     },
 };
 #define DEV_INFO_TABLE_SIZE  (sizeof(k_dev_info_table) / sizeof(k_dev_info_table[0]))
@@ -384,6 +408,56 @@ static const app_msg_mqtt_route_t k_mqtt_route_table[] = {
     // ── Timers → timer module ─────────────────────────────────────────────────
     { MSG_ID_TIMER_START,           MODULE_TIMER_ID,      false },
     { MSG_ID_TIMER_STOP,            MODULE_TIMER_ID,      false },
+
+    // ── Device info → device info module ───────────────────────────────────
+    { MSG_ID_DEV_INFO_READ,         MODULE_DEVICE_INFO_ID, false },
+};
+
+// ============================================================================
+// OTA platform configuration
+//
+// Source/target tables are defined here (static lifetime required) and wired
+// to OtaModule in app_init() via OtaModule::instance()->set_platform_config().
+// To add, remove, or reorder OTA targets, edit only this section.
+// ============================================================================
+
+static ota_esp32_ctx_t    s_esp32_ota_ctx     = {};
+static ota_esp32_dt_ctx_t s_esp32_dt_boot_ctx = { .spiffs_path = "esp32/bootloader.bin", .is_open = false };
+static ota_esp32_dt_ctx_t s_esp32_dt_part_ctx = { .spiffs_path = "esp32/partitions.bin", .is_open = false };
+static ota_esp32_dt_ctx_t s_esp32_dt_fw_ctx   = { .spiffs_path = "esp32/firmware.bin",   .is_open = false };
+
+static const ota_source_desc_t k_ota_sources[] = {
+    // source_module_id             priority  _pad  timeout_ms
+    { MODULE_MQTT_ID,              0,        0,     60000 },
+    { MODULE_WEB_SERVER_ID,        0,        0,    120000 },  ///< web OTA (port 8080)
+    { MODULE_WEB_CLIENT_OTA_ID,    0,        0,    120000 },  ///< cloud-polling OTA
+};
+
+static const ota_target_desc_t k_ota_targets[] = {
+    { 0, true,  {}, "esp32-main",    &g_ota_driver_esp32_main, &s_esp32_ota_ctx     },
+    { 1, false, {}, "esp32-dt-boot", &g_ota_driver_esp32_dt,   &s_esp32_dt_boot_ctx },
+    { 2, false, {}, "esp32-dt-part", &g_ota_driver_esp32_dt,   &s_esp32_dt_part_ctx },
+    { 3, false, {}, "esp32-dt-fw",   &g_ota_driver_esp32_dt,   &s_esp32_dt_fw_ctx   },
+};
+
+// ============================================================================
+// MQTT OTA target name table
+//
+// Maps wire-protocol target name strings (from ota_start "target" field) to
+// OtaModule target indices.  Passed to ModuleMqtt in app_init() via
+// ModuleMqtt::instance()->set_ota_targets().
+// Add aliases or new targets here without modifying any module source file.
+// ============================================================================
+
+static const mqtt_ota_target_t k_mqtt_ota_targets[] = {
+    { "main",          0 },   ///< short alias for esp32-main
+    { "esp32-main",    0 },
+    { "dt-boot",       1 },   ///< short alias for esp32-dt-boot
+    { "esp32-dt-boot", 1 },
+    { "dt-part",       2 },   ///< short alias for esp32-dt-part
+    { "esp32-dt-part", 2 },
+    { "dt-fw",         3 },   ///< short alias for esp32-dt-fw
+    { "esp32-dt-fw",   3 },
 };
 
 // ============================================================================
@@ -493,7 +567,7 @@ static const hsys_msg_id_t k_plog_msg_ids[] = {
     // Connectivity
     MSG_ID_WIFI_EVENT,          ///< WiFi state change
     MSG_ID_INTERNET_STATUS,     ///< internet reachability change
-    MSG_ID_CLOUD_STATUS,        ///< cloud event (registered, send OK/fail, …)
+    MSG_ID_CUBESPHERE_STATUS,   ///< cloud event (registered, send OK/fail, …)
     MSG_ID_MQTT_STATUS,         ///< MQTT broker connection state change
 
     // OTA lifecycle
@@ -670,6 +744,15 @@ extern "C" void app_init(void)
     ModuleWebServer::instance()->set_static_files(k_web_pages);
     ModuleWebServer::instance()->set_ota_targets(k_web_ota_bins);
     ModuleWebServer::instance()->set_api_routes(k_api_routes);
+
+    // Wire OTA source/target tables to OtaModule.
+    OtaModule::instance()->set_platform_config(
+        k_ota_sources, (uint8_t)(sizeof(k_ota_sources) / sizeof(k_ota_sources[0])),
+        k_ota_targets, (uint8_t)(sizeof(k_ota_targets) / sizeof(k_ota_targets[0])));
+
+    // Wire OTA target name table to ModuleMqtt.
+    ModuleMqtt::instance()->set_ota_targets(
+        k_mqtt_ota_targets, (uint8_t)(sizeof(k_mqtt_ota_targets) / sizeof(k_mqtt_ota_targets[0])));
 
     // 1. Config — load defaults and initialise the config handle
     app_config_init();

@@ -26,6 +26,8 @@ typedef struct {
     char     device_uuid[40];   ///< Cloud-assigned UUID (set during onboarding)
     char     device_group[32];  ///< Group/fleet tag — hardcoded default set in app.cpp before startup
     char     hw_address[13];    ///< eFuse MAC, 12 lowercase hex chars + null; set by ModuleDeviceInfo::init()
+    char     fw_version[24];    ///< Firmware version string — set at startup from APP_FW_VERSION #define
+    char     hw_version[16];    ///< Hardware/PCB version string — set at startup from APP_HW_VERSION #define
 } app_device_info_t;
 
 // ---------------------------------------------------------------------------
@@ -41,6 +43,10 @@ typedef struct {
 
 // Hardware identity (read-only — set from eFuse at boot, no message-bus writers)
 #define DEV_INFO_KEY_HW_ADDRESS         0xA003u
+
+// Compile-time version identity (read-only — pre-populated from #defines at startup)
+#define DEV_INFO_KEY_FW_VERSION         0xA004u
+#define DEV_INFO_KEY_HW_VERSION         0xA005u
 
 // ---------------------------------------------------------------------------
 // Write-permission tables

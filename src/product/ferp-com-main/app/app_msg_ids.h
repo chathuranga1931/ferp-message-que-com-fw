@@ -59,7 +59,6 @@ typedef enum : uint16_t
     MSG_ID_WIFI_EVENT           = 0x0030,   ///< ModuleWifi     -> all: WiFi state change
     MSG_ID_INTERNET_STATUS      = 0x0031,   ///< ModuleInternet -> all: internet reachability
     MSG_ID_CUBESPHERE_STATUS    = 0x0032,   ///< ModuleCubeSphere -> all: cloud event result
-    MSG_ID_CLOUD_STATUS         = MSG_ID_CUBESPHERE_STATUS,   ///< backward-compat alias
     MSG_ID_OTA_START_REQUEST    = 0x0033,   ///< Source -> OtaModule:  request OTA session
     MSG_ID_OTA_START_RESPONSE   = 0x0034,   ///< OtaModule -> Source:  session grant/reject
     MSG_ID_OTA_REQUEST_DRIVER   = 0x0035,   ///< Source -> OtaModule:  get fs driver

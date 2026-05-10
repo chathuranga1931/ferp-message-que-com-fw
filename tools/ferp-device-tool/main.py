@@ -74,10 +74,10 @@ except Exception:
 # Paths / settings
 # ─────────────────────────────────────────────────────────────────────────────
 
-_TOOL_DIR      = Path(__file__).parent
-SETTINGS_FILE  = Path.home() / ".ferp-device-tool.json"
-DEVICES_FILE   = _TOOL_DIR / "ferp_devices.json"
-NETWORK_FILE   = _TOOL_DIR / "ferp_network_config.json"
+_TOOL_DIR        = Path(__file__).parent
+SETTINGS_FILE    = Path.home() / ".ferp-device-tool.json"
+DEVICES_FILE     = _TOOL_DIR / "ferp_devices.json"
+NETWORK_FILE     = _TOOL_DIR / "ferp_network_config.json"
 CONFIG_KEYS_FILE = _TOOL_DIR / "config_keys.json"
 
 
@@ -107,6 +107,25 @@ def _save_settings(data: dict) -> None:
 
 def _load_devices() -> list:
     return _load_json(DEVICES_FILE, {}).get("devices", [])
+
+
+def _load_ota_targets(iface: str) -> List[Tuple[str, str]]:
+    """
+    Return [(label, name), ...] for the given interface ("mqtt" or "webapi").
+    Falls back to a minimal built-in list when the JSON key is missing.
+    """
+    key = iface.lower()
+    entries = _load_json(DEVICES_FILE, {}).get("ota_targets", {}).get(key, [])
+    result = [(e["label"], e["name"]) for e in entries if "label" in e and "name" in e]
+    if not result:
+        # built-in fallback so the combo is never empty
+        if key == "mqtt":
+            result = [("esp32-main", "esp32-main"), ("esp32-dt-boot", "esp32-dt-boot"),
+                      ("esp32-dt-part", "esp32-dt-part"), ("esp32-dt-fw", "esp32-dt-fw")]
+        else:
+            result = [("main", "main"), ("dt-bootloader", "dt-bootloader"),
+                      ("dt-partitions", "dt-partitions"), ("dt-app", "dt-app")]
+    return result
 
 
 def _load_network_config() -> dict:
@@ -146,6 +165,43 @@ def _load_config_keys() -> List[Tuple[int, str, int, str]]:
 
 
 CONFIG_KEYS = _load_config_keys()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Device info keys — loaded from deviceinfo-keys.json
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _load_devinfo_keys() -> List[Tuple[int, str, str]]:
+    """
+    Returns list of (key_id, bar_label, field) tuples for the Device Info bar.
+    Derived from the options of the 'key' field in MsgDevInfoRead (MSG_DEFS),
+    using the 'bar_label' and 'field' metadata added to each option entry.
+    Falls back to hardcoded defaults if the message definition is missing.
+    """
+    opts = (MSG_DEFS.get("MsgDevInfoRead", {})
+                    .get("fields", [{}])[0]
+                    .get("options", []))
+    result = []
+    for o in opts:
+        try:
+            key_id = int(o["value"])
+            label  = o.get("bar_label") or o.get("label", "")
+            field  = o.get("field", "")
+            result.append((key_id, label, field))
+        except Exception:
+            pass
+    if not result:
+        result = [
+            (0xA001, "Device UUID",  "uuid"),
+            (0xA002, "Device Group", "group"),
+            (0xA003, "HW Address",   "mac"),
+            (0xA004, "FW Version",   "fw_version"),
+            (0xA005, "HW Version",   "hw_version"),
+        ]
+    return result
+
+
+DEV_INFO_KEYS = _load_devinfo_keys()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -408,16 +464,19 @@ class CommandPanel(ttk.LabelFrame):
 # ─────────────────────────────────────────────────────────────────────────────
 
 class OtaPanel(ttk.LabelFrame):
-    def __init__(self, parent, get_ota_params, append_log, **kw):
+    def __init__(self, parent, get_ota_params, append_log, get_ota_targets, **kw):
         kw.setdefault("text", "OTA Upgrade")
         super().__init__(parent, **kw)
-        self._get_params = get_ota_params
-        self._append_log = append_log
-        self._handler    = None
-        self._fw_path    = tk.StringVar()
-        self._target_var = tk.StringVar(value="main")
-        self._ver_var    = tk.StringVar(value="1.0.0")
-        self._chunk_var  = tk.StringVar(value="4096")
+        self._get_params   = get_ota_params
+        self._append_log   = append_log
+        self._get_targets  = get_ota_targets  # () -> [(label, name), ...]
+        self._handler      = None
+        self._fw_path      = tk.StringVar()
+        self._target_var   = tk.StringVar()
+        self._ver_var      = tk.StringVar(value="1.0.0")
+        self._chunk_var    = tk.StringVar(value="4096")
+        # Internal map: display label -> wire name
+        self._target_name_map: Dict[str, str] = {}
         self._build_ui()
 
     def _build_ui(self):
@@ -430,8 +489,9 @@ class OtaPanel(ttk.LabelFrame):
         opt = ttk.Frame(self)
         opt.pack(fill="x", padx=6, pady=2)
         ttk.Label(opt, text="Target:").pack(side="left")
-        ttk.Combobox(opt, textvariable=self._target_var, values=["main", "sub1"],
-                     width=8, state="readonly").pack(side="left", padx=(4, 12))
+        self._target_combo = ttk.Combobox(opt, textvariable=self._target_var,
+                                           width=22, state="readonly")
+        self._target_combo.pack(side="left", padx=(4, 12))
         ttk.Label(opt, text="Version:").pack(side="left")
         ttk.Entry(opt, textvariable=self._ver_var, width=10).pack(side="left", padx=(4, 12))
         ttk.Label(opt, text="Chunk:").pack(side="left")
@@ -463,6 +523,27 @@ class OtaPanel(ttk.LabelFrame):
         ttk.Button(lf, text="Clear", command=self._clear_log).pack(
             side="right", padx=4, pady=(0, 4))
 
+        # Populate with whatever interface is currently selected
+        self.refresh_targets()
+
+    def refresh_targets(self):
+        """Reload the target combobox from the current interface's table."""
+        entries = self._get_targets()  # [(label, name), ...]
+        self._target_name_map = {label: name for label, name in entries}
+        labels = [label for label, _ in entries]
+        self._target_combo["values"] = labels
+        if labels:
+            # Keep selection if the same label still exists, else pick first
+            if self._target_var.get() not in labels:
+                self._target_var.set(labels[0])
+        else:
+            self._target_var.set("")
+
+    def _resolved_target_name(self) -> str:
+        """Return the wire-protocol name for the currently selected label."""
+        label = self._target_var.get()
+        return self._target_name_map.get(label, label)  # fallback: use label as-is
+
     def _browse(self):
         path = filedialog.askopenfilename(
             title="Select firmware .bin",
@@ -492,7 +573,7 @@ class OtaPanel(ttk.LabelFrame):
                     broker=conn["broker"], port=conn["port"],
                     dev_type=conn["dev_type"], group=conn["group"],
                     device_id=conn["device_id"],
-                    firmware_path=fw, target=self._target_var.get(),
+                    firmware_path=fw, target=self._resolved_target_name(),
                     version=self._ver_var.get().strip() or "unknown",
                     chunk_size=chunk,
                     on_log=self._cb_log,
@@ -505,7 +586,7 @@ class OtaPanel(ttk.LabelFrame):
                     return
                 self._handler = WebApiOtaHandler(
                     ip=conn["ip"], port=conn["port"],
-                    firmware_path=fw, target=self._target_var.get(),
+                    firmware_path=fw, target=self._resolved_target_name(),
                     version=self._ver_var.get().strip() or "unknown",
                     chunk_size=chunk,
                     on_log=self._cb_log,
@@ -598,6 +679,7 @@ class ConfigKeysPanel(ttk.LabelFrame):
         self._on_write_all = on_write_all
         self._key_row: Dict[int, int] = {}
         self._row_key: Dict[int, int] = {}
+        self._connected    = False
         self._build_ui()
 
     def _build_ui(self):
@@ -637,7 +719,8 @@ class ConfigKeysPanel(ttk.LabelFrame):
         self._tree.tag_configure("unloaded", foreground=_CLR_UNLOADED)
         self._tree.tag_configure("loaded",   foreground=_CLR_LOADED)
         self._tree.tag_configure("modified", foreground=_CLR_MODIFIED)
-        self._tree.bind("<Double-1>", self._on_double_click)
+        self._tree.bind("<Double-1>",       self._on_double_click)
+        self._tree.bind("<ButtonRelease-1>", self._on_cell_click)
 
         self._populate()
 
@@ -661,9 +744,26 @@ class ConfigKeysPanel(ttk.LabelFrame):
             self._row_key[iid]    = key_id
 
     def set_connected(self, connected: bool):
+        self._connected = connected
         state = "normal" if connected else "disabled"
         self._read_all_btn.config(state=state)
         self._write_all_btn.config(state=state)
+
+    def _on_cell_click(self, event):
+        """Handle clicks on the ↺ (read) and ✎ (write) icon columns."""
+        if not self._connected:
+            return
+        col = self._tree.identify_column(event.x)   # "#7" or "#8" (1-based)
+        iid = self._tree.identify_row(event.y)
+        if not iid:
+            return
+        key_id = self._row_key.get(iid)
+        if key_id is None:
+            return
+        if col == "#7":    # ↺ read
+            self._on_read_key(key_id)
+        elif col == "#8":  # ✎ write
+            self._on_write_key(key_id)
 
     def update_key(self, key_id: int, type_id: int, data: list):
         iid = self._key_row.get(key_id)
@@ -900,11 +1000,7 @@ _GUI_INSTANCE: Optional["FerpDeviceTool"] = None
 class FerpDeviceTool(tk.Tk):
 
     # Dev info keys (matching app_device_info.h)
-    _DEV_INFO_KEYS = [
-        (0xA001, "Device UUID",  "uuid"),
-        (0xA002, "Device Group", "group"),
-        (0xA003, "HW Address",   "mac"),
-    ]
+    _DEV_INFO_KEYS = DEV_INFO_KEYS
 
     def __init__(self):
         global _GUI_INSTANCE
@@ -970,6 +1066,7 @@ class FerpDeviceTool(tk.Tk):
             right,
             get_ota_params=self._get_ota_params,
             append_log=self._append_log,
+            get_ota_targets=self._get_ota_targets,
         )
         right.add(self._ota_panel, weight=1)
 
@@ -1106,6 +1203,8 @@ class FerpDeviceTool(tk.Tk):
             self._webapi_frame.pack(fill="x")
         else:
             self._uart_frame.pack(fill="x")
+        # Reload OTA target list for the newly selected interface
+        self._ota_panel.refresh_targets()
 
     # ── Device Info bar ────────────────────────────────────────────────────────
 
@@ -1238,6 +1337,11 @@ class FerpDeviceTool(tk.Tk):
         return None
 
     # ── OTA params helper ──────────────────────────────────────────────────────
+
+    def _get_ota_targets(self) -> List[Tuple[str, str]]:
+        """Return [(label, name), ...] for the currently selected interface."""
+        iface = self._iface_var.get().lower()  # "mqtt", "webapi", or "uart (future)"
+        return _load_ota_targets(iface if iface in ("mqtt", "webapi") else "mqtt")
 
     def _get_ota_params(self):
         """Returns (iface, conn_dict) or None if not connected."""

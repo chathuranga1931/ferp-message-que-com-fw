@@ -1,0 +1,39 @@
+{
+  "msg_id": "0x0103",
+  "fields": [
+    {
+      "name": "source_module_id",
+      "label": "Source module ID",
+      "type": "uint8",
+      "default": 0
+    },
+    {
+      "name": "result",
+      "label": "Result",
+      "type": "enum",
+      "options": [
+        {
+          "label": "OK",
+          "value": 0
+        },
+        {
+          "label": "ERR_ALREADY_RUNNING",
+          "value": 1
+        },
+        {
+          "label": "ERR_NOT_FOUND",
+          "value": 2
+        },
+        {
+          "label": "ERR_SLOTS_FULL",
+          "value": 3
+        },
+        {
+          "label": "ERR_INVALID_PARAM",
+          "value": 4
+        }
+      ]
+    }
+  ],
+  "direction": "resp"
+}

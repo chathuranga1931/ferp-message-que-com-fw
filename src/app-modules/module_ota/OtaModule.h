@@ -14,14 +14,13 @@
 // cross the HSYS bus.  The source calls the ota_fs_driver_t function pointers
 // directly with raw binary chunks.
 //
-// Platform wiring — define the source/target tables and override ota_platform_get_config():
+// Platform wiring — call set_platform_config() in app_init() before hsys_module_init():
 //
-//   extern "C" void ota_platform_get_config(
-//       const ota_source_desc_t **sources, uint8_t *source_count,
-//       const ota_target_desc_t **targets, uint8_t *target_count);
+//   OtaModule::instance()->set_platform_config(
+//       sources, source_count, targets, target_count);
 //
-// OtaModule::instance() calls this function once to retrieve the tables, then passes
-// them as explicit arguments to the constructor.
+// Both arrays must have static lifetime — OtaModule stores only the pointers.
+// The call must precede hsys_module_init() so the tables are set before init() runs.
 
 #pragma once
 
@@ -31,15 +30,6 @@
 #include "msg_ota_event.h"
 #include "msg_ota_start_response.h"
 #include <stdint.h>
-
-// ---------------------------------------------------------------------------
-// Target name resolver (defined in app_ota_config.h / app.cpp)
-// ---------------------------------------------------------------------------
-
-/** Resolve an OTA target name (numeric, canonical label, or short alias) to
- *  target_idx.  Searches k_ota_targets[] from app_ota_config.h.
- *  Returns 0xFF if not found. */
-uint8_t ota_target_find_by_name(const char *name);
 
 // ---------------------------------------------------------------------------
 // Source descriptor — identifies an authorised OTA source module
@@ -79,10 +69,13 @@ public:
      * Do not call directly; use instance() which obtains the tables from the platform and
      * passes them here.
      */
-    OtaModule(const ota_source_desc_t *sources, uint8_t source_count,
-              const ota_target_desc_t *targets, uint8_t target_count);
-
+    OtaModule();
     static OtaModule *instance();
+
+    /** Supply source/target tables.  Call from app_init() before hsys_module_init().
+     *  Both arrays must have static lifetime — OtaModule stores only the pointers. */
+    void set_platform_config(const ota_source_desc_t *sources, uint8_t source_count,
+                             const ota_target_desc_t *targets, uint8_t target_count);
 
 protected:
     void init()                                 override;

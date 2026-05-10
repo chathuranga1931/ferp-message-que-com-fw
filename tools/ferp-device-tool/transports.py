@@ -245,7 +245,11 @@ class MQTTTransport:
         time.sleep(0.1)
 
     def get_dev_info_value(self, key: int) -> Tuple[bool, str]:
-        raise TransportError("DevInfo read not supported via MQTT transport in config mode")
+        self._drain()
+        self._publish("MsgDevInfoRead", {"key": key, "source_module_id": 0})
+        resp = self._wait_response(f"0x{key:04X}")
+        d = resp.get("data", {})
+        return bool(d.get("is_valid", False)), str(d.get("value", ""))
 
 
 # ─────────────────────────────────────────────────────────────────────────────

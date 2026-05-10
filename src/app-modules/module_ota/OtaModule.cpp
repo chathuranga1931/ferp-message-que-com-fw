@@ -26,28 +26,11 @@
 // Gives other modules time to react to the event before the system restarts.
 #define OTA_REBOOT_DELAY_MS  ((uint64_t)2000U)
 
-// ── Platform config hook (weak — override per platform) ──────────────────────
-//
-// Implement this function in the platform layer to supply source/target tables.
-// Both arrays must have static lifetime — OtaModule only stores the pointers.
-// The weak default returns empty tables (no sources, no targets).
-//
-extern "C" __attribute__((weak))
-void ota_platform_get_config(const ota_source_desc_t **sources, uint8_t *source_count,
-                              const ota_target_desc_t **targets, uint8_t *target_count)
-{
-    *sources      = nullptr;
-    *source_count = 0;
-    *targets      = nullptr;
-    *target_count = 0;
-}
-
 // ── Singleton (lazy placement-new) ────────────────────────────────────────────
 //
-// instance() is called at static-init time (from k_module_table in app.cpp).
-// Using placement new over a char buffer ensures a fixed, valid address is
-// returned before the constructor runs, while allowing the constructor to
-// receive the platform tables as explicit parameters.
+// instance() returns a stable address before the constructor runs.
+// Call set_platform_config() in app_init() (before hsys_module_init()) to supply
+// the source/target tables.  Both arrays must have static lifetime.
 
 alignas(OtaModule) static char  s_buf[sizeof(OtaModule)];
 static OtaModule               *s_ptr = nullptr;
@@ -55,22 +38,23 @@ static OtaModule               *s_ptr = nullptr;
 OtaModule *OtaModule::instance()
 {
     if (!s_ptr) {
-        const ota_source_desc_t *sources      = nullptr;
-        uint8_t                  source_count = 0;
-        const ota_target_desc_t *targets      = nullptr;
-        uint8_t                  target_count = 0;
-        ota_platform_get_config(&sources, &source_count, &targets, &target_count);
-        s_ptr = ::new (s_buf) OtaModule(sources, source_count, targets, target_count);
+        s_ptr = ::new (s_buf) OtaModule();
     }
     return s_ptr;
 }
 
-OtaModule::OtaModule(const ota_source_desc_t *sources, uint8_t source_count,
-                     const ota_target_desc_t *targets, uint8_t target_count)
-    : HsysModule(MODULE_OTA_ID, MODULE_OTA_NAME),
-      _sources(sources),      _source_count(source_count),
-      _targets(targets),      _target_count(target_count)
+OtaModule::OtaModule()
+    : HsysModule(MODULE_OTA_ID, MODULE_OTA_NAME)
 {}
+
+void OtaModule::set_platform_config(const ota_source_desc_t *sources, uint8_t source_count,
+                                     const ota_target_desc_t *targets, uint8_t target_count)
+{
+    _sources      = sources;
+    _source_count = source_count;
+    _targets      = targets;
+    _target_count = target_count;
+}
 
 // ── Lifecycle ─────────────────────────────────────────────────────────────────
 

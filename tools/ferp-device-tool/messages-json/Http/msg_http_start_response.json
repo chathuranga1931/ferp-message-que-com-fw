@@ -1,0 +1,16 @@
+{
+  "msg_id": "0x0051",
+  "fields": [
+    {
+      "name": "result",
+      "label": "Session Result",
+      "type": "enum",
+      "options": [
+        { "label": "SESSION_OK",   "value": 0 },
+        { "label": "SESSION_BUSY", "value": 1 }
+      ],
+      "default": 0
+    }
+  ],
+  "direction": "resp"
+}

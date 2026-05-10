@@ -1,0 +1,18 @@
+{
+  "msg_id": "0x030C",
+  "fields": [
+    {
+      "name": "server_url",
+      "label": "OTA Server URL",
+      "type": "string",
+      "default": "https://ota.example.com/firmware"
+    },
+    {
+      "name": "check_interval_s",
+      "label": "Check Interval (s)",
+      "type": "uint32",
+      "default": 60
+    }
+  ],
+  "direction": "resp"
+}

@@ -10,6 +10,19 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 cd "$SCRIPT_DIR"
 
+# ── 0. Sync messages-json from repo source (if available) ────────────────────
+SRC_MSGS="../../src/app-messages/messages"
+if [[ -d "$SRC_MSGS" ]]; then
+    echo "Syncing messages-json from repo source..."
+    rm -rf messages-json
+    cp -r "$SRC_MSGS" messages-json
+    echo "messages-json updated."
+else
+    echo "NOTE: Repo source messages not found — running with existing messages-json."
+    echo "      The message definitions may not be up to date."
+    echo "      (Expected path: $SCRIPT_DIR/$SRC_MSGS)"
+fi
+
 # ── 1. Find python3 ────────────────────────────────────────────────────────────
 PYTHON=""
 for candidate in python3.13 python3 python; do

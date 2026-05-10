@@ -1,0 +1,18 @@
+{
+  "msg_id": "0x0308",
+  "fields": [
+    {
+      "name": "hb_enabled",
+      "label": "Heartbeat Enabled",
+      "type": "bool",
+      "default": 1
+    },
+    {
+      "name": "hb_interval_s",
+      "label": "Heartbeat Interval (s)",
+      "type": "uint32",
+      "default": 60
+    }
+  ],
+  "direction": "resp"
+}

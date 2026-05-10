@@ -1,0 +1,18 @@
+{
+  "msg_id": "0x0307",
+  "fields": [
+    {
+      "name": "ssid",
+      "label": "SSID",
+      "type": "string",
+      "default": "MyNetwork"
+    },
+    {
+      "name": "password",
+      "label": "Password",
+      "type": "string",
+      "default": "password123"
+    }
+  ],
+  "direction": "resp"
+}
