@@ -33,6 +33,15 @@
 #include <stdint.h>
 
 // ---------------------------------------------------------------------------
+// Target name resolver (defined in app_ota_config.h / app.cpp)
+// ---------------------------------------------------------------------------
+
+/** Resolve an OTA target name (numeric, canonical label, or short alias) to
+ *  target_idx.  Searches k_ota_targets[] from app_ota_config.h.
+ *  Returns 0xFF if not found. */
+uint8_t ota_target_find_by_name(const char *name);
+
+// ---------------------------------------------------------------------------
 // Source descriptor — identifies an authorised OTA source module
 // ---------------------------------------------------------------------------
 

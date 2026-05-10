@@ -493,7 +493,8 @@ void ModuleMqtt::_on_pal_data(const pal_mqtt_message_t *m)
     StaticJsonDocument<MODULE_MQTT_ENV_MAX> doc;
     DeserializationError err = deserializeJson(doc, m->data, m->data_len);
     if (err) {
-        LOG_MSG_WARNING(MQTT_LOG, "envelope parse error: %s", err.c_str());
+        LOG_MSG_WARNING(MQTT_LOG, "envelope parse error: %s on topic: %.*s",
+                        err.c_str(), (int)m->topic_len, m->topic);
         return;
     }
 

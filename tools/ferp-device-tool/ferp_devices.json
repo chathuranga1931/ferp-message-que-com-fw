@@ -1,0 +1,18 @@
+{
+  "devices": [
+    {
+      "label": "Test Device, Chathuranga",
+      "ip": "192.168.8.100",
+      "mac": "48e729331048",
+      "uuid": "",
+      "group": "default"
+    },
+    {
+      "label": "Pump 02 — Station A",
+      "ip": "192.168.8.101",
+      "mac": "112233445566",
+      "uuid": "",
+      "group": "default"
+    }
+  ]
+}

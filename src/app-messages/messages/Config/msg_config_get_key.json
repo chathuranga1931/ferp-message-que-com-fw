@@ -1,0 +1,20 @@
+{
+  "msg_id": "0x030D",
+  "fields": [
+    {
+      "name": "key",
+      "label": "Config Key (CFG_KEY_*)",
+      "type": "uint16",
+      "default": 4097,
+      "placeholder": "e.g. 0x1001"
+    },
+    {
+      "name": "source_module_id",
+      "label": "Source Module ID",
+      "type": "uint16",
+      "default": 0,
+      "placeholder": "e.g. 0x00"
+    }
+  ],
+  "direction": "cmd"
+}

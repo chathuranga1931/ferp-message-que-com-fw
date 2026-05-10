@@ -1,0 +1,13 @@
+{
+  "msg_id": "0x0058",
+  "fields": [
+    {
+      "name": "body",
+      "label": "Request Body",
+      "type": "string",
+      "default": "",
+      "placeholder": "e.g. {\"key\":\"value\"}"
+    }
+  ],
+  "direction": "cmd"
+}

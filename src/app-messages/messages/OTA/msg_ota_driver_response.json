@@ -1,0 +1,18 @@
+{
+  "msg_id": "0x0A06",
+  "fields": [
+    {
+      "name": "driver",
+      "label": "FS Driver Ptr (hex)",
+      "type": "string",
+      "default": "0x00000000"
+    },
+    {
+      "name": "ctx",
+      "label": "Context Ptr (hex)",
+      "type": "string",
+      "default": "0x00000000"
+    }
+  ],
+  "direction": "resp"
+}

@@ -1,0 +1,40 @@
+{
+  "msg_id": "0x005B",
+  "fields": [
+    {
+      "name": "result",
+      "label": "HTTP Result",
+      "type": "enum",
+      "options": [
+        { "label": "HTTP_RESULT_SUCCESS",         "value": 0 },
+        { "label": "HTTP_RESULT_CONNECT_FAILED",  "value": 1 },
+        { "label": "HTTP_RESULT_TLS_FAILED",      "value": 2 },
+        { "label": "HTTP_RESULT_TIMEOUT",         "value": 3 },
+        { "label": "HTTP_RESULT_BODY_TOO_LARGE",  "value": 4 },
+        { "label": "HTTP_RESULT_SESSION_EXPIRED", "value": 5 },
+        { "label": "HTTP_RESULT_ERROR",           "value": 6 }
+      ],
+      "default": 0
+    },
+    {
+      "name": "status_code",
+      "label": "HTTP Status Code",
+      "type": "int32",
+      "default": 200,
+      "placeholder": "e.g. 200"
+    },
+    {
+      "name": "body_len",
+      "label": "Body Length (bytes)",
+      "type": "uint32",
+      "default": 0
+    },
+    {
+      "name": "body",
+      "label": "Response Body",
+      "type": "string",
+      "default": ""
+    }
+  ],
+  "direction": "resp"
+}

@@ -5,7 +5,8 @@
       "name": "key",
       "label": "Key",
       "type": "string",
-      "default": ""
+      "default": "wifi_ssid",
+      "placeholder": "e.g. wifi_ssid"
     },
     {
       "name": "type",
@@ -30,7 +31,8 @@
       "name": "value",
       "label": "Value",
       "type": "string",
-      "default": ""
+      "default": "MyNetworkName",
+      "placeholder": "e.g. MyNetworkName"
     }
   ],
   "direction": "cmd"

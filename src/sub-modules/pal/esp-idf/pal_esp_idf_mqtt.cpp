@@ -178,7 +178,12 @@ void pal_mqtt_get_default_config(pal_mqtt_config_t* config) {
     config->keepalive = 120;
     config->network_timeout_ms = 10000;
     config->reconnect_timeout_ms = 10000;
-    config->buffer_size = 1024;
+    // Buffer must be larger than the largest expected inbound MQTT message.
+    // OTA data frames are 4 (offset header) + OTA_CHUNK_SIZE bytes.
+    // With the default OTA chunk size of 4096 this is 4100 bytes; use 6144
+    // to leave headroom for MQTT fixed/variable headers and avoid multi-event
+    // delivery of large binary payloads (which would cause InvalidInput warnings).
+    config->buffer_size = 6144;
     config->transport = PAL_MQTT_TRANSPORT_OVER_TCP;
 }
 

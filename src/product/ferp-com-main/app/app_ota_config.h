@@ -67,6 +67,38 @@ static const ota_target_desc_t k_ota_targets[] = {
 
 #define OTA_ARRAY_SIZE(a) (sizeof(a) / sizeof((a)[0]))
 
+// ---------------------------------------------------------------------------
+// ota_target_find_by_name
+// ---------------------------------------------------------------------------
+
+/** Resolve an OTA target name to its target_idx by walking k_ota_targets[].
+ *
+ *  Accepts:
+ *    - Decimal integer string ("0", "1", …)
+ *    - Canonical label from k_ota_targets[].label  (e.g. "esp32-main")
+ *    - Short alias: label with any leading "esp32-" prefix stripped (e.g. "main")
+ *
+ *  Returns target_idx on success, 0xFF if not found.
+ */
+uint8_t ota_target_find_by_name(const char *name)
+{
+    if (!name || name[0] == '\0') return 0xFF;
+    // Accept decimal integer string directly
+    char *end;
+    long v = strtol(name, &end, 10);
+    if (*end == '\0' && end != name && v >= 0 && v < 255) return (uint8_t)v;
+    // Walk the table: exact label match first, then short alias (strip "esp32-")
+    const uint8_t n = (uint8_t)OTA_ARRAY_SIZE(k_ota_targets);
+    for (uint8_t i = 0; i < n; i++) {
+        const char *lbl = k_ota_targets[i].label;
+        if (!lbl) continue;
+        if (strcmp(name, lbl) == 0) return k_ota_targets[i].target_idx;
+        if (strncmp(lbl, "esp32-", 6) == 0 && strcmp(name, lbl + 6) == 0)
+            return k_ota_targets[i].target_idx;
+    }
+    return 0xFF;
+}
+
 extern "C" void ota_platform_get_config(
     const ota_source_desc_t **sources, uint8_t *source_count,
     const ota_target_desc_t **targets, uint8_t *target_count)

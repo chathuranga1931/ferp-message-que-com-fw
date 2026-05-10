@@ -1,0 +1,72 @@
+{
+  "_comment": "Device configuration key definitions. Add/remove keys here without touching any Python code.",
+  "groups": [
+    {
+      "group": "WiFi",
+      "keys": [
+        { "key": "0x1001", "name": "WIFI_SSID",           "type": "STRING",  "label": "SSID",           "description": "WiFi network name" },
+        { "key": "0x1002", "name": "WIFI_PASSWORD",       "type": "STRING",  "label": "Password",       "description": "WiFi password" }
+      ]
+    },
+    {
+      "group": "Cloud",
+      "keys": [
+        { "key": "0x2001", "name": "CLOUD_URL",           "type": "STRING",  "label": "Cloud URL",      "description": "Cloud server base URL" },
+        { "key": "0x2002", "name": "CLOUD_SECRET",        "type": "STRING",  "label": "Secret",         "description": "Cloud authentication secret" },
+        { "key": "0x2003", "name": "CLOUD_HB_ENABLED",   "type": "BOOL",    "label": "HB Enabled",     "description": "Enable cloud heartbeat" },
+        { "key": "0x2004", "name": "CLOUD_HB_INTERVAL_S","type": "UINT32",  "label": "HB Interval (s)","description": "Heartbeat interval in seconds" }
+      ]
+    },
+    {
+      "group": "OTA",
+      "keys": [
+        { "key": "0x3001", "name": "OTA_SERVER_URL",      "type": "STRING",  "label": "Server URL",     "description": "OTA firmware server URL" },
+        { "key": "0x3002", "name": "OTA_CHECK_INTERVAL_S","type": "UINT32", "label": "Check Interval (s)","description": "OTA check interval in seconds" }
+      ]
+    },
+    {
+      "group": "MQTT",
+      "keys": [
+        { "key": "0x4001", "name": "MQTT_HOST",           "type": "STRING",  "label": "Host",           "description": "MQTT broker hostname or IP" },
+        { "key": "0x4002", "name": "MQTT_PORT",           "type": "UINT32",  "label": "Port",           "description": "MQTT broker port" },
+        { "key": "0x4003", "name": "MQTT_USER",           "type": "STRING",  "label": "Username",       "description": "MQTT broker username" },
+        { "key": "0x4004", "name": "MQTT_PASSWORD",       "type": "STRING",  "label": "Password",       "description": "MQTT broker password" }
+      ]
+    },
+    {
+      "group": "Hardware",
+      "keys": [
+        { "key": "0x6001", "name": "DISPLAY_TYPE",        "type": "UINT32",  "label": "Display Type",   "description": "Display hardware type identifier" },
+        { "key": "0x6002", "name": "STABILIZE_DELAY_MS",  "type": "UINT32",  "label": "Stabilize Delay (ms)","description": "Nozzle stabilize delay in ms" },
+        { "key": "0x6003", "name": "EN_RETX",             "type": "BOOL",    "label": "Enable ReTx",    "description": "Enable retransmission" },
+        { "key": "0x6004", "name": "NOZZLE_SWAP",         "type": "BOOL",    "label": "Nozzle Swap",    "description": "Swap nozzle channels" },
+        { "key": "0x6005", "name": "TOT_CNT",             "type": "UINT32",  "label": "Total Count",    "description": "Total transaction count" },
+        { "key": "0x6006", "name": "TOT_DUR",             "type": "UINT32",  "label": "Total Duration", "description": "Total duration accumulator" }
+      ]
+    },
+    {
+      "group": "Printer",
+      "keys": [
+        { "key": "0x7001", "name": "PRINTER_URL",         "type": "STRING",  "label": "Printer URL",    "description": "Printer service URL" },
+        { "key": "0x7002", "name": "PRINTER_COPY_COUNT",  "type": "UINT32",  "label": "Copy Count",     "description": "Number of receipt copies" },
+        { "key": "0x7003", "name": "PRINT_DELAY_MS",      "type": "UINT32",  "label": "Print Delay (ms)","description": "Delay before printing in ms" }
+      ]
+    },
+    {
+      "group": "Logging",
+      "keys": [
+        { "key": "0x8001", "name": "LOG_UDP_ENABLED",     "type": "BOOL",    "label": "UDP Log Enabled","description": "Enable UDP log streaming" },
+        { "key": "0x8002", "name": "LOG_UDP_SERVER_IP",   "type": "STRING",  "label": "UDP Server IP",  "description": "UDP log server IP address" },
+        { "key": "0x8003", "name": "LOG_UDP_PORT",        "type": "UINT32",  "label": "UDP Port",       "description": "UDP log server port" },
+        { "key": "0x8004", "name": "DT_LOG_RATE",         "type": "UINT32",  "label": "DT Log Rate",    "description": "Data log rate setting" }
+      ]
+    },
+    {
+      "group": "Features",
+      "keys": [
+        { "key": "0x9001", "name": "ENABLE_NID_PRINT",    "type": "BOOL",    "label": "NID Print",      "description": "Enable NID printing feature" },
+        { "key": "0x9002", "name": "ENABLE_NID_CLOUD",    "type": "BOOL",    "label": "NID Cloud",      "description": "Enable NID cloud upload feature" }
+      ]
+    }
+  ]
+}
