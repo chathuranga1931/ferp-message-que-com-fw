@@ -26,13 +26,13 @@ int32_t pal_efuse_get_mac(uint8_t* mac, size_t length) {
         return PAL_ERROR;
     }
 
-    // 48E729331048
-    mac[0] = 0x48;
-    mac[1] = 0xE7;
-    mac[2] = 0x29;
-    mac[3] = 0x33;
-    mac[4] = 0x10;
-    mac[5] = 0x48;
+    //112233445566
+    mac[0] = 0x11;
+    mac[1] = 0x22;
+    mac[2] = 0x33;
+    mac[3] = 0x44;
+    mac[4] = 0x55;
+    mac[5] = 0x66;
 
     LOG_MSG_INFO(EFUS_DEBUG_LOG_EN, "MAC Address: %02X:%02X:%02X:%02X:%02X:%02X",
              mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
@@ -61,13 +61,13 @@ int32_t pal_efuse_get_chip_id(uint8_t* id, size_t* length) {
     }
 
 
-    // 48E729331048
-    mac[0] = 0x48;
-    mac[1] = 0xE7;
-    mac[2] = 0x29;
-    mac[3] = 0x33;
-    mac[4] = 0x10;
-    mac[5] = 0x48;
+    // 112233445566
+    mac[0] = 0x11;
+    mac[1] = 0x22;
+    mac[2] = 0x33;
+    mac[3] = 0x44;
+    mac[4] = 0x55;
+    mac[5] = 0x66;
     mac[6] = 0x00;
     mac[7] = 0x00;
 

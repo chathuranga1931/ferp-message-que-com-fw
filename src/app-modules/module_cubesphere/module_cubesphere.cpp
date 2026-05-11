@@ -522,6 +522,8 @@ void ModuleCubeSphere::_on_reg_step3_result(const hsys_msg_t &msg)
     JsonDocument doc;
     deserializeJson(doc, (const char *)f.body, DeserializationOption::NestingLimit(20));
 
+    LOG_MSG_DEBUG(CSP_LOG_EN, "reg step3 response body: %s", (const char *)f.body);
+
     bool nozzles_ok = false;
     if (doc["data"].is<JsonObject>()) {
         JsonObject data    = doc["data"].as<JsonObject>();

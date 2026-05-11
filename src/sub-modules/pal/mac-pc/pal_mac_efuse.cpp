@@ -10,8 +10,8 @@
 #define __TAG__          "PAL_EFUS"
 #define EFUS_LOG_EN      false
 
-// Hardcoded MAC — matches pal_esp_idf_efuse.cpp: 48:E7:29:33:10:48
-static const uint8_t k_sim_mac[6] = { 0x48, 0xE7, 0x29, 0x33, 0x10, 0x48 };
+// Hardcoded MAC — matches pal_esp_idf_efuse.cpp: 11:22:33:44:55:66
+static const uint8_t k_sim_mac[6] = { 0x11, 0x22, 0x33, 0x44, 0x55, 0x66 };
 
 int32_t pal_efuse_get_mac(uint8_t *mac, size_t length)
 {
