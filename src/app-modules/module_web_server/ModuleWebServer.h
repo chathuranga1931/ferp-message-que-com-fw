@@ -14,10 +14,13 @@
  *   GET  /api/status                   → {"running":true,"port":8080}
  *   GET  /api/ota/status               → {"state":"idle|uploading","bytes":N}
  *   POST /api/ota/bin?name=<bin>       → multipart firmware upload (target from table)
+ *   POST /api/ota/start?name=<bin>     → chunked OTA: open session
+ *   POST /api/ota/chunk?seq=<N>        → chunked OTA: write one chunk (raw binary body)
+ *   POST /api/ota/complete             → chunked OTA: commit and close
  *   POST /api/messages                 → HTTP→message-bus bridge
  *   GET  /...                             → static file from SPIFFS (wildcard, table-driven)
  *
- * OTA upload protocol:
+ * OTA upload protocol (both /api/ota/bin and /api/ota/start+chunk+complete):
  *   The upload handler performs the HSYS OTA handshake:
  *     1. MsgOtaStartRequest  → OtaModule
  *     2. wait MsgOtaStartResponse (5 s, via m_start_resp_sem)
@@ -25,6 +28,11 @@
  *     4. wait MsgOtaDriverResponse (5 s, via m_driver_resp_sem)
  *     5. ota_fs_driver_t fopen/fwrite/fclose
  *     6. MsgOtaCompleteNotify → OtaModule
+ *
+ * Chunked OTA mirrors the MQTT OTA session protocol:
+ *   POST /api/ota/start  → handshake + fopen; returns {"ok":true,"chunk_size":4096}
+ *   POST /api/ota/chunk  → fwrite one chunk; seq enforced in order
+ *   POST /api/ota/complete → fclose + MsgOtaCompleteNotify
  *
  * Shell usage (works on both platforms):
  *   curl -F "file=@firmware.bin"   http://localhost:8080/updateFirmwareBin
@@ -50,8 +58,9 @@
 class ModuleWebServer : public HsysModule
 {
 public:
-    static constexpr hsys_module_id_t MODULE_ID = MODULE_WEB_SERVER_ID;
-    static constexpr uint16_t         HTTP_PORT  = 8080;
+    static constexpr hsys_module_id_t MODULE_ID      = MODULE_WEB_SERVER_ID;
+    static constexpr uint16_t         HTTP_PORT       = 8080;
+    static constexpr uint32_t         OTA_CHUNK_MAX   = 4096;  ///< max body size for /api/ota/chunk
 
     ModuleWebServer();
     static ModuleWebServer *instance();
@@ -110,8 +119,9 @@ private:
     ota_start_result_t      m_start_result    = OTA_START_REJECTED_BUSY;
     const ota_fs_driver_t  *m_ota_driver      = nullptr;
     void                   *m_ota_ctx         = nullptr;
-    volatile uint32_t       m_ota_bytes       = 0;
-    volatile uint32_t       m_ota_total_bytes = 0;  ///< content-length from HTTP (approx firmware size)
+    volatile uint32_t       m_ota_bytes        = 0;
+    volatile uint32_t       m_ota_total_bytes  = 0;  ///< total firmware size (from Content-Length or start body)
+    volatile uint32_t       m_ota_expected_seq = 0;  ///< next expected chunk seq (chunked-upload mode)
 
     /* ── API message-bus bridge state ────────────────────────────────── */
     hsys_mutex_handle_t     m_api_lock        = nullptr;
@@ -121,12 +131,16 @@ private:
     char m_api_msg_name [APP_MSG_CODEC_MSG_NAME_MAX  + 1];
 
     /* ── HTTP handler callbacks (static — take self via user_ctx) ─────── */
-    static int32_t _hdl_static_file (pal_http_request_t req, void *ctx);
-    static int32_t _hdl_get_config  (pal_http_request_t req, void *ctx);
-    static int32_t _hdl_post_config (pal_http_request_t req, void *ctx);
-    static int32_t _hdl_get_status  (pal_http_request_t req, void *ctx);
-    static int32_t _hdl_ota_status  (pal_http_request_t req, void *ctx);
-    static int32_t _hdl_post_message(pal_http_request_t req, void *ctx);
+    static int32_t _hdl_static_file  (pal_http_request_t req, void *ctx);
+    static int32_t _hdl_get_config   (pal_http_request_t req, void *ctx);
+    static int32_t _hdl_post_config  (pal_http_request_t req, void *ctx);
+    static int32_t _hdl_get_status   (pal_http_request_t req, void *ctx);
+    static int32_t _hdl_ota_status   (pal_http_request_t req, void *ctx);
+    static int32_t _hdl_post_message (pal_http_request_t req, void *ctx);
+    /* Chunked OTA endpoints (mirrors MQTT session protocol) */
+    static int32_t _hdl_ota_start    (pal_http_request_t req, void *ctx);
+    static int32_t _hdl_ota_chunk    (pal_http_request_t req, void *ctx);
+    static int32_t _hdl_ota_complete (pal_http_request_t req, void *ctx);
 
     /** Called per chunk (or once with full binary on mac PAL). */
     static int32_t _hdl_fw_upload(pal_http_request_t req,

@@ -32,6 +32,7 @@
 #include <ArduinoJson.h>
 #include <string.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 #define __TAG__        "WEBSRV__"
 #ifndef WEB_SRV_LOG_EN
@@ -101,6 +102,14 @@ void ModuleWebServer::pre_init()
         PAL_HTTP_GET, _hdl_get_status, this);
     pal_http_server_register_uri(m_server, "/api/ota/status",
         PAL_HTTP_GET, _hdl_ota_status, this);
+
+    /* Chunked OTA endpoints — mirror MQTT session protocol (start/chunk/complete) */
+    pal_http_server_register_uri(m_server, "/api/ota/start",
+        PAL_HTTP_POST, _hdl_ota_start, this);
+    pal_http_server_register_uri(m_server, "/api/ota/chunk",
+        PAL_HTTP_POST, _hdl_ota_chunk, this);
+    pal_http_server_register_uri(m_server, "/api/ota/complete",
+        PAL_HTTP_POST, _hdl_ota_complete, this);
 
     /* Generic OTA firmware upload: POST /api/ota/bin?name=<binary-name> */
     pal_http_server_register_uri_with_upload(m_server, "/api/ota/bin",
@@ -592,7 +601,354 @@ int32_t ModuleWebServer::_hdl_fw_upload(pal_http_request_t req,
         return ok ? PAL_OK : PAL_ERROR;
     }
 
-    return PAL_OK;
+/* ═══════════════════════════════════════════════════════════════════════════
+ * Chunked OTA handlers  (/api/ota/start  /api/ota/chunk  /api/ota/complete)
+ *
+ * These three endpoints together mirror the MQTT OTA session protocol:
+ *   1. POST /api/ota/start?name=<target>  Body: {"size":N,"crc32":N}
+ *      Performs the full HSYS handshake (same as /api/ota/bin offset==0).
+ *      Opens the ota_fs_driver_t write session.
+ *      Response: {"ok":true,"chunk_size":4096}
+ *
+ *   2. POST /api/ota/chunk?seq=<N>  Body: raw binary (octet-stream)
+ *      Writes one chunk.  seq must equal m_ota_expected_seq; 409 on mismatch
+ *      so the tool knows exactly which seq to re-send on retry.
+ *      Publishes MsgOtaProgress each call (resets OtaModule watchdog).
+ *      Response: {"ok":true,"seq":N,"written":total_written}
+ *
+ *   3. POST /api/ota/complete  Body: {"crc32":N}  (crc32 informational)
+ *      Calls fclose → MsgOtaCompleteNotify → OtaModule validates image.
+ *      Response: {"ok":true,"bytes":total}
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+int32_t ModuleWebServer::_hdl_ota_start(pal_http_request_t req, void *ctx)
+{
+    ModuleWebServer *self = (ModuleWebServer *)ctx;
+
+    /* ── Guard concurrent sessions ───────────────────────────────────────────────── */
+    hsys_mutex_lock(self->m_ota_lock);
+    bool already_busy = self->m_ota_busy;
+    if (!already_busy) {
+        self->m_ota_busy         = true;
+        self->m_ota_bytes        = 0;
+        self->m_ota_total_bytes  = 0;
+        self->m_ota_expected_seq = 0;
+        self->m_ota_driver       = nullptr;
+        self->m_ota_ctx          = nullptr;
+    }
+    hsys_mutex_unlock(self->m_ota_lock);
+
+    if (already_busy) {
+        LOG_MSG_WARNING(WEB_SRV_LOG_EN, "OTA/chunk: rejected — session already active");
+        pal_http_resp_set_status(req, 503);
+        return pal_http_resp_send(req,
+            "{\"ok\":false,\"error\":\"ota already in progress\"}", 0);
+    }
+
+    /* ── Resolve target from ?name= ─────────────────────────────────────────────── */
+    char name_buf[64] = {};
+    pal_http_req_get_query_param(req, "name", name_buf, sizeof(name_buf));
+    uint8_t target = 255;
+    if (self->m_ota_targets) {
+        for (const OtaTargetDef *t = self->m_ota_targets; t->name; t++) {
+            if (strcmp(t->name, name_buf) == 0) {
+                target = t->target_idx;
+                break;
+            }
+        }
+    }
+    if (target == 255) {
+        LOG_MSG_WARNING(WEB_SRV_LOG_EN,
+                        "OTA/chunk: unknown target '%s'", name_buf);
+        hsys_mutex_lock(self->m_ota_lock);
+        self->m_ota_busy = false;
+        hsys_mutex_unlock(self->m_ota_lock);
+        pal_http_resp_set_status(req, 400);
+        return pal_http_resp_send(req,
+            "{\"ok\":false,\"error\":\"unknown ota target name\"}", 0);
+    }
+
+    /* ── Parse body JSON: {"size": N, "crc32": N} ────────────────────────────────────── */
+    size_t   content_len = pal_http_req_get_content_len(req);
+    uint32_t total_size  = 0;
+    if (content_len > 0 && content_len < 256) {
+        char body[256] = {};
+        size_t got = 0;
+        pal_http_req_recv(req, body, content_len, &got);
+        body[got] = '\0';
+        JsonDocument doc;
+        if (deserializeJson(doc, body, got) == DeserializationError::Ok) {
+            total_size = doc["size"] | 0u;
+        }
+    }
+
+    hsys_mutex_lock(self->m_ota_lock);
+    self->m_active_ota_target = target;
+    self->m_ota_total_bytes   = total_size;
+    hsys_mutex_unlock(self->m_ota_lock);
+
+    /* ── HSYS OTA handshake ───────────────────────────────────────────────────────────── */
+    LOG_MSG_INFO(WEB_SRV_LOG_EN,
+                 "OTA/chunk: requesting session (target=%u, size=%u)",
+                 (unsigned)target, (unsigned)total_size);
+
+    if (!self->_ota_send_start_request(target, "web-chunk")) {
+        hsys_mutex_lock(self->m_ota_lock);
+        self->m_ota_busy = false;
+        hsys_mutex_unlock(self->m_ota_lock);
+        pal_http_resp_set_status(req, 500);
+        return pal_http_resp_send(req,
+            "{\"ok\":false,\"error\":\"start-request alloc failed\"}", 0);
+    }
+    if (!hsys_semaphore_take_timeout(self->m_start_resp_sem, 5000)) {
+        LOG_MSG_ERROR(WEB_SRV_LOG_EN, "OTA/chunk: start-response timed out");
+        hsys_mutex_lock(self->m_ota_lock);
+        self->m_ota_busy = false;
+        hsys_mutex_unlock(self->m_ota_lock);
+        pal_http_resp_set_status(req, 503);
+        return pal_http_resp_send(req,
+            "{\"ok\":false,\"error\":\"ota start timed out\"}", 0);
+    }
+
+    hsys_mutex_lock(self->m_ota_lock);
+    ota_start_result_t result = self->m_start_result;
+    hsys_mutex_unlock(self->m_ota_lock);
+
+    if (result != OTA_START_ACCEPTED) {
+        LOG_MSG_WARNING(WEB_SRV_LOG_EN,
+                        "OTA/chunk: start rejected (result=%d)", (int)result);
+        hsys_mutex_lock(self->m_ota_lock);
+        self->m_ota_busy = false;
+        hsys_mutex_unlock(self->m_ota_lock);
+        pal_http_resp_set_status(req, 503);
+        return pal_http_resp_send(req,
+            "{\"ok\":false,\"error\":\"ota rejected\"}", 0);
+    }
+
+    if (!self->_ota_send_driver_request()) {
+        hsys_mutex_lock(self->m_ota_lock);
+        self->m_ota_busy = false;
+        hsys_mutex_unlock(self->m_ota_lock);
+        pal_http_resp_set_status(req, 500);
+        return pal_http_resp_send(req,
+            "{\"ok\":false,\"error\":\"driver-request alloc failed\"}", 0);
+    }
+    if (!hsys_semaphore_take_timeout(self->m_driver_resp_sem, 5000)) {
+        LOG_MSG_ERROR(WEB_SRV_LOG_EN, "OTA/chunk: driver-response timed out");
+        hsys_mutex_lock(self->m_ota_lock);
+        self->m_ota_busy = false;
+        hsys_mutex_unlock(self->m_ota_lock);
+        pal_http_resp_set_status(req, 500);
+        return pal_http_resp_send(req,
+            "{\"ok\":false,\"error\":\"ota driver timed out\"}", 0);
+    }
+
+    hsys_mutex_lock(self->m_ota_lock);
+    const ota_fs_driver_t *drv  = self->m_ota_driver;
+    void                  *dctx = self->m_ota_ctx;
+    hsys_mutex_unlock(self->m_ota_lock);
+
+    if (!drv) {
+        hsys_mutex_lock(self->m_ota_lock);
+        self->m_ota_busy = false;
+        hsys_mutex_unlock(self->m_ota_lock);
+        pal_http_resp_set_status(req, 500);
+        return pal_http_resp_send(req,
+            "{\"ok\":false,\"error\":\"null ota driver\"}", 0);
+    }
+
+    /* ── Open OTA write session ───────────────────────────────────────────────────────── */
+    ota_fs_err_t err = drv->fopen(dctx, nullptr, OTA_FS_OPEN_WRITE);
+    if (err != OTA_FS_OK) {
+        LOG_MSG_ERROR(WEB_SRV_LOG_EN,
+                      "OTA/chunk: fopen failed (err=%d)", (int)err);
+        self->_ota_send_complete_notify(false);
+        hsys_mutex_lock(self->m_ota_lock);
+        self->m_ota_busy = false;
+        hsys_mutex_unlock(self->m_ota_lock);
+        pal_http_resp_set_status(req, 500);
+        return pal_http_resp_send(req,
+            "{\"ok\":false,\"error\":\"driver fopen failed\"}", 0);
+    }
+
+    LOG_MSG_INFO(WEB_SRV_LOG_EN,
+                 "OTA/chunk: session open (target=%u, size=%u)",
+                 (unsigned)target, (unsigned)total_size);
+
+    pal_http_resp_set_type(req, "application/json");
+    return pal_http_resp_send(req,
+        "{\"ok\":true,\"chunk_size\":4096}", 0);
+}
+
+int32_t ModuleWebServer::_hdl_ota_chunk(pal_http_request_t req, void *ctx)
+{
+    ModuleWebServer *self = (ModuleWebServer *)ctx;
+
+    /* Verify active session */
+    hsys_mutex_lock(self->m_ota_lock);
+    bool busy = self->m_ota_busy;
+    hsys_mutex_unlock(self->m_ota_lock);
+    if (!busy) {
+        pal_http_resp_set_status(req, 400);
+        return pal_http_resp_send(req,
+            "{\"ok\":false,\"error\":\"no active ota session\"}", 0);
+    }
+
+    /* Read ?seq= query parameter */
+    char seq_buf[16] = {};
+    pal_http_req_get_query_param(req, "seq", seq_buf, sizeof(seq_buf));
+    uint32_t seq = (uint32_t)strtoul(seq_buf, nullptr, 10);
+
+    /* Enforce in-order delivery */
+    hsys_mutex_lock(self->m_ota_lock);
+    uint32_t expected = self->m_ota_expected_seq;
+    hsys_mutex_unlock(self->m_ota_lock);
+
+    if (seq != expected) {
+        char resp[128];
+        snprintf(resp, sizeof(resp),
+                 "{\"ok\":false,\"error\":\"seq mismatch\",\"expected\":%u}",
+                 (unsigned)expected);
+        pal_http_resp_set_status(req, 409);
+        return pal_http_resp_send(req, resp, 0);
+    }
+
+    /* Validate chunk size */
+    size_t content_len = pal_http_req_get_content_len(req);
+    if (content_len == 0 || content_len > OTA_CHUNK_MAX) {
+        pal_http_resp_set_status(req, 400);
+        return pal_http_resp_send(req,
+            "{\"ok\":false,\"error\":\"invalid chunk size\"}", 0);
+    }
+
+    /* Heap-allocate receive buffer (avoids deep stack usage on ESP32) */
+    uint8_t *chunk_buf = (uint8_t *)malloc(content_len);
+    if (!chunk_buf) {
+        pal_http_resp_set_status(req, 500);
+        return pal_http_resp_send(req,
+            "{\"ok\":false,\"error\":\"out of memory\"}", 0);
+    }
+
+    size_t received = 0;
+    while (received < content_len) {
+        size_t got = 0;
+        if (pal_http_req_recv(req, (char *)chunk_buf + received,
+                              content_len - received, &got) != PAL_OK || got == 0) {
+            break;
+        }
+        received += got;
+    }
+    if (received != content_len) {
+        free(chunk_buf);
+        pal_http_resp_set_status(req, 400);
+        return pal_http_resp_send(req,
+            "{\"ok\":false,\"error\":\"incomplete chunk\"}", 0);
+    }
+
+    /* Write to OTA driver */
+    hsys_mutex_lock(self->m_ota_lock);
+    const ota_fs_driver_t *drv  = self->m_ota_driver;
+    void                  *dctx = self->m_ota_ctx;
+    hsys_mutex_unlock(self->m_ota_lock);
+
+    ota_fs_err_t err = drv->fwrite(dctx, chunk_buf, (uint32_t)received);
+    free(chunk_buf);
+
+    if (err != OTA_FS_OK) {
+        LOG_MSG_ERROR(WEB_SRV_LOG_EN,
+                      "OTA/chunk: fwrite failed at seq %u (err=%d)",
+                      (unsigned)seq, (int)err);
+        drv->ferase(dctx);
+        self->_ota_send_complete_notify(false);
+        hsys_mutex_lock(self->m_ota_lock);
+        self->m_ota_busy         = false;
+        self->m_ota_expected_seq = 0;
+        hsys_mutex_unlock(self->m_ota_lock);
+        pal_http_resp_set_status(req, 500);
+        return pal_http_resp_send(req,
+            "{\"ok\":false,\"error\":\"write failed\"}", 0);
+    }
+
+    hsys_mutex_lock(self->m_ota_lock);
+    self->m_ota_bytes        += (uint32_t)received;
+    self->m_ota_expected_seq  = seq + 1;
+    uint32_t total_written    = self->m_ota_bytes;
+    uint32_t total_size       = self->m_ota_total_bytes;
+    uint8_t  tgt              = self->m_active_ota_target;
+    hsys_mutex_unlock(self->m_ota_lock);
+
+    /* Publish MsgOtaProgress — resets OtaModule inactivity watchdog */
+    self->_ota_publish_progress(tgt, total_written, total_size);
+
+    char resp[128];
+    snprintf(resp, sizeof(resp),
+             "{\"ok\":true,\"seq\":%u,\"written\":%u}",
+             (unsigned)seq, (unsigned)total_written);
+    pal_http_resp_set_type(req, "application/json");
+    return pal_http_resp_send(req, resp, 0);
+}
+
+int32_t ModuleWebServer::_hdl_ota_complete(pal_http_request_t req, void *ctx)
+{
+    ModuleWebServer *self = (ModuleWebServer *)ctx;
+
+    hsys_mutex_lock(self->m_ota_lock);
+    bool                   busy  = self->m_ota_busy;
+    const ota_fs_driver_t *drv   = self->m_ota_driver;
+    void                  *dctx  = self->m_ota_ctx;
+    uint32_t               total = self->m_ota_bytes;
+    hsys_mutex_unlock(self->m_ota_lock);
+
+    if (!busy || !drv) {
+        pal_http_resp_set_status(req, 400);
+        return pal_http_resp_send(req,
+            "{\"ok\":false,\"error\":\"no active ota session\"}", 0);
+    }
+
+    /* Log CRC32 from tool body (informational; ESP-IDF validates image on fclose) */
+    size_t content_len = pal_http_req_get_content_len(req);
+    if (content_len > 0 && content_len < 128) {
+        char body[128] = {};
+        size_t got = 0;
+        pal_http_req_recv(req, body, content_len, &got);
+        body[got] = '\0';
+        JsonDocument doc;
+        if (deserializeJson(doc, body, got) == DeserializationError::Ok) {
+            uint32_t crc32 = doc["crc32"] | 0u;
+            LOG_MSG_INFO(WEB_SRV_LOG_EN,
+                         "OTA/chunk: complete  bytes=%u  tool_crc32=0x%08X",
+                         (unsigned)total, (unsigned)crc32);
+        }
+    }
+
+    bool ok = (drv->fclose(dctx) == OTA_FS_OK);
+    if (!ok) {
+        drv->ferase(dctx);
+        LOG_MSG_ERROR(WEB_SRV_LOG_EN, "OTA/chunk: fclose failed");
+    }
+
+    self->_ota_send_complete_notify(ok);
+
+    hsys_mutex_lock(self->m_ota_lock);
+    self->m_ota_busy         = false;
+    self->m_ota_bytes        = 0;
+    self->m_ota_expected_seq = 0;
+    hsys_mutex_unlock(self->m_ota_lock);
+
+    if (ok) {
+        LOG_MSG_INFO(WEB_SRV_LOG_EN,
+                     "OTA/chunk: committed — %u B written", (unsigned)total);
+        char resp[128];
+        snprintf(resp, sizeof(resp),
+                 "{\"ok\":true,\"bytes\":%u}", (unsigned)total);
+        pal_http_resp_set_type(req, "application/json");
+        return pal_http_resp_send(req, resp, 0);
+    } else {
+        pal_http_resp_set_status(req, 500);
+        return pal_http_resp_send(req,
+            "{\"ok\":false,\"error\":\"commit failed\"}", 0);
+    }
+}
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
