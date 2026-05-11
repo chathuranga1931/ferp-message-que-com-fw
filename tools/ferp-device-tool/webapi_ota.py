@@ -1,17 +1,17 @@
 """
 webapi_ota.py — OTA firmware update over WebAPI (HTTP) for FERP devices.
 
-The WebAPI OTA protocol uses chunked HTTP POST to /api/ota/upload.
-This is a placeholder / stub that can be fleshed out once the
-firmware-side WebAPI OTA endpoint is implemented.
+Firmware endpoint:
+    POST /api/ota/bin?name=<target>
+    Content-Type: multipart/form-data
+    Body: binary firmware file as a form field named "file"
+    Response: { "ok": true, "bytes": <n> }
 
-The GUI instantiates WebApiOtaHandler in the same way as MqttOtaHandler.
+Valid target names: main, dt-bootloader, dt-partitions, dt-app
 """
 
 import os
-import sys
 import threading
-import time
 import argparse
 
 
@@ -23,20 +23,8 @@ class WebApiOtaHandler:
     """
     Handles OTA firmware upload over HTTP/WebAPI.
 
-    Protocol (draft):
-        POST /api/ota/start
-             { "target": "main", "size": <bytes>, "version": "1.2.3" }
-             -> { "ok": true }
-
-        POST /api/ota/chunk
-             Content-Type: application/octet-stream
-             Headers: X-OTA-Offset: <int>
-             Body: <binary chunk>
-             -> { "ok": true, "offset_next": <int> }
-
-        POST /api/ota/complete
-             { "crc32": "0x..." }
-             -> { "ok": true }
+    Sends a single multipart POST to /api/ota/bin?name=<target>.
+    The firmware handles the OTA handshake and write internally.
     """
 
     def __init__(
@@ -57,15 +45,15 @@ class WebApiOtaHandler:
         except ImportError:
             raise WebApiOtaError("requests not installed — run: pip install requests")
 
-        self.base_url     = f"http://{ip.strip()}:{port}/api/ota"
+        self.base_url      = f"http://{ip.strip()}:{port}"
         self.firmware_path = firmware_path
-        self.target       = target
-        self.version      = version
-        self.chunk_size   = chunk_size
-        self._on_log      = on_log      or (lambda m: None)
-        self._on_progress = on_progress or (lambda p: None)
-        self._on_done     = on_done     or (lambda ok: None)
-        self._abort_flag  = threading.Event()
+        self.target        = target
+        self.version       = version
+        self.chunk_size    = chunk_size
+        self._on_log       = on_log      or (lambda m: None)
+        self._on_progress  = on_progress or (lambda p: None)
+        self._on_done      = on_done     or (lambda ok: None)
+        self._abort_flag   = threading.Event()
 
     def start(self) -> None:
         t = threading.Thread(target=self._run, daemon=True)
@@ -74,71 +62,45 @@ class WebApiOtaHandler:
     def abort(self) -> None:
         self._abort_flag.set()
 
-    def _post(self, path: str, headers: dict = None, **kwargs) -> dict:
-        resp = self._requests.post(
-            f"{self.base_url}/{path}", timeout=10, headers=headers, **kwargs)
-        resp.raise_for_status()
-        return resp.json()
-
     def _run(self) -> None:
         if not os.path.isfile(self.firmware_path):
             self._on_log(f"[error] Firmware file not found: {self.firmware_path}")
             self._on_done(False)
             return
 
-        import zlib
         fw_size = os.path.getsize(self.firmware_path)
+        filename = os.path.basename(self.firmware_path)
 
-        # CRC32
-        crc = 0
-        with open(self.firmware_path, "rb") as fh:
-            while chunk := fh.read(65536):
-                crc = zlib.crc32(chunk, crc)
-        crc &= 0xFFFF_FFFF
-        crc_str = f"0x{crc:08X}"
-
-        self._on_log(f"Firmware : {os.path.basename(self.firmware_path)}")
-        self._on_log(f"Size     : {fw_size:,} bytes  CRC32={crc_str}")
+        self._on_log(f"Firmware : {filename}")
+        self._on_log(f"Size     : {fw_size:,} bytes")
         self._on_log(f"Target   : {self.target}  version={self.version}")
 
+        url = f"{self.base_url}/api/ota/bin"
+        params = {"name": self.target}
+
         try:
-            # 1. Start
-            self._on_log(f"→ POST {self.base_url}/start ...")
-            resp = self._post("start", json={
-                "target": self.target, "size": fw_size,
-                "version": self.version, "crc32": crc_str,
-            })
-            if not resp.get("ok"):
-                raise WebApiOtaError(f"OTA start rejected: {resp}")
-            self._on_log("← OTA start accepted")
-
-            # 2. Chunks
-            offset = 0
+            self._on_log(f"→ POST {url}?name={self.target} ...")
             with open(self.firmware_path, "rb") as fh:
-                while True:
-                    if self._abort_flag.is_set():
-                        self._on_log("Abort requested")
-                        self._on_done(False)
-                        return
-                    data = fh.read(self.chunk_size)
-                    if not data:
-                        break
-                    resp = self._post("chunk",
-                                      headers={"X-OTA-Offset": str(offset)},
-                                      data=data)
-                    if not resp.get("ok"):
-                        raise WebApiOtaError(f"Chunk rejected at offset {offset}: {resp}")
-                    offset = resp.get("offset_next", offset + len(data))
-                    self._on_progress(int(offset * 100 / fw_size))
+                resp = self._requests.post(
+                    url,
+                    params=params,
+                    files={"file": (filename, fh, "application/octet-stream")},
+                    timeout=300,
+                )
 
-            # 3. Complete
-            self._on_log("→ POST complete ...")
-            resp = self._post("complete", json={"crc32": crc_str})
-            if not resp.get("ok"):
-                raise WebApiOtaError(f"OTA complete rejected: {resp}")
+            if self._abort_flag.is_set():
+                self._on_log("Abort requested")
+                self._on_done(False)
+                return
+
+            body = resp.json()
+            if resp.status_code != 200 or not body.get("ok"):
+                raise WebApiOtaError(
+                    f"OTA failed (HTTP {resp.status_code}): {body.get('error', body)}"
+                )
 
             self._on_progress(100)
-            self._on_log("← OTA complete! Device will reboot.")
+            self._on_log(f"← OTA complete! {body.get('bytes', fw_size):,} B written. Device will reboot.")
             self._on_done(True)
 
         except WebApiOtaError as exc:
@@ -154,13 +116,14 @@ class WebApiOtaHandler:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _cli() -> None:
+    import sys
     ap = argparse.ArgumentParser(description="FERP OTA over WebAPI")
     ap.add_argument("--ip",       required=True)
     ap.add_argument("--port",     type=int, default=8080)
-    ap.add_argument("--target",   default="main", choices=["main", "sub1"])
+    ap.add_argument("--target",   default="main",
+                    choices=["main", "dt-bootloader", "dt-partitions", "dt-app"])
     ap.add_argument("--firmware", required=True)
     ap.add_argument("--version",  default="unknown")
-    ap.add_argument("--chunk-size", type=int, default=4096)
     args = ap.parse_args()
 
     done_event = threading.Event()
@@ -176,7 +139,6 @@ def _cli() -> None:
         firmware_path=args.firmware,
         target=args.target,
         version=args.version,
-        chunk_size=args.chunk_size,
         on_log=lambda m: print(m, flush=True),
         on_progress=lambda p: print(f"\r  {p:3d}%  ", end="", flush=True),
         on_done=on_done,
