@@ -601,6 +601,9 @@ int32_t ModuleWebServer::_hdl_fw_upload(pal_http_request_t req,
         return ok ? PAL_OK : PAL_ERROR;
     }
 
+    return PAL_OK;
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
  * Chunked OTA handlers  (/api/ota/start  /api/ota/chunk  /api/ota/complete)
  *
@@ -948,7 +951,6 @@ int32_t ModuleWebServer::_hdl_ota_complete(pal_http_request_t req, void *ctx)
         return pal_http_resp_send(req,
             "{\"ok\":false,\"error\":\"commit failed\"}", 0);
     }
-}
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
