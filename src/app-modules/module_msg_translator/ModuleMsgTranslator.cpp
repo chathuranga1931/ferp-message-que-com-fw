@@ -33,7 +33,7 @@ void ModuleMsgTranslator::set_table(const msg_translator_entry_t *table, uint16_
 void ModuleMsgTranslator::init()
 {
     if (!_table || _count == 0) {
-        LOG_MSG_WARN(XLAT_LOG, "no translation table — module idle");
+        LOG_MSG_WARNING(XLAT_LOG, "no translation table — module idle");
         return;
     }
 
@@ -78,7 +78,7 @@ void ModuleMsgTranslator::on_msg_received(const hsys_msg_t &msg)
 
         // Guard against a nullptr translator.
         if (!e.translator) {
-            LOG_MSG_WARN(XLAT_LOG, "entry[%u]: nullptr translator, skipping", (unsigned)i);
+            LOG_MSG_WARNING(XLAT_LOG, "entry[%u]: nullptr translator, skipping", (unsigned)i);
             continue;
         }
 
@@ -94,7 +94,7 @@ void ModuleMsgTranslator::_dispatch_entry(const msg_translator_entry_t &entry,
                                           const hsys_msg_t              &in_msg)
 {
     if (entry.delayed && entry.delay_ms > 0) {
-        LOG_MSG_WARN(XLAT_LOG,
+        LOG_MSG_WARNING(XLAT_LOG,
                      "entry in_msg=0x%04X: delayed publish not yet implemented — publishing immediately",
                      (unsigned)entry.in_msg_id);
     }

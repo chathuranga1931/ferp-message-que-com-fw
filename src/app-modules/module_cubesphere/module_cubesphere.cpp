@@ -16,6 +16,8 @@
 #include "msg_timer_start.h"
 #include "msg_timer_alarm.h"
 #include "msg_sd_ready.h"
+#include "msg_system_status.h"
+#include "list_manager.h"
 
 // HTTP session messages (DIRECT to/from ModuleHttp)
 #include "msg_http_start_request.h"
@@ -48,45 +50,6 @@
 // Secret key for SAS-AC1 token computation
 const char ModuleCubeSphere::_cs_key[] = "y4M5oJVfjAWeN059p";
 
-// Google GTS Root R1 — fallback when no root CA is provided via config.
-// This is the trust anchor for *.run.app (Google Cloud Run) and was the cert
-// used in the original Arduino implementation (setCACert). Using a specific
-// cert instead of esp_crt_bundle_attach avoids a large heap allocation during
-// the TLS handshake, which was causing ECONNABORTED on ESP32 due to heap
-// fragmentation when multiple TLS sessions start simultaneously.
-static const char _cs_gts_root_r1[] =
-    "-----BEGIN CERTIFICATE-----\n"
-    "MIIFYjCCBEqgAwIBAgIQd70NbNs2+RrqIQ/E8FjTDTANBgkqhkiG9w0BAQsFADBX\n"
-    "MQswCQYDVQQGEwJCRTEZMBcGA1UEChMQR2xvYmFsU2lnbiBudi1zYTEQMA4GA1UE\n"
-    "CxMHUm9vdCBDQTEbMBkGA1UEAxMSR2xvYmFsU2lnbiBSb290IENBMB4XDTIwMDYx\n"
-    "OTAwMDA0MloXDTI4MDEyODAwMDA0MlowRzELMAkGA1UEBhMCVVMxIjAgBgNVBAoT\n"
-    "GUdvb2dsZSBUcnVzdCBTZXJ2aWNlcyBMTEMxFDASBgNVBAMTC0dUUyBSb290IFIx\n"
-    "MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAthECix7joXebO9y/lD63\n"
-    "ladAPKH9gvl9MgaCcfb2jH/76Nu8ai6Xl6OMS/kr9rH5zoQdsfnFl97vufKj6bwS\n"
-    "iV6nqlKr+CMny6SxnGPb15l+8Ape62im9MZaRw1NEDPjTrETo8gYbEvs/AmQ351k\n"
-    "KSUjB6G00j0uYODP0gmHu81I8E3CwnqIiru6z1kZ1q+PsAewnjHxgsHA3y6mbWwZ\n"
-    "DrXYfiYaRQM9sHmklCitD38m5agI/pboPGiUU+6DOogrFZYJsuB6jC511pzrp1Zk\n"
-    "j5ZPaK49l8KEj8C8QMALXL32h7M1bKwYUH+E4EzNktMg6TO8UpmvMrUpsyUqtEj5\n"
-    "cuHKZPfmghCN6J3Cioj6OGaK/GP5Afl4/Xtcd/p2h/rs37EOeZVXtL0m79YB0esW\n"
-    "CruOC7XFxYpVq9Os6pFLKcwZpDIlTirxZUTQAs6qzkm06p98g7BAe+dDq6dso499\n"
-    "iYH6TKX/1Y7DzkvgtdizjkXPdsDtQCv9Uw+wp9U7DbGKogPeMa3Md+pvez7W35Ei\n"
-    "Eua++tgy/BBjFFFy3l3WFpO9KWgz7zpm7AeKJt8T11dleCfeXkkUAKIAf5qoIbap\n"
-    "sZWwpbkNFhHax2xIPEDgfg1azVY80ZcFuctL7TlLnMQ/0lUTbiSw1nH69MG6zO0b\n"
-    "9f6BQdgAmD06yK56mDcYBZUCAwEAAaOCATgwggE0MA4GA1UdDwEB/wQEAwIBhjAP\n"
-    "BgNVHRMBAf8EBTADAQH/MB0GA1UdDgQWBBTkrysmcRorSCeFL1JmLO/wiRNxPjAf\n"
-    "BgNVHSMEGDAWgBRge2YaRQ2XyolQL30EzTSo//z9SzBgBggrBgEFBQcBAQRUMFIw\n"
-    "JQYIKwYBBQUHMAGGGWh0dHA6Ly9vY3NwLnBraS5nb29nL2dzcjEwKQYIKwYBBQUH\n"
-    "MAKGHWh0dHA6Ly9wa2kuZ29vZy9nc3IxL2dzcjEuY3J0MDIGA1UdHwQrMCkwJ6Al\n"
-    "oCOGIWh0dHA6Ly9jcmwucGtpLmdvb2cvZ3NyMS9nc3IxLmNybDA7BgNVHSAENDAy\n"
-    "MAgGBmeBDAECATAIBgZngQwBAgIwDQYLKwYBBAHWeQIFAwIwDQYLKwYBBAHWeQIF\n"
-    "AwMwDQYJKoZIhvcNAQELBQADggEBADSkHrEoo9C0dhemMXoh6dFSPsjbdBZBiLg9\n"
-    "NR/u92VS7YPHmPbFpnKFBKIJdTa4sQB1Zh/xfIOjX1B3sMJnwMNJbsJK4vfBSB3J\n"
-    "DMTLpZAGF2VsMEiGGe7Zy2V7NLzxBhW3vCXHMVRrLkK2G7iDjFBXluZHoWGBLhbM\n"
-    "9NQVAKLpEJaGfEbI8Mk8RzGBrGjhxeFdVHB9fL4T4F07NZ2g5GNjlSK8PBFyZfGV\n"
-    "7TDEbQNBKBH2YHwzMsq7LfMb/eTa9fXFbDnGxuHUO5mL1IwRRvuqORXxfmZHBr3F\n"
-    "s2xaEXGAuMl3gMX/vO6A8Cqjn0swAa6JnBPMiR6GF/5iXK3tgCxLNNvfKRvCTy8=\n"
-    "-----END CERTIFICATE-----\n";
-
 // ── Singleton ─────────────────────────────────────────────────────────────────
 
 static ModuleCubeSphere s_instance;
@@ -111,6 +74,7 @@ void ModuleCubeSphere::init()
     subscribe(MsgTimerAlarm::ID);
     subscribe(MsgSdReady::ID);
     subscribe(MSG_ID_TICK_1000MS);
+    subscribe(MSG_ID_SYSTEM_STATUS);
 
     // DIRECT responses from ModuleHttp
     subscribe(MSG_ID_HTTP_START_RESPONSE);
@@ -140,6 +104,7 @@ void ModuleCubeSphere::on_msg_received(const hsys_msg_t &msg)
         case MsgSdReady::ID:               _on_sd_ready();               break;
         case MsgTimerAlarm::ID:            _on_timer_alarm();            break;
         case MSG_ID_TICK_1000MS:           _on_tick();                   break;
+        case MSG_ID_SYSTEM_STATUS:         _on_system_status(msg);       break;
         // HTTP session responses (DIRECT from ModuleHttp)
         case MSG_ID_HTTP_START_RESPONSE:   _on_http_start_response(msg); break;
         case MSG_ID_HTTP_RESPONSE_HEADER:  _on_http_response_header(msg);break;
@@ -234,6 +199,7 @@ void ModuleCubeSphere::_on_wifi_event(const hsys_msg_t &msg)
 void ModuleCubeSphere::_on_internet_status(const hsys_msg_t &msg)
 {
     auto p = MsgInternetStatus::deserialize(msg);
+    _internet_connected = p.connected;
     LOG_MSG_INFO(CSP_LOG_EN, "internet %s", p.connected ? "UP" : "DOWN");
     // Internet status is informational — registration is triggered by WiFi GOT_IP
 }
@@ -266,28 +232,18 @@ void ModuleCubeSphere::_on_fuel_pumped(const hsys_msg_t &msg)
         return;
     }
 
-    // Build the pumped event JSON into _event_json now so it is ready when StartResponse arrives
+    // Build the pumped event JSON into _event_json
     struct timeval now_tv;
     gettimeofday(&now_tv, nullptr);
-    char ts[64] = {};
-    _cs_format_iso8601(now_tv.tv_sec + (int)(3600 * 5.5), "+05:30", ts, sizeof(ts));
-
     uint32_t event_id = _pumped_success + _pumped_failure + 1;
-
-    JsonDocument doc;
-    JsonObject root   = doc.to<JsonObject>();
-    JsonArray  events = root["events"].to<JsonArray>();
-    JsonObject e0     = events.add<JsonObject>();
-    e0["device"] = _cs_nozzles[p.nozzle_idx].uuid;
-    e0["time"]   = ts;
-    e0["event"]  = "app.fuel/pump-end";
-    JsonObject body = e0["body"].to<JsonObject>();
-    body["L"]  = p.vol_lx1000   * 0.001;
-    body["T"]  = _cs_nozzles[p.nozzle_idx].fuel_type;
-    body["P"]  = p.total_pricex100 * 0.01;
-    body["U"]  = p.unit_pricex100  * 0.01;
-    body["ID"] = event_id;
-    serializeJson(doc, _event_json, sizeof(_event_json));
+    if (!_build_pumped_event_json(p.nozzle_idx, p.vol_lx1000, p.unit_pricex100,
+                                   p.total_pricex100, now_tv.tv_sec, event_id)) {
+        LOG_MSG_ERROR(CSP_LOG_EN, "failed to build pumped event JSON — storing for retx");
+        _pumped_failure++;
+        _publish_status(CUBESPHERE_STATUS_PUMPED_FAILED, p.nozzle_idx);
+        _retx_store_pumped(p);
+        return;
+    }
 
     _cur_evt = EVT_PUMPED;
     _send_http_start(PAL_HTTP_METHOD_POST, 10000, nullptr);
@@ -312,7 +268,39 @@ void ModuleCubeSphere::_on_timer_alarm()
     }
 }
 
-void ModuleCubeSphere::_on_tick() { _uptime_sec++; }
+void ModuleCubeSphere::_on_tick()
+{
+    _uptime_sec++;
+
+    // Retransmit check every 60 seconds when running
+    if (_state == STATE_RUNNING && _retx_ready) {
+        if (_retx_check_countdown > 0) {
+            _retx_check_countdown--;
+        } else {
+            _retx_check_countdown = 60;
+            _retx_last_send_failed = false;   // reset failure flag for next round
+            _retx_try_send_one();
+        }
+    }
+}
+
+void ModuleCubeSphere::_on_system_status(const hsys_msg_t &msg)
+{
+    auto p = MsgSystemStatus::deserialize(msg);
+    bool was_idle    = _system_is_idle;
+    _system_is_idle = (p.status == SYSTEM_STATUS_IDLE);
+
+    LOG_MSG_INFO(CSP_LOG_EN, "system_status → %s",
+                 _system_is_idle ? "IDLE" : "BUSY");
+
+    // When system becomes idle, try to send a queued retransmit immediately
+    // rather than waiting for the next 60-second countdown.
+    if (!was_idle && _system_is_idle && _retx_ready && _internet_connected
+        && _state == STATE_RUNNING && !_retx_in_progress && !_retx_last_send_failed)
+    {
+        _retx_try_send_one();
+    }
+}
 
 // ── HTTP response handlers ────────────────────────────────────────────────────
 
@@ -672,6 +660,39 @@ bool ModuleCubeSphere::_build_event_json(evt_type_t evt)
     return (written > 0);
 }
 
+bool ModuleCubeSphere::_build_pumped_event_json(
+    uint8_t  nozzle_idx,
+    uint32_t vol_lx1000,
+    uint32_t unit_pricex100,
+    uint64_t total_pricex100,
+    time_t   ts_epoch,
+    uint32_t event_id)
+{
+    if (nozzle_idx >= CS_NO_NOZZLES || _cs_nozzles[nozzle_idx].uuid[0] == '\0') return false;
+
+    char ts[64] = {};
+    _cs_format_iso8601(ts_epoch + (int)(3600 * 5.5), "+05:30", ts, sizeof(ts));
+
+    JsonDocument doc;
+    JsonObject root   = doc.to<JsonObject>();
+    JsonArray  events = root["events"].to<JsonArray>();
+    JsonObject e0     = events.add<JsonObject>();
+    e0["device"] = _cs_nozzles[nozzle_idx].uuid;
+    e0["time"]   = ts;
+    e0["event"]  = "app.fuel/pump-end";
+    JsonObject body = e0["body"].to<JsonObject>();
+    body["L"] = vol_lx1000      * 0.001;
+    body["T"] = _cs_nozzles[nozzle_idx].fuel_type;
+    body["P"] = total_pricex100 * 0.01;
+    body["U"] = unit_pricex100  * 0.01;
+    if (event_id != 0) body["ID"] = event_id;
+
+    size_t written = serializeJson(doc, _event_json, sizeof(_event_json));
+    LOG_MSG_DEBUG(CSP_LOG_EN, "built pumped JSON (nozzle=%u id=%u): %s",
+                  nozzle_idx, event_id, _event_json);
+    return (written > 0);
+}
+
 void ModuleCubeSphere::_on_event_result(const hsys_msg_t &msg)
 {
     auto f = MsgHttpResult::get_fields(msg);
@@ -717,6 +738,32 @@ void ModuleCubeSphere::_on_event_result(const hsys_msg_t &msg)
                 _publish_status(CUBESPHERE_STATUS_PUMPED_FAILED);
             }
             break;
+        case EVT_PUMPED_RETX:
+            _retx_in_progress = false;
+            if (ok) {
+                // Acknowledge only after the HTTP response confirms success.
+                // The item stays in the list if we fail, so it will be retried.
+                list_mgr_ack(&_retx_mgr.list_mgr, &_retx_pending_rh);
+                _pumped_success++;
+                _publish_status(CUBESPHERE_STATUS_PUMPED_SUCCESS);
+                LOG_MSG_INFO(CSP_LOG_EN, "retx pumped OK — trying next");
+                // Clear _cur_evt BEFORE _retx_try_send_one() so it can set
+                // EVT_PUMPED_RETX again if another item is queued.  If it does
+                // start a send we return early to avoid overwriting _cur_evt.
+                _cur_evt = EVT_NONE;
+                if (_system_is_idle && _internet_connected && !_retx_last_send_failed
+                    && _retx_try_send_one()) {
+                    return;  // next retx in flight — _cur_evt already set
+                }
+                _start_next_event();
+                return;
+            }
+            // Send failed — leave item in list; _on_tick() clears the flag after 60 s
+            _retx_last_send_failed = true;
+            _pumped_failure++;
+            LOG_MSG_WARNING(CSP_LOG_EN, "retx pumped failed — will retry in ~60s");
+            _publish_status(CUBESPHERE_STATUS_PUMPED_FAILED);
+            break;
         default: break;
     }
 
@@ -748,7 +795,8 @@ void ModuleCubeSphere::_send_http_start(pal_http_method_t method,
 
 void ModuleCubeSphere::_burst_get(const char *url)
 {
-    const char *ca = _cloud_root_ca ? _cloud_root_ca : _cs_gts_root_r1;
+    const char *ca = _cloud_root_ca ? _cloud_root_ca : _static_root_ca;
+    if (!ca) { LOG_MSG_ERROR(CSP_LOG_EN, "_burst_get: no root CA set — TLS will fail"); }
     { MsgHttpSetRootCaRequest::Payload rca{}; rca.cert_pem = ca;
       hsys_msg_t *m = MsgHttpSetRootCaRequest::create(id(), rca); if (m) send(m, MODULE_HTTP_ID); }
     { hsys_msg_t *m = MsgHttpSetUrlRequest::create(id(), url); if (m) send(m, MODULE_HTTP_ID); }
@@ -757,7 +805,8 @@ void ModuleCubeSphere::_burst_get(const char *url)
 
 void ModuleCubeSphere::_burst_get_with_auth(const char *url, const char *auth_value)
 {
-    const char *ca = _cloud_root_ca ? _cloud_root_ca : _cs_gts_root_r1;
+    const char *ca = _cloud_root_ca ? _cloud_root_ca : _static_root_ca;
+    if (!ca) { LOG_MSG_ERROR(CSP_LOG_EN, "_burst_get_with_auth: no root CA set — TLS will fail"); }
     { MsgHttpSetRootCaRequest::Payload rca{}; rca.cert_pem = ca;
       hsys_msg_t *m = MsgHttpSetRootCaRequest::create(id(), rca); if (m) send(m, MODULE_HTTP_ID); }
     { hsys_msg_t *m = MsgHttpSetUrlRequest::create(id(), url);              if (m) send(m, MODULE_HTTP_ID); }
@@ -768,7 +817,8 @@ void ModuleCubeSphere::_burst_get_with_auth(const char *url, const char *auth_va
 void ModuleCubeSphere::_burst_post(const char *url, const char *auth_value,
                                     const char *json_body, uint32_t json_len)
 {
-    const char *ca = _cloud_root_ca ? _cloud_root_ca : _cs_gts_root_r1;
+    const char *ca = _cloud_root_ca ? _cloud_root_ca : _static_root_ca;
+    if (!ca) { LOG_MSG_ERROR(CSP_LOG_EN, "_burst_post: no root CA set — TLS will fail"); }
     { MsgHttpSetRootCaRequest::Payload rca{}; rca.cert_pem = ca;
       hsys_msg_t *m = MsgHttpSetRootCaRequest::create(id(), rca); if (m) send(m, MODULE_HTTP_ID); }
     { hsys_msg_t *m = MsgHttpSetUrlRequest::create(id(), url);                             if (m) send(m, MODULE_HTTP_ID); }
@@ -883,7 +933,7 @@ void ModuleCubeSphere::_retx_init()
 
     retx_manager_config_t cfg = {};
     cfg.list_config.storage            = const_cast<storage_interface_t *>(_storage);
-    cfg.list_config.parent_path        = "/sd/retx";
+    cfg.list_config.parent_path        = "/retx";
     cfg.list_config.file_prefix        = "evt";
     cfg.list_config.max_lines_per_file = 500;
     cfg.list_config.max_tracked_days   = 7;
@@ -900,7 +950,6 @@ void ModuleCubeSphere::_retx_init()
 
     if (retx_mgr_init(&_retx_mgr, &cfg) == RETX_MGR_OK) {
         _retx_ready = true;
-        retx_mgr_cleanup(&_retx_mgr);
         LOG_MSG_INFO(CSP_LOG_EN, "retx: ready");
     } else {
         LOG_MSG_ERROR(CSP_LOG_EN, "retx: init failed");
@@ -935,4 +984,79 @@ void ModuleCubeSphere::_retx_process_one()
 {
     if (!_retx_ready || _state != STATE_RUNNING) return;
     retx_mgr_process(&_retx_mgr);
+}
+
+bool ModuleCubeSphere::_retx_try_send_one()
+{
+    // Guard: only proceed when all conditions are met
+    if (!_retx_ready || !_retx_mgr.is_initialized) return false;
+    if (_state != STATE_RUNNING)       return false;
+    if (!_system_is_idle)              return false;
+    if (!_internet_connected)          return false;
+    if (_retx_in_progress)             return false;
+    // _retx_last_send_failed is cleared by _on_tick() every 60 s; guard here
+    // prevents the system-idle triggered path from bypassing the wait.
+    if (_retx_last_send_failed)        return false;
+    if (_http_phase != HTTP_IDLE)      return false;
+
+    // Peek at the next unprocessed retransmit event
+    char buf[RETX_MGR_MAX_EVENT_SIZE + 64];
+    list_mgr_read_handle_t rh = {};
+    int32_t ret = list_mgr_peek_next(&_retx_mgr.list_mgr, buf, sizeof(buf), &rh);
+    if (ret != 0) {
+        // No data or read error — nothing to do
+        return false;
+    }
+
+    // Deserialise the stored payload (compact JSON written by _retx_store_pumped)
+    // Format: {"nozzle":<n>,"vol":<v>,"unit":<u>,"total":<t>,"ts":<epoch>}
+    // We need to rebuild it as a CubeSphere pump-end event.
+    int      type_int;
+    unsigned payload_len;
+    const char *pipe2 = buf;
+    {
+        int pipes = 0;
+        while (*pipe2 && pipes < 2) { if (*pipe2++ == '|') pipes++; }
+    }
+    if (sscanf(buf, "%d|%u|", &type_int, &payload_len) != 2 || payload_len == 0) {
+        LOG_MSG_ERROR(CSP_LOG_EN, "retx: corrupted record — skipping");
+        list_mgr_ack(&_retx_mgr.list_mgr, &rh);   // discard bad record
+        return false;
+    }
+
+    // pipe2 now points to the JSON payload
+    JsonDocument pdoc;
+    if (deserializeJson(pdoc, pipe2, payload_len) != DeserializationError::Ok) {
+        LOG_MSG_ERROR(CSP_LOG_EN, "retx: JSON parse error — skipping");
+        list_mgr_ack(&_retx_mgr.list_mgr, &rh);
+        return false;
+    }
+
+    uint8_t  nozzle_idx       = (uint8_t)pdoc["nozzle"].as<int>();
+    uint32_t vol_lx1000       = (uint32_t)pdoc["vol"].as<long>();
+    uint32_t unit_pricex100   = (uint32_t)pdoc["unit"].as<long>();
+    uint64_t total_pricex100  = (uint64_t)pdoc["total"].as<long long>();
+    time_t   ts_epoch         = (time_t)pdoc["ts"].as<long long>();
+
+    if (nozzle_idx >= CS_NO_NOZZLES || _cs_nozzles[nozzle_idx].uuid[0] == '\0') {
+        LOG_MSG_ERROR(CSP_LOG_EN, "retx: invalid nozzle_idx %u — skipping", nozzle_idx);
+        list_mgr_ack(&_retx_mgr.list_mgr, &rh);
+        return false;
+    }
+
+    if (!_build_pumped_event_json(nozzle_idx, vol_lx1000, unit_pricex100,
+                                   total_pricex100, ts_epoch)) {
+        LOG_MSG_ERROR(CSP_LOG_EN, "retx: failed to build event JSON — skipping");
+        list_mgr_ack(&_retx_mgr.list_mgr, &rh);
+        return false;
+    }
+
+    // Store read handle so we can ack on success (ONLY after HTTP result confirms OK)
+    _retx_pending_rh  = rh;
+    _retx_in_progress = true;
+    _cur_evt          = EVT_PUMPED_RETX;
+
+    _send_http_start(PAL_HTTP_METHOD_POST, 10000, nullptr);
+    LOG_MSG_INFO(CSP_LOG_EN, "retx: sending pumped event for nozzle %u", nozzle_idx);
+    return true;
 }

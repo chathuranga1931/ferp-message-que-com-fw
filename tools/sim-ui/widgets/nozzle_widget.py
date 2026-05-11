@@ -282,7 +282,7 @@ class NozzleWidget(tk.Frame):
         self._send_fn({
             "cmd":    "SIM_NOZZLE_INPUT",
             "nozzle": self._nozzle_idx,
-            "active": not self._nozzle_active,  # inverted: UP=false(low→release), DOWN=true(high→press)
+            "active": self._nozzle_active,  # UP=true (nozzle active), DOWN=false
         })
 
     def _save_last_transaction(self):

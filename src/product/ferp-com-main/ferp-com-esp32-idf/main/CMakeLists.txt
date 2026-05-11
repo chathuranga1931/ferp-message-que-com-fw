@@ -15,6 +15,7 @@ idf_component_register(
 
         # ── Application ───────────────────────────────────────────────────
         "${D_APP}/app.cpp"
+        "${D_APP}/message_translater_support.cpp"
 
         # ── App modules ───────────────────────────────────────────────────
         "${D_MODS}/ticker/ticker.cpp"
@@ -53,6 +54,9 @@ idf_component_register(
         # ── Persistent log module ────────────────────────────────────────────
         "${D_MODS}/module_plog/module_plog.cpp"
 
+        # ── Message translator module ─────────────────────────────────────────
+        "${D_MODS}/module_msg_translator/ModuleMsgTranslator.cpp"
+
         # ── HTTP client module ────────────────────────────────────────────────
         "${D_MODS}/module_http/module_http.cpp"
 
@@ -66,6 +70,7 @@ idf_component_register(
         "${D_MSGS}/system/msg_sd_ready.cpp"
         "${D_MSGS}/system/msg_sd_status.cpp"
         "${D_MSGS}/system/msg_persist_log.cpp"
+        "${D_MSGS}/system/msg_system_status.cpp"
         # Config messages
         "${D_MSGS}/configs/msg_config_ready.cpp"
         "${D_MSGS}/configs/msg_config_set.cpp"
@@ -216,6 +221,7 @@ idf_component_register(
         "${D_MODS}/module_device_info"
         "${D_MODS}/module_plog"
         "${D_MODS}/module_http"
+        "${D_MODS}/module_msg_translator"
         # App messages and peripherals
         "${D_MSGS}"
         "${D_MSGS}/buttons"

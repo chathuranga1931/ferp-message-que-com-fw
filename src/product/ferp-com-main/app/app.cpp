@@ -60,6 +60,8 @@
 #include "module_device_info.h"
 #include "module_plog.h"
 #include "module_http.h"
+#include "ModuleMsgTranslator.h"
+#include "app_rootca.h"
 
 #include "ota_driver_esp32_main.h"
 #include "ota_driver_esp32_dt.h"
@@ -118,6 +120,9 @@
 #include "msg_tick_1000ms.h"
 #include "msg_dev_info_read.h"
 #include "msg_dev_info_value.h"
+#include "msg_system_status.h"
+
+#include "message_translater_support.h"
 
 // ============================================================================
 // Device configuration — single in-memory instance
@@ -215,15 +220,23 @@ config_t *app_config_get_table(uint16_t *out_size)
 #define APP_DEVICE_GROUP  "default"
 
 static app_device_info_t s_device_info = {
-    .device_uuid  = {},
-    .device_group = APP_DEVICE_GROUP,
-    .hw_address   = {},
-    .fw_version   = FW_VERSION,
-    .hw_version   = HW_VERSION,
+    .device_uuid      = {},
+    .device_group     = APP_DEVICE_GROUP,
+    .hw_address       = {},
+    .fw_version       = FW_VERSION,
+    .hw_version       = HW_VERSION,
+    .disp_tap_version = {},
 };
 
 const hsys_module_id_t k_dev_info_perm_cloud_write[]    = { MODULE_CUBESPHERE_ID };
 const uint8_t          k_dev_info_perm_cloud_write_count = 1;
+
+const hsys_module_id_t k_dev_info_perm_ota_write[]         = { MODULE_OTA_ID };
+const uint8_t          k_dev_info_perm_ota_write_count      = 1;
+
+/** Fuel and OTA both report the DT board firmware version. */
+static const hsys_module_id_t k_dev_info_perm_dt_ver_write[] = { MODULE_FUEL_ID, MODULE_OTA_ID };
+static const uint8_t          k_dev_info_perm_dt_ver_count   = 2;
 
 static dev_info_entry_t k_dev_info_table[] = {
     {
@@ -275,6 +288,16 @@ static dev_info_entry_t k_dev_info_table[] = {
         s_device_info.hw_version,
         sizeof(s_device_info.hw_version),
         true    // pre-populated from APP_HW_VERSION #define at startup
+    },
+    {
+        DEV_INFO_KEY_DISP_TAP_VERSION,
+        "disp_tap_ver",
+        k_dev_info_perm_dt_ver_write, k_dev_info_perm_dt_ver_count,
+        nullptr, 0,
+        HSYS_TYPE_STRING,
+        s_device_info.disp_tap_version,
+        sizeof(s_device_info.disp_tap_version),
+        false   // populated by fuel module at startup; updated by OTA module after a DT update
     },
 };
 #define DEV_INFO_TABLE_SIZE  (sizeof(k_dev_info_table) / sizeof(k_dev_info_table[0]))
@@ -433,11 +456,16 @@ static const ota_source_desc_t k_ota_sources[] = {
     { MODULE_WEB_CLIENT_OTA_ID,    0,        0,    120000 },  ///< cloud-polling OTA
 };
 
+#define OTA_TARGET_MAIN_IDX      0
+#define OTA_TARGET_DT_BOOT_IDX   1
+#define OTA_TARGET_DT_PART_IDX   2
+#define OTA_TARGET_DT_FW_IDX     3
+
 static const ota_target_desc_t k_ota_targets[] = {
-    { 0, true,  {}, "esp32-main",    &g_ota_driver_esp32_main, &s_esp32_ota_ctx     },
-    { 1, false, {}, "esp32-dt-boot", &g_ota_driver_esp32_dt,   &s_esp32_dt_boot_ctx },
-    { 2, false, {}, "esp32-dt-part", &g_ota_driver_esp32_dt,   &s_esp32_dt_part_ctx },
-    { 3, false, {}, "esp32-dt-fw",   &g_ota_driver_esp32_dt,   &s_esp32_dt_fw_ctx   },
+    { OTA_TARGET_MAIN_IDX,      true,  {}, "esp32-main",    &g_ota_driver_esp32_main, &s_esp32_ota_ctx     },
+    { OTA_TARGET_DT_BOOT_IDX,   false, {}, "esp32-dt-boot", &g_ota_driver_esp32_dt,   &s_esp32_dt_boot_ctx },
+    { OTA_TARGET_DT_PART_IDX,   false, {}, "esp32-dt-part", &g_ota_driver_esp32_dt,   &s_esp32_dt_part_ctx },
+    { OTA_TARGET_DT_FW_IDX,     false, {}, "esp32-dt-fw",   &g_ota_driver_esp32_dt,   &s_esp32_dt_fw_ctx   },
 };
 
 // ============================================================================
@@ -450,14 +478,14 @@ static const ota_target_desc_t k_ota_targets[] = {
 // ============================================================================
 
 static const mqtt_ota_target_t k_mqtt_ota_targets[] = {
-    { "main",          0 },   ///< short alias for esp32-main
-    { "esp32-main",    0 },
-    { "dt-boot",       1 },   ///< short alias for esp32-dt-boot
-    { "esp32-dt-boot", 1 },
-    { "dt-part",       2 },   ///< short alias for esp32-dt-part
-    { "esp32-dt-part", 2 },
-    { "dt-fw",         3 },   ///< short alias for esp32-dt-fw
-    { "esp32-dt-fw",   3 },
+    { "main",          OTA_TARGET_MAIN_IDX },   ///< short alias for esp32-main
+    { "esp32-main",    OTA_TARGET_MAIN_IDX },
+    { "dt-boot",       OTA_TARGET_DT_BOOT_IDX },   ///< short alias for esp32-dt-boot
+    { "esp32-dt-boot", OTA_TARGET_DT_BOOT_IDX },
+    { "dt-part",       OTA_TARGET_DT_PART_IDX },   ///< short alias for esp32-dt-part
+    { "esp32-dt-part", OTA_TARGET_DT_PART_IDX },
+    { "dt-fw",         OTA_TARGET_DT_FW_IDX },   ///< short alias for esp32-dt-fw
+    { "esp32-dt-fw",   OTA_TARGET_DT_FW_IDX },
 };
 
 // ============================================================================
@@ -516,13 +544,17 @@ static const ModuleWebServer::StaticFileDef k_web_pages[] = {
 };
 
 static const ModuleWebServer::OtaTargetDef k_web_ota_bins[] = {
-    { "main",          0 },
-    { "dt-bootloader", 1 },
-    { "dt-partitions", 2 },
-    { "dt-app",        3 },
+    { "main",          OTA_TARGET_MAIN_IDX },
+    { "dt-bootloader", OTA_TARGET_DT_BOOT_IDX },
+    { "dt-partitions", OTA_TARGET_DT_PART_IDX },
+    { "dt-app",        OTA_TARGET_DT_FW_IDX },
     { nullptr, 0 }                 // sentinel
 };
 
+// WebServer waits for these messages, and once it received, it will send to the
+// Destination module and wait for the response message ID, that is why there 
+// is a response ID, so the web server can wait for the response and then send 
+// the response back to the client.
 static const ModuleWebServer::ApiMsgRouteDef k_api_routes[] = {
     //  msg_id                    dest_module        response_id
     { MSG_ID_CONFIG_GET_MQTT,  MODULE_CONFIG_ID,  MSG_ID_CONFIG_MQTT  },
@@ -591,6 +623,20 @@ static const hsys_pool_class_cfg_t k_pool_table[] = {
 #define POOL_TABLE_SIZE  (sizeof(k_pool_table) / sizeof(k_pool_table[0]))
 
 // ============================================================================
+// Message translator table
+// Rows are processed by ModuleMsgTranslator in order.
+//   in_src = 0  → accept from any sender
+//   out_dest = 0 → broadcast (publish)
+// ============================================================================
+
+static const msg_translator_entry_t k_translator_table[] = {
+    //  in_msg_id           in_src  out_msg_id             out_dest  translator                           delayed  delay_ms
+    { MSG_ID_OTA_EVENT,     0,      MSG_ID_SYSTEM_STATUS,  0,        xlat_ota_event_to_system_status,     false,   0 },
+    { MSG_ID_NOZZLE_STATE,  0,      MSG_ID_SYSTEM_STATUS,  0,        xlat_nozzle_state_to_system_status,  false,   0 },
+};
+#define TRANSLATOR_TABLE_SIZE  (sizeof(k_translator_table) / sizeof(k_translator_table[0]))
+
+// ============================================================================
 // Shared module table
 // Modules common to ALL product targets.
 // Platform-only modules are injected via app_register_extra_module().
@@ -619,6 +665,7 @@ static HsysModule *k_module_table[] = {
     ModuleDeviceInfo::instance(),
     ModulePLog::instance(),
     ModuleHttp::instance(),
+    ModuleMsgTranslator::instance(),
 };
 #define MODULE_TABLE_SIZE  (sizeof(k_module_table) / sizeof(k_module_table[0]))
 
@@ -654,7 +701,8 @@ static const hsys_task_desc_t k_task_table[] = {
     { "fuel_task",        4*1024,  5,  0,   { MODULE_FUEL_ID,                                                                                0 } },
     { "network_task" ,   10*1024,  5,  0,   { MODULE_WIFI_ID,        MODULE_INTERNET_ID,       MODULE_MQTT_ID,                    
                                               MODULE_CLOUD_ID,       MODULE_WEB_CLIENT_OTA_ID, MODULE_WEB_SERVER_ID,  MODULE_OTA_ID,         0 } },
-    { "http_task",        5*1024,  5,  0,   { MODULE_HTTP_ID,                                                                                0 } }
+    { "http_task",        5*1024,  5,  0,   { MODULE_HTTP_ID,                                                                                0 } },
+    { "xlat_task",        3*1024,  5,  0,   { MODULE_MSG_TRANSLATOR_ID,                                                                      0 } }
 };
 #define TASK_TABLE_SIZE  (sizeof(k_task_table) / sizeof(k_task_table[0]))
 
@@ -734,6 +782,14 @@ extern "C" void app_init(void)
     // Wire SD storage into ModuleCubeSphere for retransmission.
     // retx_mgr_init() is deferred until MsgSdReady is received at runtime.
     ModuleCubeSphere::instance()->set_storage(app_sd_get_storage_interface());
+
+    // Supply the application-wide root CA to ModuleCubeSphere.
+    // This replaces the previously embedded fallback cert inside the module.
+    ModuleCubeSphere::instance()->set_root_ca(root_ca);
+
+    // Wire the translation table into ModuleMsgTranslator.
+    // Must be called before hsys_module_init() triggers init().
+    ModuleMsgTranslator::instance()->set_table(k_translator_table, TRANSLATOR_TABLE_SIZE);
 
     // Wire SD storage into ModulePLog for persistent log files.
     // Logger activates on MsgSdReady; auto-logs every message ID in k_plog_msg_ids.

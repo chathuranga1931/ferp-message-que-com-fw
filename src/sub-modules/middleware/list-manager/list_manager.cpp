@@ -41,38 +41,34 @@ static int32_t _save_metadata(list_manager_t *handle) {
     char meta_path[128];
     _build_metadata_path(handle, meta_path, sizeof(meta_path));
     
-    LIST_MGR_LOG_DEBUG("Saving metadata to: %s (days tracked: %u)", meta_path, handle->num_tracked_days);
-    
-    // Serialize metadata as binary
+    LIST_MGR_LOG_DEBUG("Saving metadata to: %s (days tracked: %u)", meta_path, (unsigned)handle->num_tracked_days);
+
+    // Serialize metadata as text (avoids embedded-null truncation in write_file/strlen).
+    // Format:
+    //   num_days:<N>\n
+    //   day:<date_key>:<total_lines>:<current_index>\n  (one per tracked day)
+    //   write:<date_key>:<seq>:<lines>\n
     char buffer[2048];
-    char *ptr = buffer;
-    
-    // Write num_tracked_days
-    uint32_t num_days = handle->num_tracked_days;
-    memcpy(ptr, &num_days, sizeof(uint32_t));
-    ptr += sizeof(uint32_t);
-    
-    // Write each day's metadata
-    for (uint32_t i = 0; i < handle->num_tracked_days; i++) {
-        memcpy(ptr, &handle->day_meta[i], sizeof(list_mgr_day_meta_t));
-        ptr += sizeof(list_mgr_day_meta_t);
-        LIST_MGR_LOG_DEBUG("  Day[%u]: %s - total:%u, index:%u", 
-            i, handle->day_meta[i].date_key, 
-            handle->day_meta[i].total_lines, 
-            handle->day_meta[i].current_index);
+    int pos = snprintf(buffer, sizeof(buffer), "num_days:%u\n", (unsigned)handle->num_tracked_days);
+
+    for (uint32_t i = 0; i < handle->num_tracked_days && pos < (int)sizeof(buffer) - 1; i++) {
+        pos += snprintf(buffer + pos, sizeof(buffer) - (size_t)pos,
+                        "day:%s:%u:%u\n",
+                        handle->day_meta[i].date_key,
+                        (unsigned)handle->day_meta[i].total_lines,
+                        (unsigned)handle->day_meta[i].current_index);
+        LIST_MGR_LOG_DEBUG("  Day[%u]: %s - total:%u, index:%u",
+            (unsigned)i, handle->day_meta[i].date_key,
+            (unsigned)handle->day_meta[i].total_lines,
+            (unsigned)handle->day_meta[i].current_index);
     }
-    
-    // Write cache info
-    memcpy(ptr, handle->current_write_date, 16);
-    ptr += 16;
-    memcpy(ptr, &handle->current_write_seq, sizeof(uint32_t));
-    ptr += sizeof(uint32_t);
-    memcpy(ptr, &handle->current_write_lines, sizeof(uint32_t));
-    ptr += sizeof(uint32_t);
-    
-    size_t total_size = ptr - buffer;
-    LIST_MGR_LOG_DEBUG("Metadata size: %u bytes", total_size);
-    
+
+    snprintf(buffer + pos, sizeof(buffer) - (size_t)pos,
+             "write:%s:%u:%u\n",
+             handle->current_write_date,
+             (unsigned)handle->current_write_seq,
+             (unsigned)handle->current_write_lines);
+
     int32_t ret = handle->config.storage->write_file(meta_path, buffer, 5000);
     if (ret == 0) {
         LIST_MGR_LOG_DEBUG("Metadata saved successfully");
@@ -107,71 +103,105 @@ static int32_t _load_metadata(list_manager_t *handle) {
         handle->current_write_lines = 0;
         return LIST_MGR_OK;
     }
-    
-    // Deserialize
-    char *ptr = buffer;
-    
-    memcpy(&handle->num_tracked_days, ptr, sizeof(uint32_t));
-    ptr += sizeof(uint32_t);
-    
-    LIST_MGR_LOG_DEBUG("Loaded %u tracked days", handle->num_tracked_days);
-    
-    if (handle->num_tracked_days > handle->config.max_tracked_days) {
-        LIST_MGR_LOG_DEBUG("Capping tracked days from %u to %u", 
-            handle->num_tracked_days, handle->config.max_tracked_days);
-        handle->num_tracked_days = handle->config.max_tracked_days;
+
+    // Parse text metadata (see _save_metadata for format)
+    handle->num_tracked_days = 0;
+    memset(handle->current_write_date, 0, sizeof(handle->current_write_date));
+    handle->current_write_seq   = 0;
+    handle->current_write_lines = 0;
+
+    char *line = buffer;
+    while (line && *line) {
+        char *eol = strchr(line, '\n');
+        if (eol) *eol = '\0';
+
+        if (strncmp(line, "num_days:", 9) == 0) {
+            handle->num_tracked_days = (uint32_t)strtoul(line + 9, NULL, 10);
+            if (handle->num_tracked_days > handle->config.max_tracked_days)
+                handle->num_tracked_days = handle->config.max_tracked_days;
+        } else if (strncmp(line, "day:", 4) == 0) {
+            // day:<date_key>:<total_lines>:<current_index>
+            char     dk[16] = {};
+            unsigned tl = 0, ci = 0;
+            if (sscanf(line + 4, "%15[^:]:%u:%u", dk, &tl, &ci) == 3) {
+                uint32_t idx = 0;
+                // Find the next free slot (already filled by earlier day: lines)
+                for (idx = 0; idx < handle->num_tracked_days; idx++) {
+                    if (handle->day_meta[idx].date_key[0] == '\0') break;
+                }
+                if (idx < handle->num_tracked_days) {
+                    strncpy(handle->day_meta[idx].date_key, dk, sizeof(handle->day_meta[idx].date_key) - 1);
+                    handle->day_meta[idx].total_lines   = (uint32_t)tl;
+                    handle->day_meta[idx].current_index = (uint32_t)ci;
+                    LIST_MGR_LOG_DEBUG("  Day[%u]: %s - total:%u, index:%u", (unsigned)idx, dk, tl, ci);
+                }
+            }
+        } else if (strncmp(line, "write:", 6) == 0) {
+            // write:<date_key>:<seq>:<lines>
+            char     dk[16] = {};
+            unsigned seq = 0, lines = 0;
+            if (sscanf(line + 6, "%15[^:]:%u:%u", dk, &seq, &lines) == 3) {
+                strncpy(handle->current_write_date, dk, sizeof(handle->current_write_date) - 1);
+                handle->current_write_seq   = (uint32_t)seq;
+                handle->current_write_lines = (uint32_t)lines;
+            }
+        }
+
+        line = eol ? (eol + 1) : NULL;
     }
-    
-    for (uint32_t i = 0; i < handle->num_tracked_days; i++) {
-        memcpy(&handle->day_meta[i], ptr, sizeof(list_mgr_day_meta_t));
-        ptr += sizeof(list_mgr_day_meta_t);
-        LIST_MGR_LOG_DEBUG("  Day[%u]: %s - total:%u, index:%u", 
-            i, handle->day_meta[i].date_key, 
-            handle->day_meta[i].total_lines, 
-            handle->day_meta[i].current_index);
-    }
-    
-    memcpy(handle->current_write_date, ptr, 16);
-    ptr += 16;
-    memcpy(&handle->current_write_seq, ptr, sizeof(uint32_t));
-    ptr += sizeof(uint32_t);
-    memcpy(&handle->current_write_lines, ptr, sizeof(uint32_t));
-    ptr += sizeof(uint32_t);
-    
-    LIST_MGR_LOG_DEBUG("Write cache: date=%s, seq=%u, lines=%u", 
-        handle->current_write_date, handle->current_write_seq, handle->current_write_lines);
-    
+
+    LIST_MGR_LOG_DEBUG("Loaded %u tracked days; write cache: date=%s seq=%u lines=%u",
+        (unsigned)handle->num_tracked_days, handle->current_write_date,
+        (unsigned)handle->current_write_seq, (unsigned)handle->current_write_lines);
     return LIST_MGR_OK;
+}
+
+// Helper: Delete all sequence files for a given day from storage
+static void _delete_day_files(list_manager_t *handle, const char *date_key) {
+    if (!date_key || date_key[0] == '\0') return;
+    for (uint32_t seq = 0; seq < 1000; seq++) {
+        char file_path[128];
+        _build_file_path(handle, date_key, seq, file_path, sizeof(file_path));
+        int32_t ret = handle->config.storage->delete_file(file_path, 5000);
+        if (ret != 0) break;  // File doesn't exist — no more sequence files for this day
+    }
 }
 
 // Helper: Shift metadata array (new day detected)
 static void _shift_metadata(list_manager_t *handle, const char *new_date_key) {
-    LIST_MGR_LOG_DEBUG("New day detected: %s (previous: %s)", 
+    LIST_MGR_LOG_DEBUG("New day detected: %s (previous: %s)",
         new_date_key, handle->current_write_date);
-    
+
+    // If already at capacity, the oldest day is about to be dropped — delete its files now
+    if (handle->num_tracked_days >= handle->config.max_tracked_days) {
+        uint32_t oldest = handle->num_tracked_days - 1;
+        LIST_MGR_LOG_DEBUG("Dropping oldest day: %s", handle->day_meta[oldest].date_key);
+        _delete_day_files(handle, handle->day_meta[oldest].date_key);
+    }
+
     // Shift all entries down
     for (int32_t i = LIST_MGR_MAX_TRACKED_DAYS - 1; i > 0; i--) {
-        if (i < handle->config.max_tracked_days) {
+        if (i < (int32_t)handle->config.max_tracked_days) {
             handle->day_meta[i] = handle->day_meta[i - 1];
         }
     }
-    
+
     // Initialize day_0 with new date
     memset(&handle->day_meta[0], 0, sizeof(list_mgr_day_meta_t));
     strncpy(handle->day_meta[0].date_key, new_date_key, sizeof(handle->day_meta[0].date_key) - 1);
-    handle->day_meta[0].total_lines = 0;
+    handle->day_meta[0].total_lines   = 0;
     handle->day_meta[0].current_index = 0;
-    
+
     // Update tracked count
     if (handle->num_tracked_days < handle->config.max_tracked_days) {
         handle->num_tracked_days++;
     }
-    
-    LIST_MGR_LOG_DEBUG("Shifted metadata, now tracking %u days", handle->num_tracked_days);
-    
+
+    LIST_MGR_LOG_DEBUG("Shifted metadata, now tracking %u days", (unsigned)handle->num_tracked_days);
+
     // Reset write cache
     strncpy(handle->current_write_date, new_date_key, sizeof(handle->current_write_date) - 1);
-    handle->current_write_seq = 0;
+    handle->current_write_seq   = 0;
     handle->current_write_lines = 0;
 }
 
@@ -186,8 +216,8 @@ int32_t list_mgr_init(list_manager_t *handle, const list_manager_config_t *confi
     LIST_MGR_LOG_DEBUG("Initializing list manager:");
     LIST_MGR_LOG_DEBUG("  parent_path: %s", config->parent_path);
     LIST_MGR_LOG_DEBUG("  file_prefix: %s", config->file_prefix);
-    LIST_MGR_LOG_DEBUG("  max_lines_per_file: %u", config->max_lines_per_file);
-    LIST_MGR_LOG_DEBUG("  max_tracked_days: %u", config->max_tracked_days);
+    LIST_MGR_LOG_DEBUG("  max_lines_per_file: %u", (unsigned)config->max_lines_per_file);
+    LIST_MGR_LOG_DEBUG("  max_tracked_days: %u", (unsigned)config->max_tracked_days);
     
     memset(handle, 0, sizeof(list_manager_t));
     memcpy(&handle->config, config, sizeof(list_manager_config_t));
@@ -195,7 +225,7 @@ int32_t list_mgr_init(list_manager_t *handle, const list_manager_config_t *confi
     // Validate and cap max_tracked_days
     if (handle->config.max_tracked_days > LIST_MGR_MAX_TRACKED_DAYS) {
         LIST_MGR_LOG_DEBUG("Capping max_tracked_days from %u to %u", 
-            handle->config.max_tracked_days, LIST_MGR_MAX_TRACKED_DAYS);
+            (unsigned)handle->config.max_tracked_days, (unsigned)LIST_MGR_MAX_TRACKED_DAYS);
         handle->config.max_tracked_days = LIST_MGR_MAX_TRACKED_DAYS;
     }
     
@@ -243,7 +273,7 @@ int32_t list_mgr_add(list_manager_t *handle, const char *date_key, const char *d
     // Check if need to create new sequence file
     if (handle->current_write_lines >= handle->config.max_lines_per_file) {
         LIST_MGR_LOG_DEBUG("Max lines reached, creating new sequence file (seq: %u -> %u)", 
-            handle->current_write_seq, handle->current_write_seq + 1);
+            (unsigned)handle->current_write_seq, (unsigned)handle->current_write_seq + 1);
         handle->current_write_seq++;
         handle->current_write_lines = 0;
     }
@@ -252,7 +282,7 @@ int32_t list_mgr_add(list_manager_t *handle, const char *date_key, const char *d
     char file_path[128];
     _build_file_path(handle, date_key, handle->current_write_seq, file_path, sizeof(file_path));
     
-    LIST_MGR_LOG_DEBUG("Writing to file: %s (line %u)", file_path, handle->current_write_lines);
+    LIST_MGR_LOG_DEBUG("Writing to file: %s (line %u)", file_path, (unsigned)handle->current_write_lines);
     
     // Append line
     int32_t ret = handle->config.storage->append_line(file_path, data, 5000);
@@ -264,15 +294,14 @@ int32_t list_mgr_add(list_manager_t *handle, const char *date_key, const char *d
     // Update metadata
     handle->day_meta[0].total_lines++;
     handle->current_write_lines++;
-    
-    LIST_MGR_LOG_DEBUG("Entry added successfully (total lines: %u)", handle->day_meta[0].total_lines);
-    
-    // Save metadata periodically (every 10 lines for safety)
-    if (handle->day_meta[0].total_lines % 10 == 0) {
-        LIST_MGR_LOG_DEBUG("Periodic metadata save (every 10 lines)");
-        _save_metadata(handle);
-    }
-    
+
+    LIST_MGR_LOG_DEBUG("Entry added successfully (total lines: %u)", (unsigned)handle->day_meta[0].total_lines);
+
+    // Save metadata on every write so total_lines survives a power loss.
+    // Without this, events written to the .dat file but not reflected in
+    // metadata would be silently skipped on the next boot.
+    _save_metadata(handle);
+
     return LIST_MGR_OK;
 }
 
@@ -302,7 +331,7 @@ int32_t list_mgr_peek_next(
             uint32_t line_in_file = line_idx % handle->config.max_lines_per_file;
             
             LIST_MGR_LOG_DEBUG("Found unprocessed line in day[%u] (%s): line %u (seq=%u, line_in_file=%u)", 
-                i, handle->day_meta[i].date_key, line_idx, seq, line_in_file);
+                (unsigned)i, handle->day_meta[i].date_key, (unsigned)line_idx, (unsigned)seq, (unsigned)line_in_file);
             
             // Build file path
             char file_path[128];
@@ -339,24 +368,43 @@ int32_t list_mgr_ack(list_manager_t *handle, const list_mgr_read_handle_t *read_
     
     if (read_handle->day_index >= handle->num_tracked_days) {
         LIST_MGR_LOG_ERROR("Ack failed: invalid day_index %u (max: %u)", 
-            read_handle->day_index, handle->num_tracked_days);
+            (unsigned)read_handle->day_index, (unsigned)handle->num_tracked_days);
         return LIST_MGR_ERR_INVALID_HANDLE;
     }
     
     LIST_MGR_LOG_DEBUG("Acknowledging line: day[%u] (%s), line %u", 
-        read_handle->day_index, read_handle->date_key, read_handle->line_index);
+        (unsigned)read_handle->day_index, read_handle->date_key, (unsigned)read_handle->line_index);
     
     // Increment current_index for that day
     handle->day_meta[read_handle->day_index].current_index++;
     
-    LIST_MGR_LOG_DEBUG("Day[%u] progress: %u/%u", 
-        read_handle->day_index,
-        handle->day_meta[read_handle->day_index].current_index,
-        handle->day_meta[read_handle->day_index].total_lines);
-    
+    uint32_t new_idx = handle->day_meta[read_handle->day_index].current_index;
+    uint32_t total   = handle->day_meta[read_handle->day_index].total_lines;
+
+    LIST_MGR_LOG_DEBUG("Day[%u] progress: %u/%u",
+        (unsigned)read_handle->day_index, (unsigned)new_idx, (unsigned)total);
+
+    // Delete a seq file as soon as all its lines are consumed, so storage is
+    // freed during the drain rather than waiting for the day to fall off the
+    // 7-day tracking window.
+    uint32_t done_seq = UINT32_MAX;
+    if (new_idx > 0 && (new_idx % handle->config.max_lines_per_file) == 0) {
+        // Just crossed a seq boundary — the previous seq file is fully consumed.
+        done_seq = (new_idx / handle->config.max_lines_per_file) - 1;
+    } else if (new_idx >= total && total > 0) {
+        // Day fully drained — delete the final (possibly partial) seq file.
+        done_seq = (total - 1) / handle->config.max_lines_per_file;
+    }
+    if (done_seq != UINT32_MAX) {
+        char file_path[128];
+        _build_file_path(handle, read_handle->date_key, done_seq, file_path, sizeof(file_path));
+        handle->config.storage->delete_file(file_path, 5000);
+        LIST_MGR_LOG_DEBUG("Deleted consumed seq file: %s", file_path);
+    }
+
     // Save metadata
     _save_metadata(handle);
-    
+
     return LIST_MGR_OK;
 }
 

@@ -23,11 +23,12 @@
 // ---------------------------------------------------------------------------
 
 typedef struct {
-    char     device_uuid[40];   ///< Cloud-assigned UUID (set during onboarding)
-    char     device_group[32];  ///< Group/fleet tag — hardcoded default set in app.cpp before startup
-    char     hw_address[13];    ///< eFuse MAC, 12 lowercase hex chars + null; set by ModuleDeviceInfo::init()
-    char     fw_version[24];    ///< Firmware version string — set at startup from APP_FW_VERSION #define
-    char     hw_version[16];    ///< Hardware/PCB version string — set at startup from APP_HW_VERSION #define
+    char     device_uuid[40];        ///< Cloud-assigned UUID (set during onboarding)
+    char     device_group[32];       ///< Group/fleet tag — hardcoded default set in app.cpp before startup
+    char     hw_address[13];         ///< eFuse MAC, 12 lowercase hex chars + null; set by ModuleDeviceInfo::init()
+    char     fw_version[24];         ///< Firmware version string — set at startup from APP_FW_VERSION #define
+    char     hw_version[16];         ///< Hardware/PCB version string — set at startup from APP_HW_VERSION #define
+    char     disp_tap_version[24];   ///< Display-tap firmware version — written by OTA module after a display-tap update
 } app_device_info_t;
 
 // ---------------------------------------------------------------------------
@@ -48,6 +49,9 @@ typedef struct {
 #define DEV_INFO_KEY_FW_VERSION         0xA004u
 #define DEV_INFO_KEY_HW_VERSION         0xA005u
 
+// Runtime version — updated by the OTA module when the display-tap firmware is flashed
+#define DEV_INFO_KEY_DISP_TAP_VERSION   0xA006u
+
 // ---------------------------------------------------------------------------
 // Write-permission tables
 //
@@ -63,6 +67,10 @@ extern "C" {
 /** Permission table: only the cloud module may write these fields. */
 extern const hsys_module_id_t k_dev_info_perm_cloud_write[];
 extern const uint8_t          k_dev_info_perm_cloud_write_count;
+
+/** Permission table: only the OTA module may write the display-tap version field. */
+extern const hsys_module_id_t k_dev_info_perm_ota_write[];
+extern const uint8_t          k_dev_info_perm_ota_write_count;
 
 // ---------------------------------------------------------------------------
 // Accessors

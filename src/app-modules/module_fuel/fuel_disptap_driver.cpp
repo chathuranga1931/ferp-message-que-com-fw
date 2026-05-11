@@ -48,7 +48,8 @@ void FuelDispTapDriver::_dis2_event(display_type_t type, uint8_t *data)
 // ---------------------------------------------------------------------------
 
 #include "board.h"
-void FuelDispTapDriver::start(display_type_t display_type, frame_cb_t on_frame)
+void FuelDispTapDriver::start(display_type_t display_type, frame_cb_t on_frame,
+                              char *version_out, size_t version_out_len)
 {
     _active_type  = display_type;
     _on_frame_cb  = on_frame;
@@ -94,7 +95,11 @@ void FuelDispTapDriver::start(display_type_t display_type, frame_cb_t on_frame)
 
     char disptap_version[50] = {0};
     distap_get_fw_version((char *)(disptap_version));
-    MLOG("Distap version: %s", disptap_version); 
+    MLOG("Distap version: %s", disptap_version);
+    if (version_out && version_out_len > 0) {
+        strncpy(version_out, disptap_version, version_out_len - 1);
+        version_out[version_out_len - 1] = '\0';
+    }
     
     distap_get_fw_name();
     distap_get_fw_timedate();

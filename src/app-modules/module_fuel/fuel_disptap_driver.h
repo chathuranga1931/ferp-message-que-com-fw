@@ -19,6 +19,7 @@
 
 #pragma once
 
+#include <stddef.h>
 #include "fuel_pump_types.h"   // display_type_t, display_data_t
 
 class FuelDispTapDriver
@@ -35,13 +36,17 @@ public:
     /**
      * Start the comms layer.
      *
-     * @param display_type   The type of display protocol on the DT board.
-     * @param on_frame       Callback invoked for each decoded data frame.
-     *                       Called from the UART RX ISR (real) or the TCP
-     *                       read thread (simulator).  Must be ISR-safe /
-     *                       thread-safe.
+     * @param display_type    The type of display protocol on the DT board.
+     * @param on_frame        Callback invoked for each decoded data frame.
+     *                        Called from the UART RX ISR (real) or the TCP
+     *                        read thread (simulator).  Must be ISR-safe /
+     *                        thread-safe.
+     * @param version_out     Optional buffer to receive the post-flash DT board
+     *                        firmware version string (null-terminated).
+     * @param version_out_len Size of version_out buffer in bytes.
      */
-    void start(display_type_t display_type, frame_cb_t on_frame);
+    void start(display_type_t display_type, frame_cb_t on_frame,
+               char *version_out = nullptr, size_t version_out_len = 0);
 
     /** Suspend comms (called on module stop or reconfiguration). */
     void stop();

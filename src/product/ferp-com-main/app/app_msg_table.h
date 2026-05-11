@@ -69,6 +69,7 @@
 #include "msg_dev_info_read.h"          // MsgDevInfoRead         (0x0040)
 #include "msg_dev_info_write.h"         // MsgDevInfoWrite        (0x0041)
 #include "msg_dev_info_value.h"         // MsgDevInfoValue        (0x0042)
+#include "msg_system_status.h"          // MsgSystemStatus        (0x0206)
 #include "msg_http_start_request.h"     // MsgHttpStartRequest    (0x0C00)
 #include "msg_http_start_response.h"    // MsgHttpStartResponse   (0x0C01)
 #include "msg_http_set_url_request.h"   // MsgHttpSetUrlRequest   (0x0C02)
@@ -136,6 +137,7 @@
         MsgDevInfoRead::DESCRIPTOR,                                               \
         MsgDevInfoWrite::DESCRIPTOR,                                              \
         MsgDevInfoValue::DESCRIPTOR,                                              \
+        MsgSystemStatus::DESCRIPTOR,                                              \
         MsgHttpStartRequest::DESCRIPTOR,                                          \
         MsgHttpStartResponse::DESCRIPTOR,                                         \
         MsgHttpSetUrlRequest::DESCRIPTOR,                                         \

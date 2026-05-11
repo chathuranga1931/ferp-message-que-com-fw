@@ -28,6 +28,7 @@
 #include "msg_config_wifi.h"
 #include "msg_http_start_request.h"
 #include "retransmission_manager.h"
+#include "list_manager.h"
 #include "msg_fuel_pumped.h"
 #include "app_module_ids.h"
 #include <time.h>
@@ -113,6 +114,14 @@ public:
 
     void set_storage(const storage_interface_t *storage) { _storage = storage; }
 
+    /**
+     * Set the application-wide root CA certificate (from app_rootca.h).
+     * Used as fallback when no per-session root CA is provided via cloud config.
+     * Must be called before app_init() triggers init().
+     * The pointer must remain valid for the lifetime of the module.
+     */
+    void set_root_ca(const char *ca) { _static_root_ca = ca; }
+
 protected:
     void init()                                  override;
     void on_msg_received(const hsys_msg_t &msg)  override;
@@ -151,6 +160,7 @@ private:
         EVT_RECONNECT,
         EVT_HEARTBEAT,
         EVT_PUMPED,
+        EVT_PUMPED_RETX,    ///< Retransmit of a previously failed pumped event
         EVT_STATUS_UPDATE,
     } evt_type_t;
 
@@ -163,6 +173,7 @@ private:
     bool    _cloud_config_ready = false;
     bool    _wifi_was_connected = false;
     bool    _wifi_reconnected   = false;
+    bool    _internet_connected = false;   ///< Tracks last MsgInternetStatus value
 
     char   _wifi_ssid[CS_SIZE_WIFI_SSID]        = {};
     char   _wifi_password[CS_SIZE_WIFI_PASSWORD] = {};
@@ -170,8 +181,18 @@ private:
     char   _wifi_mac[CS_SIZE_MAC]                = {};
     int8_t _wifi_rssi                            = -100;
 
-    const char *_cloud_root_ca = nullptr;
-    uint32_t    _uptime_sec    = 0;
+    const char *_cloud_root_ca  = nullptr;  ///< From cloud config (runtime override)
+    const char *_static_root_ca = nullptr;  ///< From app_rootca.h (set via set_root_ca())
+    uint32_t    _uptime_sec     = 0;
+
+    // ── System status (from ModuleMsgTranslator) ──────────────────────────────
+    bool     _system_is_idle         = true;    ///< Updated by MSG_ID_SYSTEM_STATUS
+    uint32_t _retx_check_countdown   = 10;      ///< Ticks remaining until first retransmit check (10 s after RUNNING; resets to 60 s)
+    bool     _retx_in_progress       = false;   ///< True while an EVT_PUMPED_RETX HTTP send is live
+    bool     _retx_last_send_failed  = false;   ///< Set when last retransmit attempt failed; cleared at next check
+
+    // Read handle kept while _retx_in_progress is true; used to ack the list item on success
+    list_mgr_read_handle_t _retx_pending_rh = {};
 
     uint32_t _pumped_success = 0;
     uint32_t _pumped_failure = 0;
@@ -203,6 +224,7 @@ private:
     void _on_timer_alarm();
     void _on_tick();
     void _on_sd_ready();
+    void _on_system_status(const hsys_msg_t &msg);
 
     // ── HTTP response handlers (DIRECT from ModuleHttp) ───────────────────────
     void _on_http_start_response(const hsys_msg_t &msg);
@@ -255,4 +277,16 @@ private:
     void _retx_init();
     void _retx_store_pumped(const MsgFuelPumped::Payload &p);
     void _retx_process_one();
+    bool _retx_try_send_one();   ///< Dequeue one event and push it to the HTTP send pipeline. Returns true if a send was started.
+
+    // ── Common JSON builder ───────────────────────────────────────────────────
+    /// Build the CubeSphere pump-end event JSON into _event_json.
+    /// event_id == 0 means omit the ID field (used for retransmissions).
+    /// Returns false if the nozzle is unconfigured or serialisation fails.
+    bool _build_pumped_event_json(uint8_t nozzle_idx,
+                                  uint32_t vol_lx1000,
+                                  uint32_t unit_pricex100,
+                                  uint64_t total_pricex100,
+                                  time_t ts_epoch,
+                                  uint32_t event_id = 0);
 };

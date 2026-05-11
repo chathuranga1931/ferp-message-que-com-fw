@@ -176,6 +176,7 @@ add_library(app_messages STATIC
     ${APP_MSGS}/fuel/msg_printer_btn.cpp
     # System messages (extended)
     ${APP_MSGS}/system/msg_persist_log.cpp
+    ${APP_MSGS}/system/msg_system_status.cpp
     # Device info messages
     ${APP_MSGS}/deviceInfo/msg_dev_info_read.cpp
     ${APP_MSGS}/deviceInfo/msg_dev_info_write.cpp
@@ -295,6 +296,10 @@ add_library(app_modules STATIC
     ${APP_MODS}/module_http/module_http.cpp
     # Device info module
     ${APP_MODS}/module_device_info/module_device_info.cpp
+    # Message translator module
+    ${APP_MODS}/module_msg_translator/ModuleMsgTranslator.cpp
+    # App-level translator support (shared static state)
+    ${APP}/message_translater_support.cpp
     # Middleware: list manager + retransmission manager
     ${MIDDLEWARE}/list-manager/list_manager.cpp
     ${MIDDLEWARE}/retransmission-manager/retransmission_manager.cpp
@@ -327,6 +332,7 @@ target_include_directories(app_modules PUBLIC
     ${APP_MODS}/module_plog            # module_plog.h
     ${APP_MODS}/module_http            # module_http.h
     ${APP_MODS}/module_device_info     # module_device_info.h
+    ${APP_MODS}/module_msg_translator  # ModuleMsgTranslator.h
     ${SUB_MODS}/utils               # crc32.h
     ${DRIVERS}/DS1307
     ${SUB_MODS}           # for ds1307.cpp: #include "pal/pal_i2c.h"
@@ -373,9 +379,10 @@ target_include_directories(app_product PUBLIC
     ${APP_MODS}/module_plog            # module_plog.h
     ${APP_MODS}/module_http            # module_http.h
     ${APP_MODS}/module_device_info     # module_device_info.h
+    ${APP_MODS}/module_msg_translator  # ModuleMsgTranslator.h
     ${SUB_MODS}/utils               # crc32.h (transitively needed)
     ${APP_MSGS}
-    ${APP_MSGS}/system               # msg_persist_log.h
+    ${APP_MSGS}/system               # msg_persist_log.h, msg_system_status.h
     ${APP_MSGS}/deviceInfo             # msg_dev_info_*.h
     ${HSYS_OS}
     ${PAL_MAC}       # esp_err.h stub

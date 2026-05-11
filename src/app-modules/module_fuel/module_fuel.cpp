@@ -19,6 +19,8 @@
 #include "msg_config_ready.h"
 #include "msg_config_get_dt.h"
 #include "msg_config_dt.h"
+#include "msg_dev_info_write.h"
+#include "app_device_info.h"
 #include "hsys_msg.h"
 #include "pal_logger.h"
 #include "pal_gpio.h"
@@ -234,8 +236,17 @@ void ModuleFuel::_start(const hsys_msg_t &cfg_msg)
     MLOG("starting  display_type=%d  nozzles=%d",
          (int)_display_type, (int)FUEL_MAX_NOZZLES);
 
-    _driver.start(_display_type, _distap_frame_cb);
+    char dt_version[24] = {};
+    _driver.start(_display_type, _distap_frame_cb, dt_version, sizeof(dt_version));
     _started = true;
+
+    // Publish the DT board firmware version to the device-info registry so
+    // it appears in the web UI and is accessible to other modules.
+    if (dt_version[0] != '\0') {
+        hsys_msg_t *w = MsgDevInfoWrite::create_str(
+            id(), DEV_INFO_KEY_DISP_TAP_VERSION, dt_version);
+        if (w) publish(w);
+    }
 }
 
 // ---------------------------------------------------------------------------
