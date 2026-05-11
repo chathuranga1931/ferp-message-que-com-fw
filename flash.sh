@@ -3,7 +3,7 @@
 # flash.sh — Build and flash helper for ferp-com-esp32-idf
 #
 # Usage:
-#   ./flash.sh [--cleanall | --flashall | --flashspiffs | --flashapp | --console]
+#   ./flash.sh [--cleanall | --flashall | --flashspiffs | --flashapp | --console | --release]
 #
 # Flags:
 #   --cleanall    Full clean, build everything, flash everything (app + SPIFFS)
@@ -11,6 +11,10 @@
 #   --flashspiffs Build SPIFFS image only, flash SPIFFS partition only
 #   --flashapp    Build without clean, flash app partition only
 #   --console     Open serial monitor (idf.py monitor)
+#   --release     Build paired release binaries (even=OTA-test, odd=production)
+#                 Reads FW_VERSION from version.h, produces two builds (+1 even,
+#                 +2 odd), copies both into releases/<odd-version>/, then leaves
+#                 version.h at the odd version.
 #
 # Variables (edit as needed):
 COMPORT="/dev/tty.usbserial-A5069RR4"
@@ -26,6 +30,7 @@ FLASHALL=false
 FLASHSPIFFS=false
 FLASHAPP=false
 CONSOLE=false
+RELEASE=false
 
 for arg in "$@"; do
     case "$arg" in
@@ -34,22 +39,24 @@ for arg in "$@"; do
         --flashspiffs) FLASHSPIFFS=true ;;
         --flashapp)    FLASHAPP=true    ;;
         --console)     CONSOLE=true     ;;
+        --release)     RELEASE=true     ;;
         *)
             echo "ERROR: Unknown flag: $arg"
-            echo "Usage: $0 [--cleanall | --flashall | --flashspiffs | --flashapp | --console]"
+            echo "Usage: $0 [--cleanall | --flashall | --flashspiffs | --flashapp | --console | --release]"
             exit 1
             ;;
     esac
 done
 
-if ! $CLEANALL && ! $FLASHALL && ! $FLASHSPIFFS && ! $FLASHAPP && ! $CONSOLE; then
-    echo "Usage: $0 [--cleanall | --flashall | --flashspiffs | --flashapp | --console]"
+if ! $CLEANALL && ! $FLASHALL && ! $FLASHSPIFFS && ! $FLASHAPP && ! $CONSOLE && ! $RELEASE; then
+    echo "Usage: $0 [--cleanall | --flashall | --flashspiffs | --flashapp | --console | --release]"
     echo ""
     echo "  --cleanall    Clean, build all, flash all (app + SPIFFS)"
     echo "  --flashall    Build all (no clean), flash all (app + SPIFFS)"
     echo "  --flashspiffs Build + flash SPIFFS partition only"
     echo "  --flashapp    Build (no clean) + flash app partition only"
     echo "  --console     Open serial monitor"
+    echo "  --release     Build paired release: even (OTA-test) + odd (production)"
     exit 1
 fi
 
@@ -116,5 +123,74 @@ elif $FLASHAPP; then
 elif $CONSOLE; then
     echo "=== Serial monitor ($COMPORT) ==="
     idf.py monitor -p "$COMPORT" -b 115200
+
+elif $RELEASE; then
+    VERSION_FILE="$SCRIPT_DIR/src/product/ferp-com-main/app/version.h"
+    BUILD_BIN="$PROJECT_DIR/build/ferp-com.bin"
+    RELEASES_DIR="$SCRIPT_DIR/releases"
+
+    # ── Read current version ─────────────────────────────────────────────────
+    CURRENT_VER=$(grep '#define FW_VERSION' "$VERSION_FILE" | sed 's/.*"\(.*\)".*/\1/')
+    if [[ -z "$CURRENT_VER" ]]; then
+        echo "ERROR: Could not parse FW_VERSION from $VERSION_FILE"
+        exit 1
+    fi
+    echo "Current FW_VERSION: $CURRENT_VER"
+
+    # Split into major.minor.patch.build
+    IFS='.' read -r V1 V2 V3 V4 <<< "$CURRENT_VER"
+    if [[ -z "$V4" ]]; then
+        echo "ERROR: FW_VERSION must be in X.Y.Z.N format (got '$CURRENT_VER')"
+        exit 1
+    fi
+
+    # Even  = current + 1  (OTA-test binary — same code, different version string)
+    EVEN_VER="$V1.$V2.$V3.$((V4 + 1))"
+    # Odd   = current + 2  (production binary — this is the real release)
+    ODD_VER="$V1.$V2.$V3.$((V4 + 2))"
+
+    RELEASE_DIR="$RELEASES_DIR/$ODD_VER"
+    mkdir -p "$RELEASE_DIR"
+
+    echo ""
+    echo "=== Release plan ==="
+    echo "  Even (OTA-test):   $EVEN_VER"
+    echo "  Odd  (production): $ODD_VER"
+    echo "  Output dir:        $RELEASE_DIR"
+    echo ""
+
+    # ── Build 1: even version ────────────────────────────────────────────────
+    echo "--- Setting FW_VERSION to $EVEN_VER ---"
+    sed -i '' "s/#define FW_VERSION[[:space:]]*\"[^\"]*\"/#define FW_VERSION          \"$EVEN_VER\"/" "$VERSION_FILE"
+
+    echo "--- Building even version ($EVEN_VER) ---"
+    idf.py build
+    if [[ $? -ne 0 ]]; then
+        echo "ERROR: Build failed for even version $EVEN_VER"
+        exit 1
+    fi
+    cp "$BUILD_BIN" "$RELEASE_DIR/ferp-com-v${EVEN_VER}.bin"
+    echo "Saved: $RELEASE_DIR/ferp-com-v${EVEN_VER}.bin"
+
+    # ── Build 2: odd version ─────────────────────────────────────────────────
+    echo ""
+    echo "--- Setting FW_VERSION to $ODD_VER ---"
+    sed -i '' "s/#define FW_VERSION[[:space:]]*\"[^\"]*\"/#define FW_VERSION          \"$ODD_VER\"/" "$VERSION_FILE"
+
+    echo "--- Building odd version ($ODD_VER) ---"
+    idf.py build
+    if [[ $? -ne 0 ]]; then
+        echo "ERROR: Build failed for odd version $ODD_VER"
+        exit 1
+    fi
+    cp "$BUILD_BIN" "$RELEASE_DIR/ferp-com-v${ODD_VER}.bin"
+    echo "Saved: $RELEASE_DIR/ferp-com-v${ODD_VER}.bin"
+
+    echo ""
+    echo "=== Release complete: $ODD_VER ==="
+    echo "  $RELEASE_DIR/ferp-com-v${EVEN_VER}.bin  ← flash this to test OTA upgrade"
+    echo "  $RELEASE_DIR/ferp-com-v${ODD_VER}.bin   ← production binary"
+    echo ""
+    echo "  version.h left at: $ODD_VER"
 fi
 
