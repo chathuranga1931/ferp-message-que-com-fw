@@ -50,9 +50,6 @@ idf_component_register(
         "${D_MODS}/module_web_client_ota/ModuleWebClientOta.cpp"
         "${D_MODS}/module_web_client_ota/hsys_ota.cpp"
 
-        # ── Device info module ───────────────────────────────────────────────
-        "${D_MODS}/module_device_info/module_device_info.cpp"
-
         # ── Persistent log module ────────────────────────────────────────────
         "${D_MODS}/module_plog/module_plog.cpp"
 

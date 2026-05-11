@@ -275,7 +275,7 @@ void ModuleCubeSphere::_on_fuel_pumped(const hsys_msg_t &msg)
     uint32_t event_id = _pumped_success + _pumped_failure + 1;
 
     JsonDocument doc;
-    JsonObject root   = doc.add<JsonObject>();
+    JsonObject root   = doc.to<JsonObject>();
     JsonArray  events = root["events"].to<JsonArray>();
     JsonObject e0     = events.add<JsonObject>();
     e0["device"] = _cs_nozzles[p.nozzle_idx].uuid;
@@ -608,7 +608,7 @@ bool ModuleCubeSphere::_build_event_json(evt_type_t evt)
     _cs_format_iso8601(now_tv.tv_sec + (int)(3600 * 5.5), "+05:30", ts, sizeof(ts));
 
     JsonDocument doc;
-    JsonObject root   = doc.add<JsonObject>();
+    JsonObject root   = doc.to<JsonObject>();
     JsonArray  events = root["events"].to<JsonArray>();
 
     switch (evt) {
@@ -666,6 +666,7 @@ bool ModuleCubeSphere::_build_event_json(evt_type_t evt)
     }
 
     size_t written = serializeJson(doc, _event_json, sizeof(_event_json));
+    LOG_MSG_DEBUG(CSP_LOG_EN, "built JSON for event %d: %s", (int)evt, _event_json);
     return (written > 0);
 }
 
@@ -695,6 +696,8 @@ void ModuleCubeSphere::_on_event_result(const hsys_msg_t &msg)
             } else {
                 LOG_MSG_WARNING(CSP_LOG_EN, "heartbeat failed result=%d status=%d",
                                 (int)f.result, (int)f.status_code);
+                LOG_MSG_DEBUG(CSP_LOG_EN, "heartbeat response body: %.*s",
+                              (int)f.body_len, f.body ? (const char *)f.body : "(null)");
                 _publish_status(CUBESPHERE_STATUS_HB_FAILED);
             }
             break;
@@ -707,6 +710,8 @@ void ModuleCubeSphere::_on_event_result(const hsys_msg_t &msg)
                 _pumped_failure++;
                 LOG_MSG_WARNING(CSP_LOG_EN, "pumped failed result=%d status=%d",
                                 (int)f.result, (int)f.status_code);
+                LOG_MSG_DEBUG(CSP_LOG_EN, "pumped response body: %.*s",
+                              (int)f.body_len, f.body ? (const char *)f.body : "(null)");
                 _publish_status(CUBESPHERE_STATUS_PUMPED_FAILED);
             }
             break;

@@ -108,11 +108,20 @@ static int sock_send(mac_mqtt_client_t *c, const uint8_t *data, size_t len)
     return sock_send_locked(c->fd, data, len);
 }
 
-/** Read exactly n bytes from fd (blocking). Returns 0 on success, -1 on error. */
+/** Read exactly n bytes from fd, with per-recv select() guard (30 s dead-connection timeout).
+ *  Returns 0 on success, -1 on error or timeout.
+ *  Using select() rather than SO_RCVTIMEO prevents false timeouts mid-packet when
+ *  the broker round-trip is high but data is still flowing. */
 static int sock_recv(int fd, uint8_t *buf, size_t n)
 {
     size_t got = 0;
     while (got < n) {
+        fd_set rfds;
+        FD_ZERO(&rfds);
+        FD_SET(fd, &rfds);
+        struct timeval tv = { 30, 0 }; // 30 s dead-socket guard
+        int s = select(fd + 1, &rfds, nullptr, nullptr, &tv);
+        if (s <= 0) return -1;         // timeout or error → treat as dead
         ssize_t r = recv(fd, buf + got, n - got, 0);
         if (r <= 0) return -1;
         got += (size_t)r;
@@ -407,9 +416,11 @@ static int tcp_connect(mac_mqtt_client_t *c)
     int fd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
     if (fd < 0) { freeaddrinfo(res); return -1; }
 
-    // Set SO_RCVTIMEO so recv() doesn't block forever on a stalled connection
-    struct timeval tv = { 3, 0 };
-    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+    // NOTE: Do NOT set SO_RCVTIMEO here. The receive loop uses select() with a
+    // 1-second poll interval for keepalive, so recv() is only called when select()
+    // has already confirmed data is available. A recv timeout causes mid-packet
+    // reads to fail on slow/remote brokers (e.g. RTT > 3 s for a PINGRESP body
+    // fragment), which erroneously triggers a disconnect + reconnect loop.
 
     uint32_t timeout_ms = c->config.network_timeout_ms > 0
                           ? c->config.network_timeout_ms : 10000;

@@ -13,6 +13,7 @@
 4. [Modules](#4-modules)
 5. [OTA](#5-ota)
 6. [MQTT](#6-mqtt)
+7. [FuelEnd Event Flow and Retransmission](#7-fuelend-event-flow-and-retransmission)
 
 ---
 
@@ -1751,3 +1752,306 @@ Stored in `src/app-messages/messages/*.json`. Loaded dynamically by `msg_loader.
 | `direction` | `"cmd"`, `"resp"`, or `"evt"` |
 | `group` | Display grouping |
 | `fields` | Array of `{name, type, description}` |
+
+---
+
+## 7. FuelEnd Event Flow and Retransmission
+
+This section traces the complete path of a fuel transaction from the moment the nozzle is replaced to the cloud acknowledgement — including the retransmission path for failed deliveries.
+
+---
+
+### 7.1 Actors
+
+| Actor | Role |
+|-------|------|
+| `ModuleFuel` (ID 11) | Detects pump-end; owns the fuel state machine; publishes `MsgFuelPumped` |
+| `ModuleCloud` / `ModuleCubeSphere` (ID 13) | Cloud manager; subscribes to `MsgFuelPumped`; builds and POSTs event JSON to CubeSphere |
+| `ModuleHttp` | Executes the actual HTTPS session on behalf of ModuleCubeSphere |
+| `ModuleTimer` (ID 7) | Heartbeat timer; drives the retransmission retry loop |
+| `ModuleSD` (ID 16) | SD card — backing store for the retransmission queue |
+| `RetransmissionManager` | Middleware that persists failed events to SD and replays them |
+
+---
+
+### 7.2 Normal Path — Pump End to Cloud
+
+```
+Fuel Dispenser HW                ModuleFuel (task: fuel_task)
+      │                                 │
+      │  binary frame (Sanki protocol)  │
+      │ ──────────────────────────────► │  _on_distap_frame()
+      │                                 │   → hsys_queue_send(_frame_queue[n])
+      │                                 │   → wake()
+      │                                 │
+      │          nozzle replaced        │
+      │  GPIO edge (INPUT3/INPUT4)       │
+      │ ──────────────────────────────► │  _nozzle1_gpio_isr()
+      │                                 │   → hsys_tog_button_press_event()
+      │                                 │   (debounce 500 ms)
+      │                                 │   → _on_nozzle_up(0)
+      │                                 │   → _nozzle_state[0] = true
+      │                                 │   → wake()
+      │                                 │
+      │                                 │  on_wake() → _process_queues()
+      │                                 │   sanki6_process_state_machine()
+      │                                 │   → state transitions to Pumping_State_Stopped
+      │                                 │   → sanki6_get_event(&ev, 0)
+      │                                 │
+      │                    MsgFuelPumped (NOTIFICATION, 0x0800)
+      │                    { nozzle_idx, vol_lx1000, unit_pricex100, total_pricex100 }
+      │                                 │
+      │                                 └──────────────────────────────────────────┐
+      │                                                                            ▼
+      │                                                          ModuleCubeSphere (task: network_task)
+      │                                                                            │
+      │                                                          _on_fuel_pumped(p)
+      │                                                                            │
+      │                                     STATE == RUNNING &&                   │
+      │                                     HTTP_IDLE &&                          │
+      │                                     nozzle UUID configured?               │
+      │                                     YES                                   │
+      │                                                                            │
+      │                                     build _event_json                     │
+      │                                     { "events": [{ "device": uuid,        │
+      │                                       "event": "app.fuel/pump-end",       │
+      │                                       "body": { L, T, P, U, ID } }] }    │
+      │                                                                            │
+      │             MsgHttpStartRequest (DIRECT → ModuleHttp)                     │
+      │             { method=POST, timeout_ms=10000 }                             │
+      │                                 ┌──────────────────────────────────────── │
+      │                                 ▼
+ModuleHttp (task: network_task)
+      │
+      │  HTTP session opens
+      │
+      │  MsgHttpStartResponse (DIRECT → ModuleCubeSphere)
+      │ ──────────────────────────────────────────────────────────────────────────►
+      │                                                          ModuleCubeSphere
+      │                                                          _on_http_start_response()
+      │                                                           burst-sends:
+      │             MsgHttpSetRootCaRequest → ModuleHttp          │
+      │             MsgHttpSetUrlRequest    → ModuleHttp          │
+      │             MsgHttpHeaderRequest    → ModuleHttp (Authorization: Basic …)
+      │             MsgHttpHeaderRequest    → ModuleHttp (Content-Type: application/json)
+      │             MsgHttpBodyRequest      → ModuleHttp (JSON body)
+      │             MsgHttpSendRequest      → ModuleHttp (fire!)
+      │
+      │  TLS connect + POST /api/ingress/core/v1/device/event
+      │
+      │  MsgHttpResult (DIRECT → ModuleCubeSphere)
+      │  { result, status_code, body }
+      │ ──────────────────────────────────────────────────────────────────────────►
+      │                                                          ModuleCubeSphere
+      │                                                          _on_event_result()
+      │                                                           ok (HTTP 200/201, body status=="OK")
+      │                                                            → _pumped_success++
+      │                                                            → MsgCubesphereStatus(PUMPED_SUCCESS)
+      │                                                            → _start_next_event()
+```
+
+---
+
+### 7.3 Failure Path — Event Stored for Retransmission
+
+```
+ModuleCubeSphere
+      │
+      │  _on_fuel_pumped(p) called but one of:
+      │    • STATE != RUNNING
+      │    • HTTP session busy (_http_phase != HTTP_IDLE)
+      │    • nozzle UUID not configured
+      │
+      ▼
+  _pumped_failure++
+  MsgCubesphereStatus(PUMPED_FAILED)
+  _retx_store_pumped(p)
+      │
+      ▼
+  RetransmissionManager
+      │  serialize event:
+      │  { "nozzle": n, "vol": …, "unit": …, "total": …, "ts": <unix> }
+      │
+      │  list_mgr_add( date_key="YYYYMMDD",
+      │                line="0|len|<json_payload>" )
+      │
+      ▼
+  SD card file  /sd/retx/evt_YYYYMMDD.txt
+  (line appended — up to 500 lines per day file, 7 days retained)
+```
+
+Also, even if the event was successfully POSTed but received a non-2xx response (HTTP 400, timeout, etc.):
+
+```
+_on_event_result()
+      │
+      │  ok == false  (result != SUCCESS or status != 200/201)
+      ▼
+  _pumped_failure++
+  MsgCubesphereStatus(PUMPED_FAILED)
+  (the event that was being sent is NOT added to retx — it was
+   the original live attempt from _on_fuel_pumped, not a retx replay)
+```
+
+> **Note (current limitation):** The live-send failure path does **not** call `_retx_store_pumped()` — only the early-reject path (not RUNNING / HTTP busy) does. This means a transaction that was attempted but received a 400/timeout is currently **lost**. The `send_callback` in `_retx_init` is also a TODO stub (returns -1). Both are tracked as open items.
+
+---
+
+### 7.4 Retransmission Retry Loop
+
+```
+ModuleTimer tick (every _hb_interval_ms, default 60 s)
+      │
+      │  MsgTimerAlarm → ModuleCubeSphere
+      ▼
+_on_timer_alarm()
+      │
+      │  state == STATE_RUNNING
+      ▼
+  _pending_heartbeat = true
+  _start_next_event()
+  _retx_process_one()        ← attempt one retx event per heartbeat cycle
+      │
+      ▼
+RetransmissionManager::retx_mgr_process()
+      │
+      │  Check cooldown: (now - last_retry_time_ms) < retry_interval_ms?
+      │    YES → return RETX_MGR_ERR_TOO_SOON
+      │    NO  → continue
+      │
+      │  list_mgr_peek() → oldest pending event line
+      │  _deserialize_event() → type + payload
+      │
+      │  send_callback(type, payload, len, user_data)
+      │    current stub: returns -1 (TODO: deserialise JSON and call cloud POST)
+      │
+      │  callback returns 0 (success)?
+      │    YES → list_mgr_ack() → mark event consumed
+      │    NO  → event stays; next process() call will retry it
+      │
+      └─ last_retry_time_ms = now
+```
+
+---
+
+### 7.5 Complete Message Sequence Diagram
+
+```mermaid
+sequenceDiagram
+    participant HW as Fuel Dispenser HW
+    participant MF as ModuleFuel (11)
+    participant MC as ModuleCubeSphere (13)
+    participant MH as ModuleHttp
+    participant MT as ModuleTimer (7)
+    participant SD as SD Card (via RetxMgr)
+    participant CS as CubeSphere Cloud
+
+    HW->>MF: Binary frames (Sanki protocol)
+    Note over MF: nozzle state machine
+    HW->>MF: GPIO edge (nozzle replaced)
+    Note over MF: debounce 500 ms
+    MF->>MC: MsgFuelPumped [NOTIF 0x0800]
+
+    alt STATE==RUNNING && HTTP_IDLE && nozzle UUID known
+        MC->>MH: MsgHttpStartRequest [DIRECT]
+        MH->>MC: MsgHttpStartResponse [DIRECT]
+        MC->>MH: burst (SetRootCA, SetUrl, Headers, Body, Send)
+        MH->>CS: HTTPS POST /api/ingress/.../event
+        CS->>MH: HTTP 200 {"data":[{"status":"OK"}]}
+        MH->>MC: MsgHttpResult [DIRECT]
+        Note over MC: _pumped_success++
+        MC->>MC: MsgCubesphereStatus(PUMPED_SUCCESS) [NOTIF]
+    else HTTP busy or not RUNNING
+        Note over MC: _pumped_failure++
+        MC->>SD: retx_mgr_add_failed_event()
+        MC->>MC: MsgCubesphereStatus(PUMPED_FAILED) [NOTIF]
+    end
+
+    loop Every heartbeat interval (60 s)
+        MT->>MC: MsgTimerAlarm [DIRECT]
+        MC->>SD: retx_mgr_process()
+        alt pending events in queue
+            SD->>MC: oldest event payload
+            MC->>CS: (TODO) HTTPS POST (retx attempt)
+            alt HTTP 200 OK
+                MC->>SD: list_mgr_ack() — remove event
+            else fail
+                Note over SD: event stays for next retry
+            end
+        end
+    end
+```
+
+---
+
+### 7.6 RetransmissionManager — Storage Layout
+
+```
+/sd/
+└── retx/
+    ├── evt_20260510.txt    ← one file per calendar day
+    ├── evt_20260511.txt
+    └── ...                 (7 days retained; older files deleted by retx_mgr_cleanup)
+```
+
+Each line in the file follows the format:
+
+```
+<type>|<payload_len>|<json_payload>
+```
+
+| Field | Example | Meaning |
+|-------|---------|---------|
+| `type` | `0` | `RETX_EVENT_TYPE_PUMPED` |
+| `payload_len` | `87` | Byte length of the JSON |
+| `json_payload` | `{"nozzle":0,"vol":5000,"unit":300,"total":1500,"ts":1746950400}` | Serialised event |
+
+Acknowledged events are marked consumed by `list_mgr_ack()` (internal tombstone) so they are never replayed, even if the process restarts.
+
+---
+
+### 7.7 ModuleCubeSphere State Machine
+
+```mermaid
+stateDiagram-v2
+    [*] --> WAIT_FOR_INTERNET : init()
+
+    WAIT_FOR_INTERNET --> REGISTERING : MsgWifiEvent(GOT_IP)\n+ cloud config received
+
+    REGISTERING --> REGISTERING : HTTP 401 step1 (nonce received → step2)
+    REGISTERING --> REGISTERING : HTTP 200 step2 (credentials → step3)
+    REGISTERING --> RUNNING     : HTTP 200 step3 (nozzle config OK)
+    REGISTERING --> REGISTERING : any failure → MsgTimerAlarm retry 60 s
+
+    RUNNING --> RUNNING : MsgFuelPumped → POST event
+    RUNNING --> RUNNING : MsgTimerAlarm → heartbeat + retx_process_one()
+    RUNNING --> RUNNING : MsgWifiEvent(RECONNECTED) → EVT_RECONNECT
+```
+
+#### Registration Handshake (3-step SAS-AC1)
+
+```
+Step 1  GET /bootstrap                     → 401 + www-authenticate: nonce="…"
+Step 2  GET /bootstrap + SAS-AC1 auth      → 200 { device_id, secret }
+            ↓ push device_id to ModuleDeviceInfo (MsgDevInfoWrite)
+Step 3  GET /device/config + Basic auth    → 200 { nozzles: [{device_id, fuel_type, …}] }
+            ↓ state = RUNNING
+```
+
+---
+
+### 7.8 CMake Source Parity (ESP32 vs Simulator)
+
+Both build targets compile the same application modules and message sources. The only differences are the PAL layer and the OTA target drivers.
+
+| Source category | ESP32 (`ferp-com-esp32-idf`) | Simulator (`ferp-com-simulator`) |
+|---|---|---|
+| App modules | ✅ same set | ✅ same set |
+| App messages | ✅ same set | ✅ same set |
+| Middleware (retx, list_mgr) | ✅ | ✅ |
+| PAL | `pal/esp-idf/pal_esp_idf_*.cpp` | `pal/mac-pc/pal_mac_*.cpp` |
+| OTA drivers | `ota_driver_esp32_main.c` + `_dt.c` | Same files (compiled via `pal_mac`) |
+| DT board comms | `com_distap.c`, `cmd_distap.c` (real UART) | `mac_com_distap.cpp`, `mac_cmd_distap.cpp` (TCP inject) |
+| Sim bridge | ❌ not compiled | `module_sim_bridge.cpp`, `sim_msg_inject.cpp` |
+
+**Known fix applied:** `module_device_info.cpp` was listed twice in the ESP32 CMake (`ferp-com-esp32-idf/main/CMakeLists.txt`). The duplicate was removed — it caused a linker multiple-definition error at high optimisation levels.
