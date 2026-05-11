@@ -74,9 +74,9 @@ static void _nozzle1_gpio_isr(int32_t /*gpio_num*/, void *arg)
     pal_gpio_get_level(32, &lvl);
     uint64_t ts = 0;
     if (lvl == PAL_GPIO_LEVEL_HIGH)
-        hsys_tog_button_press_event(arg, ts);
-    else
         hsys_tog_button_release_event(arg, ts);
+    else
+        hsys_tog_button_press_event(arg, ts);
 }
 
 static void _nozzle2_gpio_isr(int32_t /*gpio_num*/, void *arg)
@@ -85,9 +85,9 @@ static void _nozzle2_gpio_isr(int32_t /*gpio_num*/, void *arg)
     pal_gpio_get_level(33, &lvl);
     uint64_t ts = 0;
     if (lvl == PAL_GPIO_LEVEL_HIGH)
-        hsys_tog_button_press_event(arg, ts);
-    else
         hsys_tog_button_release_event(arg, ts);
+    else
+        hsys_tog_button_press_event(arg, ts);
 }
 
 // ---------------------------------------------------------------------------
@@ -131,7 +131,7 @@ void ModuleFuel::init()
 
     pal_gpio_config_t nozzle_cfg{};
     nozzle_cfg.dir           = PAL_GPIO_DIR_INPUT;
-    nozzle_cfg.pull          = PAL_GPIO_PULL_NONE;
+    nozzle_cfg.pull          = PAL_GPIO_PULL_UP;
     nozzle_cfg.intr_type     = PAL_GPIO_INTR_ANYEDGE;
     nozzle_cfg.isr_callback  = _nozzle1_gpio_isr;
     nozzle_cfg.isr_arg       = &s_nozzle_btn[0];
@@ -175,6 +175,7 @@ void ModuleFuel::on_msg_received(const hsys_msg_t &msg)
         case MsgTimerAlarm::ID:
             // 500 ms timeout — run the state machine with the last known data
             // to allow the sanki6 pipeline to detect a stalled/stopped nozzle.
+            _timer_active = false;  // slot was freed when it fired
             wake();
             break;
 
@@ -434,13 +435,21 @@ void ModuleFuel::_publish_fuel_pumped(uint8_t nozzle_idx, const nozzle_event_t &
 
 void ModuleFuel::_publish_wake_message(uint32_t duration_ms)
 {
+    // Only arm if no slot is already pending — avoids both the ALREADY_RUNNING
+    // warning and the race where forced=true sees a slot vanish between the two
+    // _find_slot() calls inside ModuleTimer (slot freed by tick thread).
+    if (_timer_active) return;
+
     MsgTimerStart::Payload tp{};
     tp.source_module_id = id();
     tp.start_offset_ms  = 0;
     tp.duration_ms      = 500;
     tp.is_repetitive    = false;   // one-shot — re-armed on each on_wake()
-    tp.forced           = true;    // cancel any running slot and restart fresh
+    tp.forced           = false;
 
     hsys_msg_t *tmsg = create_typed<MsgTimerStart>(tp);
-    if (tmsg) { publish(tmsg); }
+    if (tmsg) {
+        publish(tmsg);
+        _timer_active = true;
+    }
 }

@@ -82,6 +82,7 @@ private:
 
     display_type_t        _display_type = (display_type_t)0;
     bool                  _started = false;
+    bool                  _timer_active = false;
 
     void _start(const hsys_msg_t &cfg_msg);
     void _process_queues();
