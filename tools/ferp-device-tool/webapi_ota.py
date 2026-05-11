@@ -10,8 +10,10 @@ Firmware endpoint:
 Valid target names: main, dt-bootloader, dt-partitions, dt-app
 """
 
+import io
 import os
 import threading
+import uuid
 import argparse
 
 
@@ -19,12 +21,45 @@ class WebApiOtaError(Exception):
     pass
 
 
+class _ProgressReader:
+    """
+    File-like wrapper around a bytes buffer.
+    Calls on_progress(pct) each time the percentage advances.
+    Stops feeding data if abort_flag is set (causes requests to send empty
+    body remainder, which the server rejects cleanly).
+    """
+
+    def __init__(self, data: bytes, on_progress, abort_flag):
+        self._buf         = io.BytesIO(data)
+        self._total       = len(data)
+        self._sent        = 0
+        self._on_progress = on_progress
+        self._abort_flag  = abort_flag
+        self._last_pct    = -1
+
+    def read(self, size: int = -1) -> bytes:
+        if self._abort_flag.is_set():
+            return b""
+        chunk = self._buf.read(size)
+        if chunk:
+            self._sent += len(chunk)
+            pct = min(99, int(self._sent * 100 / self._total)) if self._total else 0
+            if pct != self._last_pct:
+                self._last_pct = pct
+                self._on_progress(pct)
+        return chunk
+
+    def __len__(self) -> int:
+        return self._total
+
+
 class WebApiOtaHandler:
     """
     Handles OTA firmware upload over HTTP/WebAPI.
 
     Sends a single multipart POST to /api/ota/bin?name=<target>.
-    The firmware handles the OTA handshake and write internally.
+    Progress is reported locally as bytes are streamed to the device;
+    100% is reported only after the server confirms success.
     """
 
     def __init__(
@@ -49,7 +84,6 @@ class WebApiOtaHandler:
         self.firmware_path = firmware_path
         self.target        = target
         self.version       = version
-        self.chunk_size    = chunk_size
         self._on_log       = on_log      or (lambda m: None)
         self._on_progress  = on_progress or (lambda p: None)
         self._on_done      = on_done     or (lambda ok: None)
@@ -68,39 +102,68 @@ class WebApiOtaHandler:
             self._on_done(False)
             return
 
-        fw_size = os.path.getsize(self.firmware_path)
+        fw_size  = os.path.getsize(self.firmware_path)
         filename = os.path.basename(self.firmware_path)
 
         self._on_log(f"Firmware : {filename}")
         self._on_log(f"Size     : {fw_size:,} bytes")
         self._on_log(f"Target   : {self.target}  version={self.version}")
 
-        url = f"{self.base_url}/api/ota/bin"
+        # Read entire firmware into memory so we know the total size upfront
+        # (needed to calculate Content-Length and percent accurately).
+        try:
+            with open(self.firmware_path, "rb") as fh:
+                fw_data = fh.read()
+        except OSError as exc:
+            self._on_log(f"[error] Could not read firmware: {exc}")
+            self._on_done(False)
+            return
+
+        # Build a minimal multipart/form-data body manually so we can stream
+        # it through _ProgressReader without needing extra dependencies.
+        boundary = uuid.uuid4().hex
+        part_header = (
+            f"--{boundary}\r\n"
+            f'Content-Disposition: form-data; name="file"; filename="{filename}"\r\n'
+            f"Content-Type: application/octet-stream\r\n"
+            f"\r\n"
+        ).encode()
+        part_footer = f"\r\n--{boundary}--\r\n".encode()
+        body        = part_header + fw_data + part_footer
+
+        reader = _ProgressReader(body, self._on_progress, self._abort_flag)
+
+        url    = f"{self.base_url}/api/ota/bin"
         params = {"name": self.target}
 
         try:
-            self._on_log(f"→ POST {url}?name={self.target} ...")
-            with open(self.firmware_path, "rb") as fh:
-                resp = self._requests.post(
-                    url,
-                    params=params,
-                    files={"file": (filename, fh, "application/octet-stream")},
-                    timeout=300,
-                )
+            self._on_log(f"→ POST {url}?name={self.target}  ({fw_size:,} B) ...")
+            resp = self._requests.post(
+                url,
+                params=params,
+                data=reader,
+                headers={
+                    "Content-Type": f"multipart/form-data; boundary={boundary}",
+                    "Content-Length": str(len(body)),
+                },
+                timeout=300,
+            )
 
             if self._abort_flag.is_set():
                 self._on_log("Abort requested")
                 self._on_done(False)
                 return
 
-            body = resp.json()
-            if resp.status_code != 200 or not body.get("ok"):
+            body_resp = resp.json()
+            if resp.status_code != 200 or not body_resp.get("ok"):
                 raise WebApiOtaError(
-                    f"OTA failed (HTTP {resp.status_code}): {body.get('error', body)}"
+                    f"OTA failed (HTTP {resp.status_code}): "
+                    f"{body_resp.get('error', body_resp)}"
                 )
 
             self._on_progress(100)
-            self._on_log(f"← OTA complete! {body.get('bytes', fw_size):,} B written. Device will reboot.")
+            written = body_resp.get("bytes", fw_size)
+            self._on_log(f"← OTA complete! {written:,} B written. Device will reboot.")
             self._on_done(True)
 
         except WebApiOtaError as exc:

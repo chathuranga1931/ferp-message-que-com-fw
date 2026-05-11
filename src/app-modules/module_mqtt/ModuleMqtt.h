@@ -106,7 +106,8 @@ private:
     const char *_active_ota_resp_topic = nullptr;  ///< ota/resp topic for current OTA session
 
     // ── Sequence tracking ─────────────────────────────────────────────────────
-    uint32_t _last_cmd_seq  = 0;
+    uint32_t _last_cmd_seq      = 0;
+    uint8_t  _last_progress_pct = 255;  ///< 255 = "never sent"; throttles MsgOtaProgress MQTT events
 
     // ── OTA source state machine ───────────────────────────────────────────────
     typedef enum {

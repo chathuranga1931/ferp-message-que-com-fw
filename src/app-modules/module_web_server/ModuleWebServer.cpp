@@ -378,10 +378,11 @@ int32_t ModuleWebServer::_hdl_fw_upload(pal_http_request_t req,
         hsys_mutex_lock(self->m_ota_lock);
         bool already_busy = self->m_ota_busy;
         if (!already_busy) {
-            self->m_ota_busy   = true;
-            self->m_ota_bytes  = 0;
-            self->m_ota_driver = nullptr;
-            self->m_ota_ctx    = nullptr;
+            self->m_ota_busy        = true;
+            self->m_ota_bytes       = 0;
+            self->m_ota_total_bytes = (uint32_t)pal_http_req_get_content_len(req);
+            self->m_ota_driver      = nullptr;
+            self->m_ota_ctx         = nullptr;
         }
         hsys_mutex_unlock(self->m_ota_lock);
 
@@ -547,9 +548,10 @@ int32_t ModuleWebServer::_hdl_fw_upload(pal_http_request_t req,
         hsys_mutex_lock(self->m_ota_lock);
         self->m_ota_bytes += (uint32_t)len;
         uint32_t total_written = self->m_ota_bytes;
+        uint32_t total_size    = self->m_ota_total_bytes;
         hsys_mutex_unlock(self->m_ota_lock);
 
-        self->_ota_publish_progress(self->m_active_ota_target, total_written, 0);
+        self->_ota_publish_progress(self->m_active_ota_target, total_written, total_size);
     }
 
     /* ── Final chunk: close and notify ────────────────────────────────────── */

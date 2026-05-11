@@ -111,6 +111,7 @@ private:
     const ota_fs_driver_t  *m_ota_driver      = nullptr;
     void                   *m_ota_ctx         = nullptr;
     volatile uint32_t       m_ota_bytes       = 0;
+    volatile uint32_t       m_ota_total_bytes = 0;  ///< content-length from HTTP (approx firmware size)
 
     /* ── API message-bus bridge state ────────────────────────────────── */
     hsys_mutex_handle_t     m_api_lock        = nullptr;

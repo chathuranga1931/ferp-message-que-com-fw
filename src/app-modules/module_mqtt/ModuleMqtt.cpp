@@ -185,9 +185,21 @@ void ModuleMqtt::on_msg_received(const hsys_msg_t &msg)
         // ── Outbound NOTIFICATION events ───────────────────────────────────
         case MsgFuelPumped::ID:
         case MsgNozzleState::ID:
-        case MsgOtaProgress::ID:
             if (_state == STATE_CONNECTED) {
                 _on_outbound_msg(msg, true /*evt*/);
+            }
+            break;
+
+        case MsgOtaProgress::ID:
+            // Throttle: only forward to MQTT when the percentage value changes.
+            // The message still flows on the internal bus every chunk to keep
+            // OtaModule's inactivity watchdog alive.
+            if (_state == STATE_CONNECTED) {
+                auto pp = MsgOtaProgress::deserialize(msg);
+                if (pp.percent != _last_progress_pct) {
+                    _last_progress_pct = pp.percent;
+                    _on_outbound_msg(msg, true /*evt*/);
+                }
             }
             break;
 
@@ -723,6 +735,7 @@ void ModuleMqtt::_ota_reset()
     _ota_running_crc     = 0xFFFFFFFF;
     _ota_seq             = 0;
     _ota_fopen_done      = false;
+    _last_progress_pct   = 255;  // reset throttle so next session starts fresh
 }
 
 // ---------------------------------------------------------------------------

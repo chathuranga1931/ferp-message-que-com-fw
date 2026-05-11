@@ -608,7 +608,6 @@ class OtaPanel(ttk.LabelFrame):
                     ip=conn["ip"], port=conn["port"],
                     firmware_path=fw, target=self._resolved_target_name(),
                     version=self._ver_var.get().strip() or "unknown",
-                    chunk_size=chunk,
                     on_log=self._cb_log,
                     on_progress=self._cb_progress,
                     on_done=self._cb_done,
