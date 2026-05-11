@@ -327,13 +327,33 @@ class MessageTree(ttk.Frame):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+# WebApiSender — adapts WebAPITransport.send_message() to the same interface
+# as MqttRawClient.send() so CommandPanel works with either transport.
+# ─────────────────────────────────────────────────────────────────────────────
+
+class WebApiSender:
+    def __init__(self, transport: "WebAPITransport", log_fn):
+        self._transport = transport
+        self._log = log_fn
+
+    def send(self, msg_name: str, data: dict) -> None:
+        payload = {"msg": msg_name, "data": data}
+        self._log(f"→ [cmd]  {json.dumps(payload)}", "cmd")
+        try:
+            resp = self._transport.send_message(msg_name, data)
+            self._log(f"← [resp]  {json.dumps(resp, indent=2)}", "resp")
+        except Exception as exc:
+            self._log(f"[error] {exc}", "error")
+
+
 # Command panel (below message tree)
 # ─────────────────────────────────────────────────────────────────────────────
 
 class CommandPanel(ttk.LabelFrame):
-    def __init__(self, parent, get_mqtt_raw_client, **kw):
+    def __init__(self, parent, get_sender_fn, **kw):
         super().__init__(parent, text="Command", **kw)
-        self._get_client = get_mqtt_raw_client
+        self._get_client = get_sender_fn
         self._msg_name   = ""
         self._widgets: list = []
         self._build_ui()
@@ -349,7 +369,7 @@ class CommandPanel(ttk.LabelFrame):
         self._send_btn.pack(side="left")
         self._dir_lbl = ttk.Label(bar, text="", foreground="#888888")
         self._dir_lbl.pack(side="left", padx=8)
-        self._note_lbl = ttk.Label(bar, text="(MQTT only)", foreground="#aaaaaa")
+        self._note_lbl = ttk.Label(bar, text="", foreground="#aaaaaa")
         self._note_lbl.pack(side="left")
 
     def load_message(self, msg_name: str):
@@ -420,10 +440,10 @@ class CommandPanel(ttk.LabelFrame):
     def _do_send(self):
         if not self._msg_name:
             return
-        client = self._get_mqtt_raw_client()
+        client = self._get_client()
         if client is None:
             messagebox.showwarning("Not connected",
-                                   "Message tree send requires MQTT interface to be connected.")
+                                   "Connect to a device first to send messages.")
             return
         data: dict = {}
         for name, var, fdef in self._widgets:
@@ -455,7 +475,7 @@ class CommandPanel(ttk.LabelFrame):
                 data[name] = raw
         client.send(self._msg_name, data)
 
-    def _get_mqtt_raw_client(self):
+    def _get_sender(self):
         return self._get_client()
 
 
@@ -1022,6 +1042,7 @@ class FerpDeviceTool(tk.Tk):
             on_status_change=self._on_raw_mqtt_status,
         )
         self._raw_connected = False
+        self._active_transport = None  # set when WebAPI is connected
 
         # Config worker + callback queue
         self._cb_queue = _WorkerEvent()
@@ -1055,7 +1076,7 @@ class FerpDeviceTool(tk.Tk):
         self._msg_tree = MessageTree(left, on_select=self._on_msg_selected)
         left.add(self._msg_tree, weight=3)
 
-        self._cmd_panel = CommandPanel(left, get_mqtt_raw_client=self._get_raw_client)
+        self._cmd_panel = CommandPanel(left, get_sender_fn=self._get_raw_client)
         left.add(self._cmd_panel, weight=1)
 
         # Right pane: OTA on top, config keys below
@@ -1294,6 +1315,7 @@ class FerpDeviceTool(tk.Tk):
                     messagebox.showerror("Missing", "Enter device IP address.")
                     return
                 transport = WebAPITransport(ip, port)
+                self._active_transport = transport
 
             else:  # UART
                 p    = self._uart_port.get().strip()
@@ -1321,6 +1343,7 @@ class FerpDeviceTool(tk.Tk):
         else:
             self._connect_btn.config(text="Connect")
             self._status_lbl.config(text="● Disconnected", foreground="red")
+            self._active_transport = None
             self._config_panel.set_connected(False)
             for btn in self._devinfo_btns.values():
                 btn.config(state="disabled")
@@ -1334,6 +1357,8 @@ class FerpDeviceTool(tk.Tk):
     def _get_raw_client(self) -> Optional[MqttRawClient]:
         if self._raw_connected:
             return self._mqtt_raw
+        if self._active_transport is not None:
+            return WebApiSender(self._active_transport, self._append_log)
         return None
 
     # ── OTA params helper ──────────────────────────────────────────────────────

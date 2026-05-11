@@ -136,6 +136,18 @@ class WebAPITransport:
         d = resp.get("data", {})
         return bool(d.get("is_valid", False)), str(d.get("value", ""))
 
+    def send_message(self, msg_name: str, data: dict) -> dict:
+        """Send an arbitrary message via POST /api/messages and return the response body."""
+        payload = {"msg": msg_name, "data": data}
+        r = self._session.post(self.url, json=payload, timeout=self.timeout)
+        r.raise_for_status()
+        resp = r.json()
+        if not resp.get("ok"):
+            raise TransportError(
+                f"Device rejected '{msg_name}': {resp.get('error', resp)}"
+            )
+        return resp
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # MQTT Config/DevInfo Transport
