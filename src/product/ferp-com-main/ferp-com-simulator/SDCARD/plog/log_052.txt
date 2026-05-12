@@ -1,3 +1,0 @@
-[2026-05-11 17:47:39] MSG:MsgMqttStatus {"connected":false}
-[2026-05-11 17:47:44] MSG:MsgMqttStatus {"connected":true}
-[2026-05-11 17:47:50] MSG:MsgMqttStatus {"connected":false}
