@@ -1,31 +1,31 @@
 #!/usr/bin/env python3
 """
-OtaBundleCreate-DTEsp32_Partitions.py
-Create a FERP OTA bundle (.bdl) for the DT ESP32 partition table target.
+OtaBundleCreate-DTEsp32_Firmware.py
+Create a FERP OTA bundle (.bdl) for the DT ESP32 application firmware target.
 
 Usage:
-    python OtaBundleCreate-DTEsp32_Partitions.py <partition_table.bin> <version> [output_dir]
+    python OtaBundleCreate-DTEsp32_Firmware.py <firmware.bin> <version> [output_dir]
 
 Example:
-    python OtaBundleCreate-DTEsp32_Partitions.py partition_table.bin 1.0.0
-    → ferp_dt_esp32_partitions_v1.0.0.bdl
+    python OtaBundleCreate-DTEsp32_Firmware.py distap_esp32.bin 1.0.0
+    → ferp_dt_esp32_firmware_v1.0.0.bdl
 
-The bundle header embeds target name "dt-partitions", which matches the OTA
-target registered as OTA_TARGET_DT_PART_IDX in the firmware.
+The bundle header embeds target name "dt-app", which matches the OTA target
+registered as OTA_TARGET_DT_FW_IDX in the firmware.
 """
 
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "ferp-device-tool"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 from ota_bundle import build_bundle, bundle_output_name
 
-FIRMWARE_NAME = "dt-partitions"
+FIRMWARE_NAME = "esp32-dt-fw"
 
 
 def main() -> None:
     if len(sys.argv) < 3:
-        print(f"Usage: {Path(sys.argv[0]).name} <partition_table.bin> <version> [output_dir]")
+        print(f"Usage: {Path(sys.argv[0]).name} <firmware.bin> <version> [output_dir]")
         sys.exit(1)
 
     input_path = Path(sys.argv[1])
