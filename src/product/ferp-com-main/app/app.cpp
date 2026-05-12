@@ -446,8 +446,8 @@ static const app_msg_mqtt_route_t k_mqtt_route_table[] = {
 
 static ota_esp32_ctx_t    s_esp32_ota_ctx     = {};
 static ota_esp32_dt_ctx_t s_esp32_dt_boot_ctx = { .spiffs_path = "esp32/bootloader.bin", .is_open = false };
-static ota_esp32_dt_ctx_t s_esp32_dt_part_ctx = { .spiffs_path = "esp32/partitions.bin", .is_open = false };
-static ota_esp32_dt_ctx_t s_esp32_dt_fw_ctx   = { .spiffs_path = "esp32/firmware.bin",   .is_open = false };
+static ota_esp32_dt_ctx_t s_esp32_dt_part_ctx = { .spiffs_path = "esp32/partition_table.bin", .is_open = false };
+static ota_esp32_dt_ctx_t s_esp32_dt_fw_ctx   = { .spiffs_path = "esp32/distap_esp32.bin",   .is_open = false };
 
 static const ota_source_desc_t k_ota_sources[] = {
     // source_module_id             priority  _pad  timeout_ms
