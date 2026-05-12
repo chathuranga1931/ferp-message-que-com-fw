@@ -21,10 +21,6 @@
 #include "app_module_ids.h"
 #define MODULE_LEDS_NAME  "leds"
 
-// GPIO pin assignments (matches board_2602 aliases / pal_mac_gpio pin table)
-#define LED1_GPIO  5
-#define LED2_GPIO  4
-
 // ---------------------------------------------------------------------------
 // ModuleLeds
 // ---------------------------------------------------------------------------

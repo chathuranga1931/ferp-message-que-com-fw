@@ -30,6 +30,7 @@
 #include "pal_logger.h"
 #include "pal_gpio.h"
 #include "pal_time.h"
+#include "app_hw_config.h"
 
 #define __TAG__     "FUEL    "
 #define FUEL_LOG_EN true
@@ -142,11 +143,11 @@ void ModuleFuel::init()
     nozzle_cfg.intr_type     = PAL_GPIO_INTR_ANYEDGE;
     nozzle_cfg.isr_callback  = _nozzle1_gpio_isr;
     nozzle_cfg.isr_arg       = &s_nozzle_btn[0];
-    pal_gpio_config(32, nozzle_cfg);   // NOZZLE1_GPIO_PIN = INPUT3
+    pal_gpio_config(NOZZLE1_GPIO, nozzle_cfg);   // NOZZLE1_GPIO_PIN = INPUT3
 
     nozzle_cfg.isr_callback  = _nozzle2_gpio_isr;
     nozzle_cfg.isr_arg       = &s_nozzle_btn[1];
-    pal_gpio_config(33, nozzle_cfg);   // NOZZLE2_GPIO_PIN = INPUT4
+    pal_gpio_config(NOZZLE2_GPIO, nozzle_cfg);   // NOZZLE2_GPIO_PIN = INPUT4
 
     MLOG("init: nozzle GPIOs armed — GPIO32 (nozzle1) GPIO33 (nozzle2)");
 

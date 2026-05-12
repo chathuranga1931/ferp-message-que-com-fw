@@ -22,9 +22,6 @@
 #include "app_module_ids.h"
 #define MODULE_BUZZER_NAME  "buzzer"
 
-// GPIO pin assignment — OUTPUT2 on board_2602
-#define BUZ_GPIO  26
-
 // ---------------------------------------------------------------------------
 // ModuleBuzzer
 // ---------------------------------------------------------------------------

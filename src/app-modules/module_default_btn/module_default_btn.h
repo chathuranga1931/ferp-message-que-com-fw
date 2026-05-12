@@ -28,9 +28,6 @@
 #include "app_module_ids.h"
 #define MODULE_DEFAULT_BTN_NAME  "default_btn"
 
-// GPIO pin assignment (board_2602: INPUT5 / DEFAULT_BUTTON_GPIO_PIN)
-#define DEFAULT_BTN_GPIO  36
-
 // ---------------------------------------------------------------------------
 // ModuleDefaultBtn
 // ---------------------------------------------------------------------------

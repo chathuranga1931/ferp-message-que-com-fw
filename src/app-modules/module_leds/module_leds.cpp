@@ -11,6 +11,7 @@
 #include "msg_spiffs_ready.h"
 #include "pal_gpio.h"
 #include "pal_logger.h"
+#include "app_hw_config.h"
 
 #define __TAG__     "LEDS    "
 #define LEDS_LOG_EN true

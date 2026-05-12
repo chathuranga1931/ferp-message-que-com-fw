@@ -12,6 +12,7 @@
 #include "msg_config_ready.h"
 #include "pal_gpio.h"
 #include "pal_logger.h"
+#include "app_hw_config.h"
 
 #define __TAG__       "BUZZER  "
 #define BUZ_LOG_EN    true

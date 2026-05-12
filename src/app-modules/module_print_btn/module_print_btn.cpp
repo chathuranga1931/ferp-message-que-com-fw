@@ -15,6 +15,7 @@
 #include "pal_gpio.h"
 #include "pal_time.h"
 #include "pal_logger.h"
+#include "app_hw_config.h"
 
 #define __TAG__    "PRNBTN  "
 #define PRNBTN_LOG true

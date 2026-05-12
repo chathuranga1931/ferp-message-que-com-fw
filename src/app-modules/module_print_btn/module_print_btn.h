@@ -30,10 +30,6 @@
 #include "app_module_ids.h"
 #define MODULE_PRINT_BTN_NAME  "print_btn"
 
-// GPIO pin assignments (board_2602: INPUT1 / PRINT1, INPUT2 / PRINT2)
-#define PRINT1_BTN_GPIO  34
-#define PRINT2_BTN_GPIO  35
-
 // ---------------------------------------------------------------------------
 // ModulePrintBtn
 // ---------------------------------------------------------------------------
