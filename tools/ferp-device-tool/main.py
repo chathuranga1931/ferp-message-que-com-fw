@@ -191,13 +191,7 @@ def _load_devinfo_keys() -> List[Tuple[int, str, str]]:
         except Exception:
             pass
     if not result:
-        result = [
-            (0xA001, "Device UUID",  "uuid"),
-            (0xA002, "Device Group", "group"),
-            (0xA003, "HW Address",   "mac"),
-            (0xA004, "FW Version",   "fw_version"),
-            (0xA005, "HW Version",   "hw_version"),
-        ]
+        result = []
     return result
 
 
@@ -1608,10 +1602,16 @@ class FerpDeviceTool(tk.Tk):
 
     def _on_close(self):
         _save_settings(self._collect_settings())
-        if self._raw_connected:
+        # Always stop the paho loop thread — it is non-daemon and will block
+        # process exit if loop_start() was ever called, regardless of whether
+        # the connection was fully established.
+        try:
             self._mqtt_raw.disconnect()
+        except Exception:
+            pass
         self._worker.stop()
         self.destroy()
+        import sys; sys.exit(0)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

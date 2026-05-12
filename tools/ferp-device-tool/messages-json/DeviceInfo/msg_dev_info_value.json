@@ -9,7 +9,10 @@
       "options": [
         { "label": "DEVICE_UUID  (0xA001)", "value": 40961 },
         { "label": "DEVICE_GROUP (0xA002)", "value": 40962 },
-        { "label": "HW_ADDRESS   (0xA003)", "value": 40963 }
+        { "label": "HW_ADDRESS   (0xA003)", "value": 40963 },
+        { "label": "FW_VERSION   (0xA004)", "value": 40964 },
+        { "label": "HW_VERSION   (0xA005)", "value": 40965 },
+        { "label": "DISP_TAP_VER (0xA006)", "value": 40966 }
       ],
       "default": 40961
     },

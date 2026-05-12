@@ -11,7 +11,8 @@
         { "label": "DEVICE_GROUP (0xA002)", "value": 40962, "bar_label": "Device Group", "field": "group"      },
         { "label": "HW_ADDRESS   (0xA003)", "value": 40963, "bar_label": "HW Address",   "field": "mac"        },
         { "label": "FW_VERSION   (0xA004)", "value": 40964, "bar_label": "FW Version",   "field": "fw_version" },
-        { "label": "HW_VERSION   (0xA005)", "value": 40965, "bar_label": "HW Version",   "field": "hw_version" }
+        { "label": "HW_VERSION   (0xA005)", "value": 40965, "bar_label": "HW Version",   "field": "hw_version" },
+        { "label": "DISP_TAP_VER (0xA006)", "value": 40966, "bar_label": "DT Version",   "field": "disp_tap_version" }
       ],
       "default": 40961
     },
