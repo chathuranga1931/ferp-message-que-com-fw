@@ -1,23 +1,29 @@
-// sanki_6_digit_1.cpp
+// hongyang_8_digit_1.cpp
 //
-// Ported from old-app/application/app_fuel/pumps/sanki/sanki_6_digit_1.cpp
-// Only the #include block is changed — all logic is identical to the old app.
+// Hongyang 8-digit dispenser pump driver.
+// Logic is identical to sanki_6_digit_1.cpp — the DT board normalises all
+// display-tap protocols before the ESP32 sees them.
+// start_stop is sourced directly from the display frame (flags.bits.start_stop).
+// module_fuel does NOT override it with GPIO state for this pump type —
+// DIS_HONGYANG_8_DIGIT is intentionally omitted from the GPIO override switch.
+//
+// Ported from old-app/application/app_fuel/pumps/hongyang/hongyang_8_digit_1.cpp
 
 #include <stdint.h>
 
 #include "pal_logger.h"
 #include "pal_time.h"
 
-#include "fuel_types.h"           // app_display_data_t, NO_NOZZELS  (replaces app_common.h)
-#include "sanki_6_digit_1.h"
+#include "fuel_types.h"
+#include "hongyang_8_digit_1.h"
 #include "nozzle_event.h"
 
-#define __TAG__  "APP_SAN6"
+#define __TAG__  "APP_HY8 "
 
-#define SAN6_DEBUG_LOG_EN      false
-#define SAN6_WARN_LOG_EN       true
-#define SAN6_ERROR_LOG_EN      true
-#define SAN6_INFO_LOG_EN       true
+#define HY8_DEBUG_LOG_EN      false
+#define HY8_WARN_LOG_EN       true
+#define HY8_ERROR_LOG_EN      true
+#define HY8_INFO_LOG_EN       true
 
 #define DISPLAY_SAME_COUNT_FOR_STABILIZE_UNIT_PRICE     (10)
 
@@ -31,7 +37,7 @@ static uint32_t display_data_unit_price_new_count[NO_NOZZELS];
 static uint32_t display_data_unit_price_count[NO_NOZZELS];
 
 static uint64_t last_totalizer_volume[NO_NOZZELS] = {0};
-static uint64_t last_pushed_totalizer_volume[NO_NOZZELS]  = {0};
+static uint64_t last_pushed_totalizer_volume[NO_NOZZELS] = {0};
 static unsigned long last_totalizer_event_ts[NO_NOZZELS] = {0};
 
 static uint32_t display_tap_event_idx = 0;
@@ -51,7 +57,7 @@ static uint64_t corrected_total_price(bool is_updated, uint64_t totalx100){
     if(is_updated){
 
         uint64_t total_inx100 = totalx100;
-        uint8_t decimal_value = totalx100%100; // 2 decimal points
+        uint8_t decimal_value = totalx100%100;
         uint8_t decimal_neg = 100 - decimal_value;
         if(
             (total_inx100 - decimal_value)%1000 == 0
@@ -63,7 +69,6 @@ static uint64_t corrected_total_price(bool is_updated, uint64_t totalx100){
         ){
             total_incommingx100 = (total_inx100 + decimal_neg)/100.0;
         }       
-
     }
     
     return total_incommingx100;
@@ -109,7 +114,7 @@ static void stabilizer(
     } 
 }
 
-bool sanki6_get_event(nozzle_event_t * ne, uint8_t idx){
+bool hongyang8_get_event(nozzle_event_t * ne, uint8_t idx){
 
     if(ne != NULL){    
         ne->n_idx = idx;
@@ -123,7 +128,7 @@ bool sanki6_get_event(nozzle_event_t * ne, uint8_t idx){
     return false;
 }
 
-static bool sanki6_commit_data(uint8_t idx){
+static bool hongyang8_commit_data(uint8_t idx){
 
     time_t now;
     pal_time_get_epoch_time(&now);
@@ -136,7 +141,7 @@ static bool sanki6_commit_data(uint8_t idx){
     return true;
 }
 
-static void sanki6_update_data(uint8_t idx){
+static void hongyang8_update_data(uint8_t idx){
 
     if(
         (display_data_validated[idx].volume_lx1000 > display_data_commited[idx].volume_lx1000) ||
@@ -154,7 +159,7 @@ static void sanki6_update_data(uint8_t idx){
 
 #define ABS(x) (((x) < 0) ? -(x) : (x))
 
-bool sanki6_process_data(app_display_data_t * display_data){
+bool hongyang8_process_data(app_display_data_t * display_data){
 
     bool is_valid = false;
     uint8_t error_code_for_debugging = 0;
@@ -212,7 +217,7 @@ bool sanki6_process_data(app_display_data_t * display_data){
     return is_valid;
 }
 
-void sanki6_data_validate(const app_display_data_t * display_data, uint8_t nozzle_id){
+void hongyang8_data_validate(const app_display_data_t * display_data, uint8_t nozzle_id){
     
     do{ 
         if(display_data->total_pricex100 > 0 && display_data->volume_lx1000 > 0){
@@ -243,7 +248,7 @@ void sanki6_data_validate(const app_display_data_t * display_data, uint8_t nozzl
     return;
 }
 
-bool sanki6_process_state_machine(const app_display_data_t * display_data, uint8_t nozzle_id, pumping_state_t * state){
+bool hongyang8_process_state_machine(const app_display_data_t * display_data, uint8_t nozzle_id, pumping_state_t * state){
 
     bool is_pumped_event = false;
     bool is_zeroed = false;
@@ -291,7 +296,7 @@ bool sanki6_process_state_machine(const app_display_data_t * display_data, uint8
                 if((ts - pumping_state_pumping_ts[nozzle_id]) > 500){
                     pumping_state_value_based[nozzle_id] = Pumping_State_Pumping_Waiting;
                     pumping_state_ts[nozzle_id] = ts;
-                    LOG_MSG_INFO(SAN6_INFO_LOG_EN, "[Value] State [%d] : Pumping --> Pumping-Waiting", nozzle_id);
+                    LOG_MSG_INFO(HY8_INFO_LOG_EN, "[Value] State [%d] : Pumping --> Pumping-Waiting", nozzle_id);
                 }
             }
             else if(deravative_int == 1){
@@ -304,7 +309,7 @@ bool sanki6_process_state_machine(const app_display_data_t * display_data, uint8
                 pumping_state_value_based[nozzle_id] = Pumping_State_Pumping;
                 pumping_state_ts[nozzle_id] = ts;
                 pumping_state_pumping_ts[nozzle_id] = ts;
-                LOG_MSG_INFO(SAN6_INFO_LOG_EN, "[Value] State [%d] : Pumping-Waiting --> Pumping ", nozzle_id);
+                LOG_MSG_INFO(HY8_INFO_LOG_EN, "[Value] State [%d] : Pumping-Waiting --> Pumping ", nozzle_id);
             }
         break;
 
@@ -313,7 +318,7 @@ bool sanki6_process_state_machine(const app_display_data_t * display_data, uint8
             if(deravative_int == 1){
                 pumping_state_value_based[nozzle_id] = Pumping_State_Pumping;
                 pumping_state_ts[nozzle_id] = ts;
-                LOG_MSG_INFO(SAN6_INFO_LOG_EN, "[Value] State [%d] : Unknown --> Pumping ", nozzle_id);
+                LOG_MSG_INFO(HY8_INFO_LOG_EN, "[Value] State [%d] : Unknown --> Pumping ", nozzle_id);
             }
         break;  
     }
@@ -330,14 +335,14 @@ bool sanki6_process_state_machine(const app_display_data_t * display_data, uint8
                 {
                     pumping_state_nozzle_ts[nozzle_id] = ts;
                     pumping_state_nozzle_based[nozzle_id] = Pumping_State_Unknown;
-                    LOG_MSG_INFO(SAN6_INFO_LOG_EN, "[Nozzle] State [%d] : Pumping --> Unknown ", nozzle_id);
+                    LOG_MSG_INFO(HY8_INFO_LOG_EN, "[Nozzle] State [%d] : Pumping --> Unknown ", nozzle_id);
                 }
                 else
                 {
                     pumping_state_nozzle_based[nozzle_id] = Pumping_State_Stopped_Waiting;
-                    LOG_MSG_INFO(SAN6_INFO_LOG_EN, "[Nozzle] State [%d] : Pumping --> Stopped-Waiting ", nozzle_id);
+                    LOG_MSG_INFO(HY8_INFO_LOG_EN, "[Nozzle] State [%d] : Pumping --> Stopped-Waiting ", nozzle_id);
                     pumping_state_nozzle_ts[nozzle_id] = ts;
-                    sanki6_commit_data(nozzle_id);
+                    hongyang8_commit_data(nozzle_id);
                 }
             }        
         break;
@@ -351,17 +356,17 @@ bool sanki6_process_state_machine(const app_display_data_t * display_data, uint8
             {
                 pumping_state_nozzle_based[nozzle_id] = Pumping_State_Stopped;
                 pumping_state_nozzle_ts[nozzle_id] = ts;
-                LOG_MSG_INFO(SAN6_INFO_LOG_EN, "[Nozzle] State [%d] : Stopped-Waiting --> Stopped ", nozzle_id);
+                LOG_MSG_INFO(HY8_INFO_LOG_EN, "[Nozzle] State [%d] : Stopped-Waiting --> Stopped ", nozzle_id);
             }            
             else if((ts - pumping_state_nozzle_ts[nozzle_id]) > 700)
             {
                 pumping_state_nozzle_based[nozzle_id] = Pumping_State_Stopped;
                 pumping_state_nozzle_ts[nozzle_id] = ts;
-                LOG_MSG_INFO(SAN6_INFO_LOG_EN, "[Nozzle] State [%d] : Stopped-Waiting --> Stopped ", nozzle_id);
+                LOG_MSG_INFO(HY8_INFO_LOG_EN, "[Nozzle] State [%d] : Stopped-Waiting --> Stopped ", nozzle_id);
             }
             else
             {
-                sanki6_update_data(nozzle_id);
+                hongyang8_update_data(nozzle_id);
             }   
 
         break;
@@ -370,7 +375,7 @@ bool sanki6_process_state_machine(const app_display_data_t * display_data, uint8
             is_pumped_event = true;
             pumping_state_nozzle_based[nozzle_id] = Pumping_State_Unknown;
             pumping_state_nozzle_ts[nozzle_id] = ts;
-            LOG_MSG_INFO(SAN6_INFO_LOG_EN, "[Nozzle] State [%d] : Stopped --> Unknown ", nozzle_id);
+            LOG_MSG_INFO(HY8_INFO_LOG_EN, "[Nozzle] State [%d] : Stopped --> Unknown ", nozzle_id);
             break;
 
         case Pumping_State_Unknown:
@@ -379,7 +384,7 @@ bool sanki6_process_state_machine(const app_display_data_t * display_data, uint8
             {
                 pumping_state_nozzle_based[nozzle_id] = Pumping_State_Pumping;
                 pumping_state_nozzle_ts[nozzle_id] = ts;
-                LOG_MSG_INFO(SAN6_INFO_LOG_EN, "[Nozzle] State [%d] : Unknown --> Pumping ", nozzle_id);
+                LOG_MSG_INFO(HY8_INFO_LOG_EN, "[Nozzle] State [%d] : Unknown --> Pumping ", nozzle_id);
             }
         break;  
     }

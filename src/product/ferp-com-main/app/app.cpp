@@ -357,7 +357,7 @@ static const app_msg_codec_entry_t k_codec_table[] = {
     // ── Connectivity ─────────────────────────────────────────────────────────
     { "MsgWifiEvent",            MSG_ID_WIFI_EVENT,            MsgWifiEvent::from_json,            MsgWifiEvent::to_json           },
     { "MsgInternetStatus",       MSG_ID_INTERNET_STATUS,       MsgInternetStatus::from_json,       MsgInternetStatus::to_json      },
-    { "MsgCubesphereStatus",      MSG_ID_CUBESPHERE_STATUS,     MsgCubesphereStatus::from_json,     MsgCubesphereStatus::to_json    },
+    { "MsgCubesphereStatus",      MSG_ID_CUBESPHERE_STATUS,    MsgCubesphereStatus::from_json,     MsgCubesphereStatus::to_json    },
     { "MsgMqttStatus",           MSG_ID_MQTT_STATUS,           MsgMqttStatus::from_json,           MsgMqttStatus::to_json          },
 
     // ── Time ─────────────────────────────────────────────────────────────────

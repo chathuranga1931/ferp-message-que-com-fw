@@ -1,3 +1,0 @@
-$ curl -X POST --data "one two three four" localhost:8080/store.json
-$ curl -X GET localhost:8080/store.json    
-one two three four%

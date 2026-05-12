@@ -267,6 +267,11 @@ add_library(app_modules STATIC
     ${APP_MODS}/module_fuel/module_fuel.cpp
     ${APP_MODS}/module_fuel/fuel_disptap_driver.cpp
     ${APP_MODS}/module_fuel/pumps/sanki/sanki_6_digit_1.cpp
+    ${APP_MODS}/module_fuel/pumps/censtar/censtar_6_digit_1.cpp
+    ${APP_MODS}/module_fuel/pumps/censtar/censtar_7_digit_1.cpp
+    ${APP_MODS}/module_fuel/pumps/wayne/wayne_6_digit_1.cpp
+    ${APP_MODS}/module_fuel/pumps/longfeng/longfeng_8_digit_1.cpp
+    ${APP_MODS}/module_fuel/pumps/hongyang/hongyang_8_digit_1.cpp
     # Buzzer module
     ${APP_MODS}/module_buzzer/module_buzzer.cpp
     # Cloud module — CubeSphere implementation embedded directly in the module
@@ -319,6 +324,10 @@ target_include_directories(app_modules PUBLIC
     ${APP_MODS}/module_fuel
     ${APP_MODS}/module_fuel/pumps
     ${APP_MODS}/module_fuel/pumps/sanki
+    ${APP_MODS}/module_fuel/pumps/censtar
+    ${APP_MODS}/module_fuel/pumps/wayne
+    ${APP_MODS}/module_fuel/pumps/longfeng
+    ${APP_MODS}/module_fuel/pumps/hongyang
     ${APP_MODS}/module_buzzer
     ${APP_MODS}/module_cubesphere
     ${APP_MODS}/module_internet

@@ -10,14 +10,14 @@ extern "C"
 
 typedef enum
 {
-    DIS_NONE = 0,
-    DIS_CENSTAR_6_DIGIT,
-    DIS_CENSTAR_7_DIGIT,
-    DIS_CENSTAR_7_DIGIT_CS,
-    DIS_HONGYANG_8_DIGIT,
-    DIS_WAYNE_6_DIGIT,
-    DIS_SANKI_6_DIGIT,
-    DIS_LONGFENG_8_DIGIT,
+    DIS_NONE = 0,       
+    DIS_CENSTAR_6_DIGIT,        //1
+    DIS_CENSTAR_7_DIGIT,        //2
+    DIS_CENSTAR_7_DIGIT_CS,     //3
+    DIS_HONGYANG_8_DIGIT,       //4
+    DIS_WAYNE_6_DIGIT,          //5
+    DIS_SANKI_6_DIGIT,          //6
+    DIS_LONGFENG_8_DIGIT,       //7
     DIS_SIZE
 }display_type_t; // 5-bit number, can add upto 31 display types
 

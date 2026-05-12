@@ -40,9 +40,32 @@ static inline void fuel_types_from_frame(
     bool                      nozzle_up)
 {
     out->fuel_type      = (uint8_t)dtype;
-    out->unit_pricex100 = (uint64_t)frame->unit_price;
-    out->total_pricex100= (uint64_t)frame->total_price;
-    out->volume_lx1000  = (uint64_t)frame->volume_l;
+
+    switch(dtype)
+    {
+        case DIS_NONE:
+        case DIS_CENSTAR_7_DIGIT:
+        case DIS_CENSTAR_7_DIGIT_CS:
+        case DIS_HONGYANG_8_DIGIT:
+        case DIS_LONGFENG_8_DIGIT:
+        case DIS_WAYNE_6_DIGIT:
+        case DIS_SANKI_6_DIGIT:        
+        {
+            out->unit_pricex100 = (uint64_t)frame->unit_price;
+            out->total_pricex100= (uint64_t)frame->total_price;
+            out->volume_lx1000  = (uint64_t)frame->volume_l;
+        }
+        break;
+        case DIS_CENSTAR_6_DIGIT:
+        {
+            out->unit_pricex100 = (uint64_t)frame->unit_price*10;
+            out->total_pricex100= (uint64_t)frame->total_price*10;
+            out->volume_lx1000  = (uint64_t)frame->volume_l;
+        }
+        default:
+        break;
+    }
+
     out->start_stop     = nozzle_up;
     out->select_p       = (bool)frame->flags.bits.select_p;
     out->select_l       = (bool)frame->flags.bits.select_l;

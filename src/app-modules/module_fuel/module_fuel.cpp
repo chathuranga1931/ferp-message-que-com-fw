@@ -15,6 +15,11 @@
 #include "msg_timer_start.h"
 #include "msg_timer_alarm.h"
 #include "sanki_6_digit_1.h"
+#include "censtar_6_digit_1.h"
+#include "censtar_7_digit_1.h"
+#include "wayne_6_digit_1.h"
+#include "hongyang_8_digit_1.h"
+#include "longfeng_8_digit_1.h"
 #include "app.h"          // app_config_get() — kept for other potential uses
 #include "msg_config_ready.h"
 #include "msg_config_get_dt.h"
@@ -292,18 +297,48 @@ void ModuleFuel::_on_distap_frame(uint8_t nozzle_idx, display_type_t type,
 
 const pump_driver_t pump_drivers[DIS_SIZE] = {
     /* DIS_NONE             [0] */ { nullptr, nullptr, nullptr, nullptr },
-    /* DIS_CENSTAR_6_DIGIT  [1] */ { nullptr, nullptr, nullptr, nullptr },
-    /* DIS_CENSTAR_7_DIGIT  [2] */ { nullptr, nullptr, nullptr, nullptr },
-    /* DIS_CENSTAR_7_DIGIT_CS [3] */ { nullptr, nullptr, nullptr, nullptr },
-    /* DIS_HONGYANG_8_DIGIT [4] */ { nullptr, nullptr, nullptr, nullptr },
-    /* DIS_WAYNE_6_DIGIT    [5] */ { nullptr, nullptr, nullptr, nullptr },
+    /* DIS_CENSTAR_6_DIGIT  [1] */ {
+        (fp_pump_get_event_t *)censtar6_get_event,
+        (fp_pump_process_data_t *)censtar6_process_data,
+        (fp_pump_process_state_machine_t *)censtar6_process_state_machine,
+        (fp_pump_data_validate *)censtar6_data_validate
+    },
+    /* DIS_CENSTAR_7_DIGIT  [2] */ {
+        (fp_pump_get_event_t *)censtar7_get_event,
+        (fp_pump_process_data_t *)censtar7_process_data,
+        (fp_pump_process_state_machine_t *)censtar7_process_state_machine,
+        (fp_pump_data_validate *)censtar7_data_validate
+    },
+    /* DIS_CENSTAR_7_DIGIT_CS [3] */ {
+        (fp_pump_get_event_t *)longfeng8_get_event,
+        (fp_pump_process_data_t *)longfeng8_process_data,
+        (fp_pump_process_state_machine_t *)longfeng8_process_state_machine,
+        (fp_pump_data_validate *)longfeng8_data_validate
+    },
+    /* DIS_HONGYANG_8_DIGIT [4] */ {
+        (fp_pump_get_event_t *)hongyang8_get_event,
+        (fp_pump_process_data_t *)hongyang8_process_data,
+        (fp_pump_process_state_machine_t *)hongyang8_process_state_machine,
+        (fp_pump_data_validate *)hongyang8_data_validate
+    },
+    /* DIS_WAYNE_6_DIGIT    [5] */ {
+        (fp_pump_get_event_t *)wayne6_get_event,
+        (fp_pump_process_data_t *)wayne6_process_data,
+        (fp_pump_process_state_machine_t *)wayne6_process_state_machine,
+        (fp_pump_data_validate *)wayne6_data_validate
+    },
     /* DIS_SANKI_6_DIGIT    [6] */ {
         (fp_pump_get_event_t *)sanki6_get_event,
         (fp_pump_process_data_t *)sanki6_process_data,
         (fp_pump_process_state_machine_t *)sanki6_process_state_machine,
         (fp_pump_data_validate *)sanki6_data_validate
     },
-    /* DIS_LONGFENG_8_DIGIT [7] */ { nullptr, nullptr, nullptr, nullptr },
+    /* DIS_LONGFENG_8_DIGIT [7] */ {
+        (fp_pump_get_event_t *)longfeng8_get_event,
+        (fp_pump_process_data_t *)longfeng8_process_data,
+        (fp_pump_process_state_machine_t *)longfeng8_process_state_machine,
+        (fp_pump_data_validate *)longfeng8_data_validate
+    },
 };
 
 void ModuleFuel::_process_queues()
@@ -327,7 +362,7 @@ void ModuleFuel::_process_queues()
                 display_data[idx].volume_lx1000 = (uint64_t)item[idx].data.volume_lx1000;
                 display_data[idx].unit_pricex100 = (uint64_t)item[idx].data.unit_pricex100;
                 display_data[idx].fuel_type = item[idx].dtype;
-                display_data[idx].start_stop = item[idx].data.start_stop;  // Ensure latest nozzle state from frame
+                display_data[idx].start_stop = item[idx].data.start_stop;  // Ensure latest nozzle state from frame            
             }
 
             display_type_t dtype = (display_type_t)display_data[idx].fuel_type;
@@ -336,11 +371,9 @@ void ModuleFuel::_process_queues()
                 case DIS_NONE:
                 break;
                 case DIS_LONGFENG_8_DIGIT:
-                break;
                 case DIS_CENSTAR_6_DIGIT:
-                case DIS_CENSTAR_7_DIGIT:
                 case DIS_CENSTAR_7_DIGIT_CS:
-                case DIS_HONGYANG_8_DIGIT:
+                case DIS_CENSTAR_7_DIGIT:
                 case DIS_WAYNE_6_DIGIT:
                 case DIS_SANKI_6_DIGIT:
                 {
@@ -348,8 +381,36 @@ void ModuleFuel::_process_queues()
                     display_data[idx].start_stop = _nozzle_state[idx];  // Ensure latest nozzle state from toggle-button GPIO    
                 }
                 break;
+                case DIS_HONGYANG_8_DIGIT:
+                break;
                 default:
                 break;
+            }
+
+            if(is_received)
+            {
+                static char log_str1[64];
+                static char log_str2[64];
+
+                if(idx == 0) 
+                {
+                    sprintf(log_str1, "[%1d] %2d %7.03f %7.02f %8.02f %s",
+                        (unsigned)idx, (int)item[idx].dtype,
+                        display_data[idx].volume_lx1000/1000.0, display_data[idx].unit_pricex100/100.0, display_data[idx].total_pricex100/100.0,
+                        display_data[idx].start_stop ? "UP" : "DN"); 
+                }
+                else if(idx == 1)
+                {
+                    sprintf(log_str2, "[%1d] %2d %7.03f %7.02f %8.02f %s",
+                        (unsigned)idx, (int)item[idx].dtype,
+                        display_data[idx].volume_lx1000/1000.0, display_data[idx].unit_pricex100/100.0, display_data[idx].total_pricex100/100.0,
+                        display_data[idx].start_stop ? "UP" : "DN"); 
+                }   
+                else
+                {
+                } 
+                
+                MLOG("Received frame: %s  %s", log_str1, log_str2);
             }
 
             if(pump_drivers[dtype].process_data == nullptr || 
