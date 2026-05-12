@@ -171,6 +171,8 @@ elif $RELEASE; then
     fi
     cp "$BUILD_BIN" "$RELEASE_DIR/ferp-com-v${EVEN_VER}.bin"
     echo "Saved: $RELEASE_DIR/ferp-com-v${EVEN_VER}.bin"
+    python3 "$SCRIPT_DIR/tools/ota-bundle-tools/OtaBundleCreate-MainESP32.py" \
+        "$RELEASE_DIR/ferp-com-v${EVEN_VER}.bin" "$EVEN_VER" "$RELEASE_DIR"
 
     # ── Build 2: odd version ─────────────────────────────────────────────────
     echo ""
@@ -185,6 +187,8 @@ elif $RELEASE; then
     fi
     cp "$BUILD_BIN" "$RELEASE_DIR/ferp-com-v${ODD_VER}.bin"
     echo "Saved: $RELEASE_DIR/ferp-com-v${ODD_VER}.bin"
+    python3 "$SCRIPT_DIR/tools/ota-bundle-tools/OtaBundleCreate-MainESP32.py" \
+        "$RELEASE_DIR/ferp-com-v${ODD_VER}.bin" "$ODD_VER" "$RELEASE_DIR"
 
     echo ""
     echo "=== Release complete: $ODD_VER ==="

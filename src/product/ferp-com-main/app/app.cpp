@@ -478,14 +478,10 @@ static const ota_target_desc_t k_ota_targets[] = {
 // ============================================================================
 
 static const mqtt_ota_target_t k_mqtt_ota_targets[] = {
-    { "main",          OTA_TARGET_MAIN_IDX },   ///< short alias for esp32-main
-    { "esp32-main",    OTA_TARGET_MAIN_IDX },
-    { "dt-boot",       OTA_TARGET_DT_BOOT_IDX },   ///< short alias for esp32-dt-boot
-    { "esp32-dt-boot", OTA_TARGET_DT_BOOT_IDX },
-    { "dt-part",       OTA_TARGET_DT_PART_IDX },   ///< short alias for esp32-dt-part
-    { "esp32-dt-part", OTA_TARGET_DT_PART_IDX },
-    { "dt-fw",         OTA_TARGET_DT_FW_IDX },   ///< short alias for esp32-dt-fw
-    { "esp32-dt-fw",   OTA_TARGET_DT_FW_IDX },
+    { "esp32-main",     OTA_TARGET_MAIN_IDX },
+    { "esp32-dt-boot",  OTA_TARGET_DT_BOOT_IDX },
+    { "esp32-dt-part",  OTA_TARGET_DT_PART_IDX },
+    { "esp32-dt-fw",    OTA_TARGET_DT_FW_IDX },
 };
 
 // ============================================================================
@@ -544,10 +540,10 @@ static const ModuleWebServer::StaticFileDef k_web_pages[] = {
 };
 
 static const ModuleWebServer::OtaTargetDef k_web_ota_bins[] = {
-    { "main",          OTA_TARGET_MAIN_IDX },
-    { "dt-bootloader", OTA_TARGET_DT_BOOT_IDX },
-    { "dt-partitions", OTA_TARGET_DT_PART_IDX },
-    { "dt-app",        OTA_TARGET_DT_FW_IDX },
+    { "esp32-main",         OTA_TARGET_MAIN_IDX },
+    { "esp32-dt-boot",      OTA_TARGET_DT_BOOT_IDX },
+    { "esp32-dt-part",      OTA_TARGET_DT_PART_IDX },
+    { "esp32-dt-fw",        OTA_TARGET_DT_FW_IDX },
     { nullptr, 0 }                 // sentinel
 };
 

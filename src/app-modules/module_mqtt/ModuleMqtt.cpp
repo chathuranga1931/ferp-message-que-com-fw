@@ -791,6 +791,7 @@ void ModuleMqtt::_handle_ota_ctrl(const pal_mqtt_message_t *m)
 
         uint8_t target_idx = _resolve_ota_target(target);
         if (target_idx == 0xFF) {
+            LOG_MSG_ERROR(MQTT_LOG, "OTA: unknown target '%s'", target);
             char resp[MODULE_MQTT_OTA_RESP_MAX];
             snprintf(resp, sizeof(resp),
                      "{\"seq\":%u,\"cmd\":\"ota_start\",\"status\":\"error\","

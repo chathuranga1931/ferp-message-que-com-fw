@@ -481,16 +481,14 @@ class OtaPanel(ttk.LabelFrame):
     def __init__(self, parent, get_ota_params, append_log, get_ota_targets, **kw):
         kw.setdefault("text", "OTA Upgrade")
         super().__init__(parent, **kw)
-        self._get_params   = get_ota_params
-        self._append_log   = append_log
-        self._get_targets  = get_ota_targets  # () -> [(label, name), ...]
-        self._handler      = None
-        self._fw_path      = tk.StringVar()
-        self._target_var   = tk.StringVar()
-        self._ver_var      = tk.StringVar(value="1.0.0")
-        self._chunk_var    = tk.StringVar(value="4096")
-        # Internal map: display label -> wire name
-        self._target_name_map: Dict[str, str] = {}
+        self._get_params  = get_ota_params
+        self._append_log  = append_log
+        self._handler     = None
+        self._fw_path     = tk.StringVar()
+        self._bundle_name = ""           # decoded from bundle header
+        self._bundle_info = tk.StringVar(value="— select a .bdl bundle —")
+        self._ver_var     = tk.StringVar(value="")
+        self._chunk_var   = tk.StringVar(value="4096")
         self._build_ui()
 
     def _build_ui(self):
@@ -502,12 +500,9 @@ class OtaPanel(ttk.LabelFrame):
 
         opt = ttk.Frame(self)
         opt.pack(fill="x", padx=6, pady=2)
-        ttk.Label(opt, text="Target:").pack(side="left")
-        self._target_combo = ttk.Combobox(opt, textvariable=self._target_var,
-                                           width=22, state="readonly")
-        self._target_combo.pack(side="left", padx=(4, 12))
-        ttk.Label(opt, text="Version:").pack(side="left")
-        ttk.Entry(opt, textvariable=self._ver_var, width=10).pack(side="left", padx=(4, 12))
+        ttk.Label(opt, text="Bundle:").pack(side="left")
+        ttk.Entry(opt, textvariable=self._bundle_info, state="readonly",
+                  width=38).pack(side="left", padx=(4, 12))
         ttk.Label(opt, text="Chunk:").pack(side="left")
         ttk.Combobox(opt, textvariable=self._chunk_var, values=["1024", "2048", "4096", "8192"],
                      width=7).pack(side="left", padx=(4, 0))
@@ -537,33 +532,34 @@ class OtaPanel(ttk.LabelFrame):
         ttk.Button(lf, text="Clear", command=self._clear_log).pack(
             side="right", padx=4, pady=(0, 4))
 
-        # Populate with whatever interface is currently selected
-        self.refresh_targets()
-
     def refresh_targets(self):
-        """Reload the target combobox from the current interface's table."""
-        entries = self._get_targets()  # [(label, name), ...]
-        self._target_name_map = {label: name for label, name in entries}
-        labels = [label for label, _ in entries]
-        self._target_combo["values"] = labels
-        if labels:
-            # Keep selection if the same label still exists, else pick first
-            if self._target_var.get() not in labels:
-                self._target_var.set(labels[0])
-        else:
-            self._target_var.set("")
-
-    def _resolved_target_name(self) -> str:
-        """Return the wire-protocol name for the currently selected label."""
-        label = self._target_var.get()
-        return self._target_name_map.get(label, label)  # fallback: use label as-is
+        """No-op — target is decoded from the .bdl bundle header."""
 
     def _browse(self):
         path = filedialog.askopenfilename(
-            title="Select firmware .bin",
-            filetypes=[("Binary firmware", "*.bin"), ("All files", "*.*")])
+            title="Select FERP OTA bundle",
+            filetypes=[("FERP OTA bundle", "*.bdl"), ("All files", "*.*")])
         if path:
             self._fw_path.set(path)
+            self._decode_header(path)
+
+    def _decode_header(self, path: str):
+        try:
+            from ota_bundle import decode_bundle
+            with open(path, "rb") as fh:
+                data = fh.read()
+            hdr, _ = decode_bundle(data)
+            self._bundle_name = hdr.name
+            self._ver_var.set(hdr.version)
+            ts_str = datetime.fromtimestamp(hdr.timestamp).strftime("%Y-%m-%d %H:%M")
+            self._bundle_info.set(
+                f"{hdr.name}  v{hdr.version}  (built {ts_str})"
+            )
+        except Exception as exc:
+            self._bundle_name = ""
+            self._ver_var.set("")
+            self._bundle_info.set(f"[decode error] {exc}")
+            self._append_log(f"[OTA] Bundle decode error: {exc}", "warn")
 
     def _start(self):
         params = self._get_params()
@@ -572,14 +568,42 @@ class OtaPanel(ttk.LabelFrame):
             return
         fw = self._fw_path.get().strip()
         if not fw:
-            messagebox.showerror("No firmware", "Select a firmware .bin file first.")
+            messagebox.showerror("No bundle", "Select a .bdl bundle file first.")
+            return
+        if not self._bundle_name:
+            messagebox.showerror(
+                "Invalid bundle",
+                "Bundle header could not be decoded.\nSelect a valid .bdl file."
+            )
             return
         try:
             chunk = int(self._chunk_var.get())
         except ValueError:
             chunk = 4096
 
-        iface, conn = params   # iface in ("mqtt", "webapi", "uart")
+        iface, conn = params
+
+        # Strip the 84-byte bundle header → raw firmware bytes → temp file
+        try:
+            from ota_bundle import decode_bundle
+            import tempfile, os
+            with open(fw, "rb") as fh:
+                bundle_data = fh.read()
+            _, raw_fw = decode_bundle(bundle_data)
+        except Exception as exc:
+            messagebox.showerror("Bundle error", f"Could not read bundle:\n{exc}")
+            return
+
+        tmp_fd, tmp_path = tempfile.mkstemp(suffix=".bin", prefix="ferp_ota_")
+        try:
+            with os.fdopen(tmp_fd, "wb") as tf:
+                tf.write(raw_fw)
+        except Exception as exc:
+            messagebox.showerror("Temp file error", f"Could not write temp file:\n{exc}")
+            return
+
+        target  = self._bundle_name
+        version = self._ver_var.get().strip() or "unknown"
 
         try:
             if iface == "mqtt":
@@ -587,33 +611,42 @@ class OtaPanel(ttk.LabelFrame):
                     broker=conn["broker"], port=conn["port"],
                     dev_type=conn["dev_type"], group=conn["group"],
                     device_id=conn["device_id"],
-                    firmware_path=fw, target=self._resolved_target_name(),
-                    version=self._ver_var.get().strip() or "unknown",
+                    firmware_path=tmp_path, target=target,
+                    version=version,
                     chunk_size=chunk,
                     on_log=self._cb_log,
                     on_progress=self._cb_progress,
-                    on_done=self._cb_done,
+                    on_done=lambda ok, p=tmp_path: self._cb_done_cleanup(ok, p),
                 )
             elif iface == "webapi":
                 if not _WEBAPI_OTA_AVAILABLE:
+                    import os; os.unlink(tmp_path)
                     messagebox.showwarning("Not available", "WebAPI OTA is not yet available.")
                     return
                 self._handler = WebApiOtaHandler(
                     ip=conn["ip"], port=conn["port"],
-                    firmware_path=fw, target=self._resolved_target_name(),
-                    version=self._ver_var.get().strip() or "unknown",
+                    firmware_path=tmp_path, target=target,
+                    version=version,
                     on_log=self._cb_log,
                     on_progress=self._cb_progress,
-                    on_done=self._cb_done,
+                    on_done=lambda ok, p=tmp_path: self._cb_done_cleanup(ok, p),
                 )
             else:
+                import os; os.unlink(tmp_path)
                 messagebox.showwarning("Not supported", "OTA is not supported over UART.")
                 return
         except Exception as e:
+            import os
+            try:
+                os.unlink(tmp_path)
+            except Exception:
+                pass
             self._log_ota(f"[error] {e}", "error")
             return
 
-        self._log_ota(f"Starting OTA — interface={iface}", "ok")
+        self._log_ota(
+            f"Starting OTA — target={target}  version={version}  interface={iface}", "ok"
+        )
         self._progress["value"] = 0
         self._pct_lbl.config(text="  0%")
         self._start_btn.config(state="disabled")
@@ -634,6 +667,14 @@ class OtaPanel(ttk.LabelFrame):
         self.after(0, self._set_progress, pct)
 
     def _cb_done(self, ok: bool):
+        self.after(0, self._finished, ok)
+
+    def _cb_done_cleanup(self, ok: bool, tmp_path: str):
+        import os
+        try:
+            os.unlink(tmp_path)
+        except Exception:
+            pass
         self.after(0, self._finished, ok)
 
     def _set_progress(self, pct: int):
