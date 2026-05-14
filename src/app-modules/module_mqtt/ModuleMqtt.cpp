@@ -35,6 +35,7 @@
 #include "msg_ota_abort_request.h"
 
 #include "crc32.h"
+#include "mqtt_auth.h"
 
 #include <ArduinoJson.h>
 #include <stdio.h>
@@ -529,6 +530,23 @@ void ModuleMqtt::_on_pal_data(const pal_mqtt_message_t *m)
     if (msg_name[0] == '\0') {
         LOG_MSG_WARNING(MQTT_LOG, "envelope missing 'msg' field");
         return;
+    }
+
+    // ── Authenticate ───────────────────────────────────────────────────────
+    // Every inbound cmd must carry hop_idx (key selector) and hash
+    // (mqtt_auth_hash of seq using the selected shared key).  Messages that
+    // fail this check are silently discarded — no response is sent so an
+    // attacker gets no oracle to probe against.
+    {
+        int         hop_raw  = doc["hop_idx"] | (int)-1;
+        const char *hash_hex = doc["hash"]    | "";
+        if (hop_raw < 0 || hop_raw >= (int)MQTT_AUTH_KEY_COUNT ||
+            !mqtt_auth_verify((uint8_t)hop_raw, hash_hex, seq)) {
+            LOG_MSG_WARNING(MQTT_LOG,
+                            "cmd auth FAILED seq=%u hop=%d msg='%s' — discarded",
+                            (unsigned)seq, hop_raw, msg_name);
+            return;
+        }
     }
 
     // Serialize the "data" sub-object back to JSON string for the codec

@@ -13,6 +13,7 @@ is a lower-level wrapper used by the MessageTree panel.
 """
 
 import json
+from mqtt_auth import sign as _mqtt_sign
 import queue
 import random
 import struct
@@ -174,6 +175,7 @@ class MQTTTransport:
         self._log       = log_fn or (lambda msg, lvl: None)
         self._queue: queue.Queue = queue.Queue()
         self._connected = False
+        self._seq       = random.randint(1, 0xFFFF)  # rolling sequence counter for auth
         self._client    = self._make_client()
         self._client.on_connect    = self._on_connect
         self._client.on_message    = self._on_message
@@ -229,7 +231,12 @@ class MQTTTransport:
             self._queue.get_nowait()
 
     def _publish(self, msg_name: str, data: dict) -> None:
-        payload = json.dumps({"msg": msg_name, "data": data})
+        self._seq = (self._seq + 1) & 0xFFFF_FFFF
+        hop_idx, hash_hex = _mqtt_sign(self._seq)
+        payload = json.dumps({
+            "seq": self._seq, "hop_idx": hop_idx, "hash": hash_hex,
+            "msg": msg_name, "data": data,
+        })
         self._log(f"MQTT TX  [{self.cmd_topic}]  {payload}", "info")
         self._client.publish(self.cmd_topic, payload)
 
@@ -389,7 +396,9 @@ class MqttRawClient:
             self._on_log("[error] Not connected", "error")
             return
         seq     = random.randint(1, 0xFFFF_FFFF)
-        payload = {"seq": seq, "msg": msg_name, "data": data}
+        hop_idx, hash_hex = _mqtt_sign(seq)
+        payload = {"seq": seq, "hop_idx": hop_idx, "hash": hash_hex,
+                   "msg": msg_name, "data": data}
         self._on_log(f"→ [cmd]  {json.dumps(payload)}", "cmd")
         self._client.publish(_cmd_topic(self._base), json.dumps(payload), qos=1)
 
