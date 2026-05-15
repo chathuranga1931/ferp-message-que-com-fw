@@ -82,7 +82,6 @@ private:
 
     display_type_t        _display_type = (display_type_t)0;
     bool                  _started = false;
-    bool                  _timer_active = false;
 
     // DT log rate limiting: max frames to log per 60-second window.
     // 0 or >= 500 → log every frame.  1–499 → enforce a minimum gap of
@@ -95,5 +94,6 @@ private:
 
     void _publish_nozzle_state(uint8_t nozzle_idx, nozzle_state_t state);
     void _publish_fuel_pumped (uint8_t nozzle_idx, const nozzle_event_t &ev);
-    void _publish_wake_message(uint32_t duration_ms);
+    void _stop_tick_timer();
+    void _start_tick_timer();
 };

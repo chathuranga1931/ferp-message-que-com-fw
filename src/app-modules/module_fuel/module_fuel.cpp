@@ -14,6 +14,7 @@
 #include "msg_nozzle_state.h"
 #include "msg_fuel_pumped.h"
 #include "msg_timer_start.h"
+#include "msg_timer_stop.h"
 #include "msg_timer_alarm.h"
 #include "sanki_6_digit_1.h"
 #include "censtar_6_digit_1.h"
@@ -201,9 +202,8 @@ void ModuleFuel::on_msg_received(const hsys_msg_t &msg)
             break;
 
         case MsgTimerAlarm::ID:
-            // 500 ms timeout — run the state machine with the last known data
-            // to allow the sanki6 pipeline to detect a stalled/stopped nozzle.
-            _timer_active = false;  // slot was freed when it fired
+            // 1 s watchdog fired — run the state machine so stalled nozzles
+            // are detected even when no new frames arrive.
             wake();
             break;
 
@@ -364,6 +364,7 @@ const pump_driver_t pump_drivers[DIS_SIZE] = {
 
 void ModuleFuel::_process_queues()
 {
+    _stop_tick_timer();
     for (uint8_t idx = 0; idx < FUEL_MAX_NOZZLES; idx++) 
     {
         static fuel_frame_item_t item[NO_NOZZELS];
@@ -510,7 +511,7 @@ void ModuleFuel::_process_queues()
         }while(is_received);
     }
 
-    _publish_wake_message(500); // Re-run state machine every 500 ms to detect stalled nozzle
+    _start_tick_timer();
 }
 
 // ---------------------------------------------------------------------------
@@ -541,23 +542,28 @@ void ModuleFuel::_publish_fuel_pumped(uint8_t nozzle_idx, const nozzle_event_t &
     publish(msg);
 }
 
-void ModuleFuel::_publish_wake_message(uint32_t duration_ms)
+void ModuleFuel::_stop_tick_timer()
 {
-    // Only arm if no slot is already pending — avoids both the ALREADY_RUNNING
-    // warning and the race where forced=true sees a slot vanish between the two
-    // _find_slot() calls inside ModuleTimer (slot freed by tick thread).
-    if (_timer_active) return;
+    // Cancel any existing timer slot.  If none exists ModuleTimer will warn
+    // (TIMER_RESULT_ERR_NOT_FOUND) — that is acceptable and expected on the
+    // first call.
+    MsgTimerStop::Payload sp{};
+    sp.source_module_id = id();
+    hsys_msg_t *smsg = MsgTimerStop::create(id(), sp);
+    if (smsg) publish(smsg);
+}
 
+void ModuleFuel::_start_tick_timer()
+{
+    // Arm a one-shot 1-second timer so the module wakes at least once per
+    // second even when no new frames arrive (keeps state machine running).
     MsgTimerStart::Payload tp{};
     tp.source_module_id = id();
     tp.start_offset_ms  = 0;
-    tp.duration_ms      = 500;
+    tp.duration_ms      = 1000;
     tp.is_repetitive    = false;   // one-shot — re-armed on each on_wake()
     tp.forced           = false;
 
-    hsys_msg_t *tmsg = create_typed<MsgTimerStart>(tp);
-    if (tmsg) {
-        publish(tmsg);
-        _timer_active = true;
-    }
+    hsys_msg_t *tmsg = MsgTimerStart::create(id(), tp);
+    if (tmsg) publish(tmsg);
 }

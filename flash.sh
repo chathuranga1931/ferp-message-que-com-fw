@@ -89,7 +89,7 @@ if $CLEANALL; then
     idf.py build
 
     echo "=== Flash all (app + SPIFFS) ==="
-    idf.py -p "$COMPORT" flash
+    idf.py -p "$COMPORT" -b 1152000 flash
 
     echo "=== Done (clean + flash all) ==="
 
@@ -98,7 +98,7 @@ elif $FLASHALL; then
     idf.py build
 
     echo "=== Flash all (app + SPIFFS) ==="
-    idf.py -p "$COMPORT" flash
+    idf.py -p "$COMPORT" -b 1152000 flash
 
     echo "=== Done (flash all) ==="
 
@@ -107,7 +107,7 @@ elif $FLASHSPIFFS; then
     idf.py build spiffs
 
     echo "=== Flash SPIFFS partition ==="
-    idf.py -p "$COMPORT" spiffs
+    idf.py -p "$COMPORT" -b 1152000 spiffs
 
     echo "=== Done (flash SPIFFS) ==="
 
@@ -116,7 +116,7 @@ elif $FLASHAPP; then
     idf.py build
 
     echo "=== Flash app partition ==="
-    idf.py -p "$COMPORT" app-flash
+    idf.py -p "$COMPORT" -b 1152000 app-flash
 
     echo "=== Done (flash app) ==="
 

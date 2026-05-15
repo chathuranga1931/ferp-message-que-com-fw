@@ -131,10 +131,11 @@ void pal_logger_log(bool en, const char *format, ...) {
         return;
     }
 
-    if(!hsys_mutex_try_lock(s_log_mutex, 500))
+    if(!hsys_mutex_try_lock(s_log_mutex, 100))
     {
-        // Failed to acquire mutex within timeout, log an error and return
-        s_log_uart.print_str("Error: Log mutex timeout\r\n");
+        // Failed to acquire mutex within timeout — print on its own line so it
+        // does not concatenate with whatever the mutex-holding task is printing.
+        s_log_uart.print_str("\r\n[Log Missed]\r\n");
         return;
     }
     
