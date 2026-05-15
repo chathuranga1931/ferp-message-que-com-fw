@@ -13,5 +13,10 @@
     "--background-index",
     "--query-driver=**",
     "--compile-commands-dir=/Volumes/Data/SAS/Git/ferp-message-library/build"
-  ]
+  ],
+  "files.exclude": {
+    "**/.DS_Store": true,
+    "**/._*": true,
+    "**/.AppleDouble": true
+  }
 }

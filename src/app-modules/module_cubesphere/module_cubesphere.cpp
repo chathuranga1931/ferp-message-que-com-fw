@@ -13,6 +13,8 @@
 #include "msg_internet_status.h"
 #include "msg_cubesphere_status.h"
 #include "msg_fuel_pumped.h"
+#include "msg_nozzle_state.h"
+#include "msg_fuel_print_ok.h"
 #include "msg_timer_start.h"
 #include "msg_timer_alarm.h"
 #include "msg_sd_ready.h"
@@ -71,6 +73,8 @@ void ModuleCubeSphere::init()
     subscribe(MsgWifiEvent::ID);
     subscribe(MsgInternetStatus::ID);
     subscribe(MsgFuelPumped::ID);
+    subscribe(MsgNozzleState::ID);         // pump-start
+    subscribe(MsgFuelPrintOk::ID);         // printok
     subscribe(MsgTimerAlarm::ID);
     subscribe(MsgSdReady::ID);
     subscribe(MSG_ID_TICK_1000MS);
@@ -101,6 +105,8 @@ void ModuleCubeSphere::on_msg_received(const hsys_msg_t &msg)
         case MsgWifiEvent::ID:             _on_wifi_event(msg);          break;
         case MsgInternetStatus::ID:        _on_internet_status(msg);     break;
         case MsgFuelPumped::ID:            _on_fuel_pumped(msg);         break;
+        case MsgNozzleState::ID:           _on_nozzle_state(msg);        break;
+        case MsgFuelPrintOk::ID:           _on_fuel_print_ok(msg);       break;
         case MsgSdReady::ID:               _on_sd_ready();               break;
         case MsgTimerAlarm::ID:            _on_timer_alarm();            break;
         case MSG_ID_TICK_1000MS:           _on_tick();                   break;
@@ -245,9 +251,52 @@ void ModuleCubeSphere::_on_fuel_pumped(const hsys_msg_t &msg)
         return;
     }
 
+    // Cache last pumped data for the follow-up app.fuel/totalized event
+    _last_pumped_nozzle_idx  = p.nozzle_idx;
+    _last_pumped_vol_lx1000  = p.vol_lx1000;
+    _last_pumped_unit_px100  = p.unit_pricex100;
+    _last_pumped_total_px100 = p.total_pricex100;
+    _last_pumped_ts_epoch    = now_tv.tv_sec;
+    _pending_totalized       = true;  // arm totalized follow-up
+
     _cur_evt = EVT_PUMPED;
     _send_http_start(PAL_HTTP_METHOD_POST, 10000, nullptr);
     LOG_MSG_DEBUG(CSP_LOG_EN, "pumped event queued (nozzle=%u id=%u)", p.nozzle_idx, event_id);
+}
+
+void ModuleCubeSphere::_on_nozzle_state(const hsys_msg_t &msg)
+{
+    auto p = MsgNozzleState::deserialize(msg);
+    if (p.state != NOZZLE_PUMPING) return;   // only pump-start is cloud-reported
+    if (p.nozzle_idx >= CS_NO_NOZZLES) return;
+
+    if (_state != STATE_RUNNING) {
+        LOG_MSG_DEBUG(CSP_LOG_EN, "nozzle[%u] PUMPING — not RUNNING, skipping pump-start",
+                      (unsigned)p.nozzle_idx);
+        return;
+    }
+
+    _pump_start_nozzle_idx          = p.nozzle_idx;
+    _pending_pump_start[p.nozzle_idx] = true;
+    _start_next_event();
+}
+
+void ModuleCubeSphere::_on_fuel_print_ok(const hsys_msg_t &msg)
+{
+    auto p = MsgFuelPrintOk::deserialize(msg);
+    if (p.nozzle_idx >= CS_NO_NOZZLES) return;
+
+    if (_state != STATE_RUNNING) {
+        LOG_MSG_DEBUG(CSP_LOG_EN, "print-ok for nozzle[%u] — not RUNNING, discarding",
+                      (unsigned)p.nozzle_idx);
+        return;
+    }
+
+    _print_ok_nozzle_idx          = p.nozzle_idx;
+    _print_ok_dispenser_event_id  = p.dispenser_event_id;
+    _print_ok_timestamp_epoch     = p.timestamp_epoch;
+    _pending_print_ok             = true;
+    _start_next_event();
 }
 
 void ModuleCubeSphere::_on_timer_alarm()
@@ -571,6 +620,22 @@ void ModuleCubeSphere::_start_next_event()
     } else if (_pending_status_update) {
         _pending_status_update = false;
         _cur_evt = EVT_STATUS_UPDATE;
+    } else if (_pending_pump_start[0] || _pending_pump_start[1]) {
+        // Find first pending pump-start nozzle
+        for (int i = 0; i < CS_NO_NOZZLES; i++) {
+            if (_pending_pump_start[i]) {
+                _pending_pump_start[i] = false;
+                _pump_start_nozzle_idx = (uint8_t)i;
+                break;
+            }
+        }
+        _cur_evt = EVT_PUMP_START;
+    } else if (_pending_totalized) {
+        _pending_totalized = false;
+        _cur_evt = EVT_TOTALIZED;
+    } else if (_pending_print_ok) {
+        _pending_print_ok = false;
+        _cur_evt = EVT_PRINT_OK;
     } else if (_pending_heartbeat && _hb_enabled) {
         _pending_heartbeat = false;
         _cur_evt = EVT_HEARTBEAT;
@@ -650,6 +715,56 @@ bool ModuleCubeSphere::_build_event_json(evt_type_t evt)
             body["local_ip"]      = _wifi_ip;
             body["wifi_ssid"]     = _wifi_ssid;
             body["wifi_password"] = _wifi_password;
+            break;
+        }
+        case EVT_PUMP_START: {
+            // app.fuel/pump-start — sent when a nozzle transitions to PUMPING
+            if (_pump_start_nozzle_idx >= CS_NO_NOZZLES ||
+                _cs_nozzles[_pump_start_nozzle_idx].uuid[0] == '\0') return false;
+            JsonObject e0   = events.add<JsonObject>();
+            e0["device"]    = _cs_nozzles[_pump_start_nozzle_idx].uuid;
+            e0["time"]      = ts;
+            e0["event"]     = "app.fuel/pump-start";
+            JsonObject body = e0["body"].to<JsonObject>();
+            body["Temp"]    = "Empty";
+            break;
+        }
+        case EVT_TOTALIZED: {
+            // app.fuel/totalized — same data as pump-end, different event type
+            if (_last_pumped_nozzle_idx >= CS_NO_NOZZLES ||
+                _cs_nozzles[_last_pumped_nozzle_idx].uuid[0] == '\0') return false;
+            char tot_ts[64] = {};
+            _cs_format_iso8601(_last_pumped_ts_epoch + (int)(3600 * 5.5), "+05:30",
+                               tot_ts, sizeof(tot_ts));
+            JsonObject e0   = events.add<JsonObject>();
+            e0["device"]    = _cs_nozzles[_last_pumped_nozzle_idx].uuid;
+            e0["time"]      = tot_ts;
+            e0["event"]     = "app.fuel/totalized";
+            JsonObject body = e0["body"].to<JsonObject>();
+            body["L"] = _last_pumped_vol_lx1000  * 0.001;
+            body["T"] = _cs_nozzles[_last_pumped_nozzle_idx].fuel_type;
+            body["P"] = _last_pumped_total_px100 * 0.01;
+            body["U"] = _last_pumped_unit_px100  * 0.01;
+            break;
+        }
+        case EVT_PRINT_OK: {
+            // app.fuel/printok — sent when receipt is confirmed printed
+            if (_print_ok_nozzle_idx >= CS_NO_NOZZLES ||
+                _cs_nozzles[_print_ok_nozzle_idx].uuid[0] == '\0') return false;
+            char pok_ts[64] = {};
+            _cs_format_iso8601((time_t)_print_ok_timestamp_epoch + (int)(3600 * 5.5),
+                               "+05:30", pok_ts, sizeof(pok_ts));
+            uint64_t ne_id = _cs_compute_ne_id(_print_ok_timestamp_epoch,
+                                               _cs_nozzles[_print_ok_nozzle_idx].nozzle_id);
+            char ne_id_str[24] = {};
+            snprintf(ne_id_str, sizeof(ne_id_str), "%llu", (unsigned long long)ne_id);
+            JsonObject e0   = events.add<JsonObject>();
+            e0["device"]    = _cs_nozzles[_print_ok_nozzle_idx].uuid;
+            e0["time"]      = pok_ts;
+            e0["event"]     = "app.fuel/printok";
+            JsonObject body = e0["body"].to<JsonObject>();
+            body["NE_ID"]   = ne_id_str;
+            body["ABS_ID"]  = _print_ok_dispenser_event_id;
             break;
         }
         default: return false;
@@ -763,6 +878,34 @@ void ModuleCubeSphere::_on_event_result(const hsys_msg_t &msg)
             _pumped_failure++;
             LOG_MSG_WARNING(CSP_LOG_EN, "retx pumped failed — will retry in ~60s");
             _publish_status(CUBESPHERE_STATUS_PUMPED_FAILED);
+            break;
+        case EVT_PUMP_START:
+            if (ok) {
+                LOG_MSG_INFO(CSP_LOG_EN, "pump-start OK (nozzle=%u)",
+                             (unsigned)_pump_start_nozzle_idx);
+            } else {
+                LOG_MSG_WARNING(CSP_LOG_EN, "pump-start failed result=%d status=%d",
+                                (int)f.result, (int)f.status_code);
+            }
+            break;
+        case EVT_TOTALIZED:
+            if (ok) {
+                LOG_MSG_INFO(CSP_LOG_EN, "totalized OK (nozzle=%u)",
+                             (unsigned)_last_pumped_nozzle_idx);
+            } else {
+                LOG_MSG_WARNING(CSP_LOG_EN, "totalized failed result=%d status=%d",
+                                (int)f.result, (int)f.status_code);
+            }
+            break;
+        case EVT_PRINT_OK:
+            if (ok) {
+                LOG_MSG_INFO(CSP_LOG_EN, "printok OK (nozzle=%u abs_id=%lu)",
+                             (unsigned)_print_ok_nozzle_idx,
+                             (unsigned long)_print_ok_dispenser_event_id);
+            } else {
+                LOG_MSG_WARNING(CSP_LOG_EN, "printok failed result=%d status=%d",
+                                (int)f.result, (int)f.status_code);
+            }
             break;
         default: break;
     }
@@ -917,6 +1060,42 @@ void ModuleCubeSphere::_cs_format_iso8601(time_t epoch_sec, const char *tz_offse
     snprintf(buf, buf_len, "%04d-%02d-%02dT%02d:%02d:%02d.000%s",
              tm_info.tm_year + 1900, tm_info.tm_mon + 1, tm_info.tm_mday,
              tm_info.tm_hour, tm_info.tm_min, tm_info.tm_sec, tz_offset);
+}
+
+// NE_ID nozzle-type code table (mirrors old ferp_client.cpp nozzle_id_table)
+static struct { const char id[6]; uint8_t code; } const _ne_id_table[] = {
+    {"P01",11},{"P02",12},{"P03",13},{"P04",14},{"P05",15},
+    {"P06",16},{"P07",17},{"P08",18},{"P09",19},{"P10",11},
+    {"D01",21},{"D02",22},{"D03",23},{"D04",24},{"D05",25},
+    {"D06",26},{"D07",27},{"D08",28},{"D09",29},{"D10",30},
+    {"SP01",41},{"SP02",42},{"SP03",43},{"SP04",44},{"SP05",45},
+    {"SD01",51},{"SD02",52},{"SD03",53},{"SD04",54},{"SD05",55},
+    {"K01",91},{"K02",92},{"K03",93},{"K04",94},{"K05",95},
+};
+
+uint64_t ModuleCubeSphere::_cs_compute_ne_id(int64_t timestamp_epoch,
+                                              const char *nozzle_id)
+{
+    // Replicate original get_unique_event_id() algorithm:
+    //   1. Subtract base epoch (2024-12-18 ≈ 1734480000)
+    //   2. Extract last two digits; divide by 100; re-attach at ×10000
+    //   3. Add fuel_type_code × 100
+    if (!nozzle_id) return 0;
+
+    uint64_t ts_base = (uint64_t)((timestamp_epoch > 1734480000LL)
+                                  ? (timestamp_epoch - 1734480000LL) : 0);
+    uint8_t  last2   = (uint8_t)(ts_base % 100);
+    ts_base = (ts_base / 100) * 10000 + last2;
+
+    uint8_t fuel_code = 0;
+    for (size_t i = 0; i < sizeof(_ne_id_table)/sizeof(_ne_id_table[0]); i++) {
+        if (strncmp(nozzle_id, _ne_id_table[i].id, sizeof(_ne_id_table[i].id)) == 0) {
+            fuel_code = _ne_id_table[i].code;
+            break;
+        }
+    }
+
+    return ts_base + (uint64_t)(fuel_code * 100);
 }
 
 // ── Retransmission ────────────────────────────────────────────────────────────

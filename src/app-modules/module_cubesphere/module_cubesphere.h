@@ -30,6 +30,8 @@
 #include "retransmission_manager.h"
 #include "list_manager.h"
 #include "msg_fuel_pumped.h"
+#include "msg_nozzle_state.h"    // MsgNozzleState — pump-start trigger
+#include "msg_fuel_print_ok.h"  // MsgFuelPrintOk — printok trigger
 #include "app_module_ids.h"
 #include <time.h>
 
@@ -161,6 +163,9 @@ private:
         EVT_HEARTBEAT,
         EVT_PUMPED,
         EVT_PUMPED_RETX,    ///< Retransmit of a previously failed pumped event
+        EVT_TOTALIZED,      ///< app.fuel/totalized — same data as pump-end, different event
+        EVT_PUMP_START,     ///< app.fuel/pump-start — nozzle lifted (pumping begins)
+        EVT_PRINT_OK,       ///< app.fuel/printok — receipt printed successfully
         EVT_STATUS_UPDATE,
     } evt_type_t;
 
@@ -202,9 +207,26 @@ private:
     bool _pending_reconnect     = false;
     bool _pending_heartbeat     = false;
     bool _pending_status_update = false;
+    bool _pending_pump_start[CS_NO_NOZZLES] = {}; ///< nozzle went to PUMPING
+    bool _pending_print_ok      = false;
+    bool _pending_totalized     = false;
 
     uint32_t _hb_interval_ms = MODULE_CUBESPHERE_DEFAULT_HB_INTERVAL_MS;
     bool     _hb_enabled     = true;
+
+    // ── Cached data for follow-up events ─────────────────────────────────────
+    // Pump-start: nozzle index that just went PUMPING
+    uint8_t  _pump_start_nozzle_idx = 0;
+    // Totalized and print-ok share the last completed pump-end transaction.
+    uint8_t  _last_pumped_nozzle_idx   = 0;
+    uint32_t _last_pumped_vol_lx1000   = 0;
+    uint32_t _last_pumped_unit_px100   = 0;
+    uint64_t _last_pumped_total_px100  = 0;
+    time_t   _last_pumped_ts_epoch     = 0;
+    // Print-ok: dispenser event ID (ABS_ID) for the NE_ID computation
+    uint32_t _print_ok_dispenser_event_id = 0;
+    int64_t  _print_ok_timestamp_epoch    = 0;
+    uint8_t  _print_ok_nozzle_idx         = 0;
 
     // ── CubeSphere cloud credentials ──────────────────────────────────────────
     static const char   _cs_key[];
@@ -221,6 +243,8 @@ private:
     void _on_wifi_event(const hsys_msg_t &msg);
     void _on_internet_status(const hsys_msg_t &msg);
     void _on_fuel_pumped(const hsys_msg_t &msg);
+    void _on_nozzle_state(const hsys_msg_t &msg);    ///< pump-start trigger
+    void _on_fuel_print_ok(const hsys_msg_t &msg);   ///< printok trigger
     void _on_timer_alarm();
     void _on_tick();
     void _on_sd_ready();
@@ -264,6 +288,11 @@ private:
                                  const char *key, char *out, size_t out_len);
     static void _cs_format_iso8601(time_t epoch_sec, const char *tz_offset,
                                     char *buf, size_t buf_len);
+
+    // ── Unique event ID (NE_ID) for printok ──────────────────────────────────
+    /// Compute a 64-bit NE_ID from timestamp + nozzle_id, matching the
+    /// original ferp_client get_unique_event_id() algorithm.
+    static uint64_t _cs_compute_ne_id(int64_t timestamp_epoch, const char *nozzle_id);
 
     // ── Payload builders ──────────────────────────────────────────────────────
     cs_startup_info_t _build_startup_info() const;
