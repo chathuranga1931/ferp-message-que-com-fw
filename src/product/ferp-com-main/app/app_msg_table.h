@@ -45,6 +45,7 @@
 #include "msg_config_ota.h"             // MsgConfigOta           (0x030C)
 #include "msg_config_get_key.h"         // MsgConfigGetKey        (0x030D)
 #include "msg_config_value.h"           // MsgConfigValue         (0x030E)
+#include "msg_config_updated.h"         // MsgConfigUpdated       (0x030F)
 #include "msg_timer_start.h"            // MsgTimerStart          (0x0100)
 #include "msg_timer_stop.h"             // MsgTimerStop           (0x0101)
 #include "msg_timer_start_response.h"   // MsgTimerStartResponse  (0x0102)
@@ -108,6 +109,7 @@
         MsgConfigGetOta::DESCRIPTOR,                                              \
         MsgConfigGetKey::DESCRIPTOR,                                              \
         MsgConfigValue::DESCRIPTOR,                                               \
+        MsgConfigUpdated::DESCRIPTOR,                                             \
         MsgConfigWifi::DESCRIPTOR,                                                \
         MsgConfigCloud::DESCRIPTOR,                                               \
         MsgConfigMqtt::DESCRIPTOR,                                                \

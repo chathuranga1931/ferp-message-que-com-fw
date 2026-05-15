@@ -88,6 +88,8 @@ add_library(pal_mac STATIC
     ${PAL_MAC}/pal_mac_efuse.cpp
     # Firmware update PAL (simulator) — provides pal_fw_update_* for ota_driver_esp32_main
     ${PAL_MAC}/pal_mac_fw_update.cpp
+    # UDP log PAL (macOS no-op stubs)
+    ${PAL_MAC}/pal_mac_udp_log.cpp
     ${APP_MODS}/module_ota/targets/ota_driver_esp32_main.c
     ${APP_MODS}/module_ota/targets/ota_driver_esp32_dt.c
 )
@@ -145,6 +147,7 @@ add_library(app_messages STATIC
     ${APP_MSGS}/configs/msg_config_get.cpp
     ${APP_MSGS}/configs/msg_config_get_key.cpp
     ${APP_MSGS}/configs/msg_config_value.cpp
+    ${APP_MSGS}/configs/msg_config_updated.cpp
     # WiFi messages
     ${APP_MSGS}/wifi/msg_config_get_wifi.cpp
     ${APP_MSGS}/wifi/msg_config_wifi.cpp
@@ -303,6 +306,8 @@ add_library(app_modules STATIC
     ${APP_MODS}/module_device_info/module_device_info.cpp
     # Message translator module
     ${APP_MODS}/module_msg_translator/ModuleMsgTranslator.cpp
+    # UDP log module
+    ${APP_MODS}/module_udp_log/ModuleUdpLog.cpp
     # App-level translator support (shared static state)
     ${APP}/message_translater_support.cpp
     # Middleware: list manager + retransmission manager
@@ -342,6 +347,7 @@ target_include_directories(app_modules PUBLIC
     ${APP_MODS}/module_http            # module_http.h
     ${APP_MODS}/module_device_info     # module_device_info.h
     ${APP_MODS}/module_msg_translator  # ModuleMsgTranslator.h
+    ${APP_MODS}/module_udp_log         # ModuleUdpLog.h
     ${SUB_MODS}/utils               # crc32.h
     ${DRIVERS}/DS1307
     ${SUB_MODS}           # for ds1307.cpp: #include "pal/pal_i2c.h"
@@ -389,6 +395,7 @@ target_include_directories(app_product PUBLIC
     ${APP_MODS}/module_http            # module_http.h
     ${APP_MODS}/module_device_info     # module_device_info.h
     ${APP_MODS}/module_msg_translator  # ModuleMsgTranslator.h
+    ${APP_MODS}/module_udp_log         # ModuleUdpLog.h
     ${SUB_MODS}/utils               # crc32.h (transitively needed)
     ${APP_MSGS}
     ${APP_MSGS}/system               # msg_persist_log.h, msg_system_status.h

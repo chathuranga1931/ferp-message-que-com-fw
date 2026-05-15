@@ -50,6 +50,10 @@ typedef unsigned char byte;
 #define LOG_EN      true  // Set to false to disable logging at compile time
 #define LOG_DIS     false
 
+#define LOG_MSG_INFO_ONLY_SERIAL(en, fmt, ...) \
+    CHECK_TAG_SIZE(__TAG__); \
+    pal_logger_log_only_serial(en, INFO_CODE __TAG__ "  %4d : " fmt, __LINE__, ##__VA_ARGS__)
+
 #define LOG_MSG_INFO(en, fmt, ...) \
     CHECK_TAG_SIZE(__TAG__); \
     pal_logger_log(en, INFO_CODE __TAG__ "  %4d : " fmt, __LINE__, ##__VA_ARGS__)
@@ -90,6 +94,47 @@ typedef unsigned char byte;
 } while(0)
 
 // ============================================================================
+// Sink callback table
+// ============================================================================
+
+/**
+ * @brief Sink callback type.
+ *
+ * Called after every complete log line (header + content + footer) is written
+ * to UART.  The buffer contains the full raw bytes that were sent — including
+ * any ANSI escape codes — followed by the line terminator.
+ *
+ * @param buf  Pointer to the line buffer.
+ * @param len  Length of the line in bytes (not including the null terminator).
+ */
+typedef void (*pal_logger_sink_fn_t)(const char *buf1, const char *buf2, size_t len);
+
+/** Maximum number of simultaneously registered sinks. */
+#define PAL_LOGGER_MAX_SINKS  4
+
+/**
+ * @brief Register a sink callback.
+ *
+ * Finds the first free slot in the sink table, stores the callback, and
+ * increments the active-sink count.
+ *
+ * @param fn  Non-NULL callback to register.
+ * @return    Slot index (0 .. PAL_LOGGER_MAX_SINKS-1) on success, -1 if the
+ *            table is full or @p fn is NULL.
+ */
+int32_t pal_logger_register_sink(pal_logger_sink_fn_t fn);
+
+/**
+ * @brief Unregister a previously registered sink.
+ *
+ * Clears the slot at @p index and decrements the active-sink count.  Safe to
+ * call with an invalid index (no-op).
+ *
+ * @param index  The value returned by pal_logger_register_sink().
+ */
+void pal_logger_unregister_sink(int32_t index);
+
+// ============================================================================
 // Function Declarations
 // ============================================================================
 
@@ -112,6 +157,7 @@ void pal_logger_init(void);
  */
 void pal_logger_log(bool en, const char *format, ...);
 
+void pal_logger_log_only_serial(bool en, const char *format, ...);
 /**
  * @brief Log a formatted message without newline
  * 

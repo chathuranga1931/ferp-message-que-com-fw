@@ -10,6 +10,7 @@
 
 #include "module_fuel.h"
 #include "msg_config_ready.h"
+#include "msg_config_updated.h"
 #include "msg_nozzle_state.h"
 #include "msg_fuel_pumped.h"
 #include "msg_timer_start.h"
@@ -26,6 +27,7 @@
 #include "msg_config_dt.h"
 #include "msg_dev_info_write.h"
 #include "app_device_info.h"
+#include "app_config.h"
 #include "hsys_msg.h"
 #include "pal_logger.h"
 #include "pal_gpio.h"
@@ -152,6 +154,7 @@ void ModuleFuel::init()
     MLOG("init: nozzle GPIOs armed — GPIO32 (nozzle1) GPIO33 (nozzle2)");
 
     subscribe(MsgConfigReady::ID);
+    subscribe(MsgConfigUpdated::ID);
     subscribe(MsgConfigDT::ID);      // DIRECT response from ModuleConfig
     subscribe(MsgTimerAlarm::ID);
 }
@@ -172,7 +175,24 @@ void ModuleFuel::on_msg_received(const hsys_msg_t &msg)
                 hsys_msg_t *req_msg = MsgConfigGetDT::create(id(), req);
                 if (req_msg) publish(req_msg);
             }
+            // Load log rate from config (applies at boot and after live changes)
+            {
+                const app_config_t *cfg = app_config_get();
+                if (cfg) _dt_log_rate = cfg->dt_log_rate;
+            }
             break;
+
+        case MsgConfigUpdated::ID: {
+            uint16_t key = MsgConfigUpdated::get_key(msg);
+            if (key == CFG_KEY_DT_LOG_RATE) {
+                const app_config_t *cfg = app_config_get();
+                if (cfg) {
+                    _dt_log_rate = cfg->dt_log_rate;
+                    MLOG("dt_log_rate updated: %lu", (unsigned long)_dt_log_rate);
+                }
+            }
+            break;
+        }
 
         case MsgConfigDT::ID:
             if (!_started) {
@@ -390,28 +410,43 @@ void ModuleFuel::_process_queues()
 
             if(is_received)
             {
-                static char log_str1[64];
-                static char log_str2[64];
-
-                if(idx == 0) 
+                // Rate limiting: dt_log_rate is frames-per-minute.
+                // 0 or >= 500 → log every frame.
+                // 1–499      → enforce a minimum gap of (60000/rate) ms
+                //               between consecutive log lines.
+                bool do_log = true;
+                if (_dt_log_rate > 0 && _dt_log_rate < 500)
                 {
-                    sprintf(log_str1, "[%1d] %2d %7.03f %7.02f %8.02f %s",
-                        (unsigned)idx, (int)item[idx].dtype,
-                        display_data[idx].volume_lx1000/1000.0, display_data[idx].unit_pricex100/100.0, display_data[idx].total_pricex100/100.0,
-                        display_data[idx].start_stop ? "UP" : "DN"); 
+                    uint64_t now_ms  = pal_time_get_ms();
+                    uint64_t gap_ms  = 60000ULL / _dt_log_rate;
+                    do_log = (now_ms - _last_log_ms >= gap_ms);
+                    if (do_log) _last_log_ms = now_ms;
                 }
-                else if(idx == 1)
+
+                if (do_log) 
                 {
-                    sprintf(log_str2, "[%1d] %2d %7.03f %7.02f %8.02f %s",
-                        (unsigned)idx, (int)item[idx].dtype,
-                        display_data[idx].volume_lx1000/1000.0, display_data[idx].unit_pricex100/100.0, display_data[idx].total_pricex100/100.0,
-                        display_data[idx].start_stop ? "UP" : "DN"); 
-                }   
-                else
-                {
-                } 
-                
-                MLOG("Received frame: %s  %s", log_str1, log_str2);
+                    static char log_str1[64];
+                    static char log_str2[64];
+
+                    if(idx == 0) 
+                    {
+                        sprintf(log_str1, "[%1d] %2d %7.03f %7.02f %8.02f %s",
+                            (unsigned)idx, (int)item[idx].dtype,
+                            display_data[idx].volume_lx1000/1000.0, display_data[idx].unit_pricex100/100.0, display_data[idx].total_pricex100/100.0,
+                            display_data[idx].start_stop ? "UP" : "DN"); 
+                    }
+                    else if(idx == 1)
+                    {
+                        sprintf(log_str2, "[%1d] %2d %7.03f %7.02f %8.02f %s",
+                            (unsigned)idx, (int)item[idx].dtype,
+                            display_data[idx].volume_lx1000/1000.0, display_data[idx].unit_pricex100/100.0, display_data[idx].total_pricex100/100.0,
+                            display_data[idx].start_stop ? "UP" : "DN"); 
+                    }   
+                    else
+                    {
+                    } 
+                    MLOG("Received frame: %s  %s", log_str1, log_str2);
+                }
             }
 
             if(pump_drivers[dtype].process_data == nullptr || 

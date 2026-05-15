@@ -35,6 +35,7 @@
 #include "msg_config_mqtt.h"
 #include "msg_config_dt.h"
 #include "msg_config_ota.h"
+#include "msg_config_updated.h"
 
 #include "app_rootca.h"
 #include "pal_logger.h"
@@ -385,6 +386,10 @@ void ModuleConfig::_apply_config_set(const hsys_msg_t &msg)
             LOG_MSG_WARNING(MOD_CONFIG_LOG_EN, "ConfigSet: json convert failed (%ld)", (long)rc);
         }
         hsys_pool_free(buf);
+
+        // Notify subscribers which key changed so they can re-read selectively
+        hsys_msg_t *upd = MsgConfigUpdated::create(id(), key);
+        if (upd) publish(upd);
         return;
     }
 

@@ -138,11 +138,12 @@ typedef enum : uint16_t
     MSG_ID_CONFIG_DT            = 0x030A,   ///< ModuleConfig -> ModuleFuel:  display-type / HW settings
     MSG_ID_CONFIG_OTA           = 0x030C,   ///< ModuleConfig -> ModuleWebClientOta: OTA server config
     MSG_ID_CONFIG_VALUE         = 0x030E,   ///< ModuleConfig -> requester: single-field binary value response
+    MSG_ID_CONFIG_UPDATED       = 0x030F,   ///< ModuleConfig -> all: a config field was written (carries CFG_KEY_*)
 
     // ------------------------------------------------------------------
     // Sentinel — keep one above the highest assigned ID
     // ------------------------------------------------------------------
-    MSG_ID_MAX              = 0x030F,   ///< = 783; highest used is 0x030E (CONFIG_VALUE)
+    MSG_ID_MAX              = 0x0310,   ///< highest used is 0x030F (CONFIG_UPDATED)
 
 } app_msg_id_e;
 

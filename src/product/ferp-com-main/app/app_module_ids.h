@@ -56,6 +56,7 @@
 #define MODULE_DEVICE_INFO_ID     ((hsys_module_id_t) 24)   ///< ModuleDeviceInfo    — runtime device identity
 #define MODULE_PLOG_ID            ((hsys_module_id_t) 25)   ///< ModulePLog          — persistent SD-card logger
 #define MODULE_HTTP_ID            ((hsys_module_id_t) 26)   ///< ModuleHttp          — centralised HTTP/HTTPS client
+#define MODULE_UDP_LOG_ID         ((hsys_module_id_t) 27)   ///< ModuleUdpLog        — UDP log sink via WiFi
 
 // ------------------------------------------------------------------
 // Simulator-only / platform-specific  (20+)

@@ -57,6 +57,48 @@ static void build_full_path(const char* relative_path, char* full_path, size_t m
     }
 }
 
+/**
+ * @brief Ensure the parent directory of full_path exists, creating it if needed.
+ *
+ * Walks the path components after SD_MOUNT_POINT and calls mkdir() on each
+ * level that is not yet present.  Errors for already-existing directories
+ * (EEXIST) are silently ignored.
+ */
+static void _ensure_parent_dir(const char* full_path) {
+    if (!full_path) return;
+
+    /* Find the last '/' — everything before it is the parent directory. */
+    const char *last_slash = strrchr(full_path, '/');
+    if (!last_slash || last_slash == full_path) return;
+
+    /* Copy parent path into a mutable buffer. */
+    char parent[256];
+    size_t parent_len = (size_t)(last_slash - full_path);
+    if (parent_len == 0 || parent_len >= sizeof(parent)) return;
+    memcpy(parent, full_path, parent_len);
+    parent[parent_len] = '\0';
+
+    /* Walk each component after the mount point and mkdir if absent. */
+    size_t mount_len = strlen(SD_MOUNT_POINT);
+    char *p = parent + mount_len;  /* start past "/sdcard" */
+    while (*p) {
+        if (*p == '/' && p != parent + mount_len) {
+            *p = '\0';
+            struct stat st;
+            if (stat(parent, &st) != 0) {
+                mkdir(parent, 0777);
+            }
+            *p = '/';
+        }
+        p++;
+    }
+    /* Create the final parent directory itself. */
+    struct stat st;
+    if (stat(parent, &st) != 0) {
+        mkdir(parent, 0777);
+    }
+}
+
 /*===========================================================================*/
 /*                       INITIALIZATION FUNCTIONS                            */
 /*===========================================================================*/
@@ -167,7 +209,9 @@ int32_t pal_sd_file_write(const char* path, const char* data, size_t size) {
     
     char full_path[256];
     build_full_path(path, full_path, sizeof(full_path));
-    
+
+    _ensure_parent_dir(full_path);
+
     FILE* file = fopen(full_path, "w");
     if(file == NULL) {
         LOG_MSG_ERROR(SD_DEBUG_LOG_EN, "Failed to open file for writing: %s", full_path);
@@ -200,7 +244,12 @@ int32_t pal_sd_file_append(const char* path, const char* data, size_t size) {
     // Check if file exists
     struct stat st;
     bool exists = (stat(full_path, &st) == 0);
-    
+
+    // Ensure parent directory exists (creates it if absent)
+    if (!exists) {
+        _ensure_parent_dir(full_path);
+    }
+
     // Open for writing (create) or appending
     FILE* file = fopen(full_path, exists ? "a" : "w");
     if(file == NULL) {

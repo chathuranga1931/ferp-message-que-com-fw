@@ -84,6 +84,12 @@ private:
     bool                  _started = false;
     bool                  _timer_active = false;
 
+    // DT log rate limiting: max frames to log per 60-second window.
+    // 0 or >= 500 → log every frame.  1–499 → enforce a minimum gap of
+    // (60 000 / rate) ms between consecutive log lines.
+    uint32_t              _dt_log_rate   = 0;
+    uint64_t              _last_log_ms   = 0;
+
     void _start(const hsys_msg_t &cfg_msg);
     void _process_queues();
 

@@ -20,6 +20,7 @@
     {"id":  15, "name": "ModuleWifi"},
     {"id":  16, "name": "ModuleSD"},
     {"id":  17, "name": "ModuleTimeMgr"},
-    {"id":  20, "name": "ModuleSimBridge"}
+    {"id":  20, "name": "ModuleSimBridge"},
+    {"id":  27, "name": "ModuleUdpLog"}
   ]
 }

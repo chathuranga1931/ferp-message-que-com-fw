@@ -29,6 +29,10 @@ static hsys_mutex_handle_t s_log_mutex  = nullptr;
 static logger_uart         s_log_uart;
 static char                s_log_buffer[1024];
 
+// Sink table
+static pal_logger_sink_fn_t s_sinks[PAL_LOGGER_MAX_SINKS] = {};
+static uint32_t             s_sink_count = 0;
+
 // Legacy compatibility globals required by pal_logger.h
 char     sprintf_buff[100];
 
@@ -38,6 +42,38 @@ logger_class logger;
 
 // Forward declaration (defined below)
 static void log_header_empty(uint32_t length);
+
+// ============================================================================
+// Sink registration
+// ============================================================================
+
+int32_t pal_logger_register_sink(pal_logger_sink_fn_t fn)
+{
+    if (!fn) return -1;
+    if (s_log_mutex) hsys_mutex_lock(s_log_mutex);
+    int32_t idx = -1;
+    for (int i = 0; i < PAL_LOGGER_MAX_SINKS; i++) {
+        if (s_sinks[i] == nullptr) {
+            s_sinks[i] = fn;
+            s_sink_count++;
+            idx = i;
+            break;
+        }
+    }
+    if (s_log_mutex) hsys_mutex_unlock(s_log_mutex);
+    return idx;
+}
+
+void pal_logger_unregister_sink(int32_t index)
+{
+    if (index < 0 || index >= PAL_LOGGER_MAX_SINKS) return;
+    if (s_log_mutex) hsys_mutex_lock(s_log_mutex);
+    if (s_sinks[index] != nullptr) {
+        s_sinks[index] = nullptr;
+        if (s_sink_count > 0) s_sink_count--;
+    }
+    if (s_log_mutex) hsys_mutex_unlock(s_log_mutex);
+}
 
 // ============================================================================
 // Helpers
@@ -115,6 +151,9 @@ void pal_logger_log_footer(bool en)
 // Core log functions
 // ============================================================================
 
+// Per-line output buffer
+static char s_line_buf[256];
+
 void pal_logger_log(bool en, const char *format, ...)
 {
     if (!en || s_log_mutex == nullptr) return;
@@ -126,8 +165,7 @@ void pal_logger_log(bool en, const char *format, ...)
     vsnprintf(s_log_buffer, sizeof(s_log_buffer), format, args);
     va_end(args);
 
-    // Locate user message start — after the last " : " separator inserted by
-    // LOG_MSG_* macros:  "<ANSI>LVL<ANSI> TAG  NNNN : <user message>"
+    // Locate user message start — after the " : " separator
     const char *msg_start = s_log_buffer;
     const char *sep       = strstr(s_log_buffer, " : ");
     if (sep) msg_start = sep + 3;
@@ -140,37 +178,65 @@ void pal_logger_log(bool en, const char *format, ...)
     }
     uint32_t prefix_vis_len = visible_strlen(prefix_copy);
 
-    uint32_t hdr_len     = pal_logger_log_header();
-    uint32_t total_indent = hdr_len + prefix_vis_len;
+    // Build header string without writing to UART yet
+    char hdr_str[32];
+    int hdr_written = snprintf(hdr_str, sizeof(hdr_str), "%6llu %4lu",
+                               (unsigned long long)pal_time_get_ms(),
+                               (unsigned long)s_log_index++);
+    if (s_log_index > 9999) s_log_index = 0;
+    if (hdr_written < 0) hdr_written = 0;
+
+    uint32_t total_indent = (uint32_t)hdr_written + prefix_vis_len;
     uint32_t msg_raw_len  = (uint32_t)strlen(msg_start);
+    uint32_t offset       = 0;
+    bool     first_line   = true;
 
-    // First line: prefix + first chunk
-    uint32_t first_len = (msg_raw_len < MAX_MSG_LEN) ? msg_raw_len : MAX_MSG_LEN;
+    static char indent_buf[128];
 
-    char chunk[MAX_MSG_LEN + 1];
-    // print prefix
-    uint32_t plen = (prefix_raw_len < MAX_MSG_LEN) ? prefix_raw_len : MAX_MSG_LEN;
-    strncpy(chunk, s_log_buffer, plen);
-    chunk[plen] = '\0';
-    s_log_uart.print_str(chunk);
-    // print first user-message chunk
-    strncpy(chunk, msg_start, first_len);
-    chunk[first_len] = '\0';
-    s_log_uart.print_str(chunk);
-    pal_logger_log_footer(true);
+    while (true) {
+        uint32_t remaining = msg_raw_len - offset;
+        uint32_t chunk_len = (remaining > MAX_MSG_LEN) ? (uint32_t)MAX_MSG_LEN : remaining;
 
-    // Remaining chunks with blank header indent
-    uint32_t offset = first_len;
-    while (offset < msg_raw_len) {
-        log_header_empty(total_indent);
-        uint32_t chunk_len = ((msg_raw_len - offset) > MAX_MSG_LEN)
-                             ? MAX_MSG_LEN
-                             : (msg_raw_len - offset);
-        strncpy(chunk, msg_start + offset, chunk_len);
-        chunk[chunk_len] = '\0';
-        s_log_uart.print_str(chunk);
-        pal_logger_log_footer(true);
-        offset += chunk_len;
+        int line_len;
+        if (first_line) {
+            line_len = snprintf(s_line_buf, sizeof(s_line_buf) - 2,
+                                "%s%.*s%.*s",
+                                hdr_str,
+                                (int)prefix_raw_len, s_log_buffer,
+                                (int)chunk_len, msg_start);
+        } else {
+            uint32_t ind = (total_indent < sizeof(indent_buf) - 1)
+                           ? total_indent : (uint32_t)(sizeof(indent_buf) - 1);
+            memset(indent_buf, ' ', ind);
+            indent_buf[ind] = '\0';
+            line_len = snprintf(s_line_buf, sizeof(s_line_buf) - 2,
+                                "%s%.*s",
+                                indent_buf,
+                                (int)chunk_len, msg_start + offset);
+        }
+
+        // Append newline footer
+        if (line_len > 0 && line_len < (int)(sizeof(s_line_buf) - 1)) {
+            s_line_buf[line_len++] = '\n';
+            s_line_buf[line_len]   = '\0';
+        }
+
+        // Write to UART (stdout)
+        s_log_uart.print_str(s_line_buf);
+
+        // Invoke registered sinks
+        if (s_sink_count > 0) {
+            for (int i = 0; i < PAL_LOGGER_MAX_SINKS; i++) {
+                if (s_sinks[i]) {
+                    s_sinks[i](s_line_buf, (size_t)line_len);
+                }
+            }
+        }
+
+        offset    += chunk_len;
+        first_line = false;
+
+        if (offset >= msg_raw_len) break;
     }
 
     hsys_mutex_unlock(s_log_mutex);

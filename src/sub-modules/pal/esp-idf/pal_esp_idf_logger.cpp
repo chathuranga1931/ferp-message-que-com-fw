@@ -22,6 +22,14 @@
 static hsys_mutex_handle_t s_log_mutex = NULL;
 static logger_uart s_log_uart;
 static char s_log_buffer[1024];  // Buffer for formatted log messages
+static char header[128];
+
+// Sink table
+static pal_logger_sink_fn_t s_sinks[PAL_LOGGER_MAX_SINKS] = {};
+static uint32_t             s_sink_count = 0;
+
+// Log line counter (wraps at 9999)
+static uint32_t log_index = 0;
 
 // Legacy compatibility
 char sprintf_buff[100];
@@ -32,6 +40,38 @@ logger_class logger;
 #endif
 
 void pal_logger_log_header_empty(uint32_t length);
+
+// ============================================================================
+// Sink registration
+// ============================================================================
+
+int32_t pal_logger_register_sink(pal_logger_sink_fn_t fn)
+{
+    if (!fn) return -1;
+    if (s_log_mutex) hsys_mutex_lock(s_log_mutex);
+    int32_t idx = -1;
+    for (int i = 0; i < PAL_LOGGER_MAX_SINKS; i++) {
+        if (s_sinks[i] == NULL) {
+            s_sinks[i] = fn;
+            s_sink_count++;
+            idx = i;
+            break;
+        }
+    }
+    if (s_log_mutex) hsys_mutex_unlock(s_log_mutex);
+    return idx;
+}
+
+void pal_logger_unregister_sink(int32_t index)
+{
+    if (index < 0 || index >= PAL_LOGGER_MAX_SINKS) return;
+    if (s_log_mutex) hsys_mutex_lock(s_log_mutex);
+    if (s_sinks[index] != NULL) {
+        s_sinks[index] = NULL;
+        if (s_sink_count > 0) s_sink_count--;
+    }
+    if (s_log_mutex) hsys_mutex_unlock(s_log_mutex);
+}
 
 // ============================================================================
 // Initialization
@@ -91,7 +131,12 @@ void pal_logger_log(bool en, const char *format, ...) {
         return;
     }
 
-    hsys_mutex_lock(s_log_mutex);
+    if(!hsys_mutex_try_lock(s_log_mutex, 500))
+    {
+        // Failed to acquire mutex within timeout, log an error and return
+        s_log_uart.print_str("Error: Log mutex timeout\r\n");
+        return;
+    }
     
     va_list args;
     va_start(args, format);
@@ -117,8 +162,22 @@ void pal_logger_log(bool en, const char *format, ...) {
     }
     uint32_t prefix_visible_len = visible_strlen(prefix_copy);
 
-    // Total visible indent for continuation lines = timestamp header + prefix
-    uint32_t hdr_len = pal_logger_log_header();
+    snprintf(header, sizeof(header), "%6ld %4ld", (long)pal_time_get_ms(), log_index++);
+    if (log_index > 9999) {
+        log_index = 0;
+    }
+    uint32_t hdr_len = strlen(header);
+    s_log_uart.print_char_buff(header);
+
+    // Invoke registered sinks
+    if (s_sink_count > 0) {
+        for (int i = 0; i < PAL_LOGGER_MAX_SINKS; i++) {
+            if (s_sinks[i]) {
+                s_sinks[i](header, s_log_buffer, strlen(s_log_buffer));
+            }
+        }
+    }
+
     uint32_t total_indent = hdr_len + prefix_visible_len;
 
     uint32_t user_msg_raw_len = strlen(msg_start);
@@ -146,8 +205,40 @@ void pal_logger_log(bool en, const char *format, ...) {
         pal_logger_log_footer(true);
         offset += chunk_len;
     }
+
+    // Invoke registered sinks
+    if (s_sink_count > 0) {
+        for (int i = 0; i < PAL_LOGGER_MAX_SINKS; i++) {
+            if (s_sinks[i]) {
+                s_sinks[i](" ","\n", 1);
+            }
+        }
+    }
     
     hsys_mutex_unlock(s_log_mutex);   
+}
+
+void pal_logger_log_only_serial(bool en, const char *format, ...) {
+
+    if (s_log_mutex == NULL) {
+        return;
+    }
+
+    if(!en)
+    {
+        return;
+    }
+
+    hsys_mutex_lock(s_log_mutex);
+    
+    va_list args;
+    va_start(args, format);
+    vsnprintf(s_log_buffer, sizeof(s_log_buffer), format, args);
+    va_end(args);
+    
+    s_log_uart.print_str(s_log_buffer);    
+    
+    hsys_mutex_unlock(s_log_mutex);
 }
 
 void pal_logger_log_no_newline(bool en, const char *format, ...) {
@@ -175,17 +266,13 @@ void pal_logger_log_no_newline(bool en, const char *format, ...) {
         
 }
 
-static char header[128];
-static uint32_t log_index = 0;
 uint32_t pal_logger_log_header(void) {
     
     // Use PAL time interface for platform independence
     snprintf(header, sizeof(header), "%6ld %4ld", (long)pal_time_get_ms(), log_index++);
     if (log_index > 9999) {
         log_index = 0;
-    }
-    
-    s_log_uart.print_char_buff(header);
+    }    
 
     return strlen(header); // visible timestamp width only
 }

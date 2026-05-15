@@ -62,6 +62,9 @@ idf_component_register(
         # ── Message translator module ─────────────────────────────────────────
         "${D_MODS}/module_msg_translator/ModuleMsgTranslator.cpp"
 
+        # ── UDP log module ────────────────────────────────────────────────────────
+        "${D_MODS}/module_udp_log/ModuleUdpLog.cpp"
+
         # ── HTTP client module ────────────────────────────────────────────────
         "${D_MODS}/module_http/module_http.cpp"
 
@@ -82,6 +85,7 @@ idf_component_register(
         "${D_MSGS}/configs/msg_config_get.cpp"
         "${D_MSGS}/configs/msg_config_get_key.cpp"
         "${D_MSGS}/configs/msg_config_value.cpp"
+        "${D_MSGS}/configs/msg_config_updated.cpp"
         # WiFi messages
         "${D_MSGS}/wifi/msg_config_get_wifi.cpp"
         "${D_MSGS}/wifi/msg_config_wifi.cpp"
@@ -178,6 +182,7 @@ idf_component_register(
         "${D_SUB}/pal/esp-idf/pal_esp_idf_efuse.cpp"
         "${D_SUB}/pal/esp-idf/pal_esp_idf_crypto.cpp"
         "${D_SUB}/pal/esp-idf/pal_esp_idf_fw_update.cpp"
+        "${D_SUB}/pal/esp-idf/pal_esp_idf_udp_log.cpp"
 
         # ── DISTAP device library (protocol only, from ferp_board) ───────
         "${D_SUB}/ferp-device-firmware/ferp_board/main-esp32/lib/device/board.c"
@@ -231,6 +236,7 @@ idf_component_register(
         "${D_MODS}/module_plog"
         "${D_MODS}/module_http"
         "${D_MODS}/module_msg_translator"
+        "${D_MODS}/module_udp_log"
         # App messages and peripherals
         "${D_MSGS}"
         "${D_MSGS}/buttons"

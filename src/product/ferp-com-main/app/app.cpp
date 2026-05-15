@@ -61,6 +61,7 @@
 #include "module_plog.h"
 #include "module_http.h"
 #include "ModuleMsgTranslator.h"
+#include "ModuleUdpLog.h"
 #include "app_rootca.h"
 
 #include "ota_driver_esp32_main.h"
@@ -162,7 +163,7 @@ void app_config_load_defaults(app_config_t *cfg)
     cfg->en_retx = false;
     cfg->nozzle_swap = false;
     
-    cfg->log_udp_enabled = false;
+    cfg->log_udp_enabled = true;
     strncpy(cfg->log_udp_server_ip, "144.24.156.245", sizeof(cfg->log_udp_server_ip) - 1);
     cfg->log_udp_port = 22222;
     
@@ -662,6 +663,7 @@ static HsysModule *k_module_table[] = {
     ModulePLog::instance(),
     ModuleHttp::instance(),
     ModuleMsgTranslator::instance(),
+    ModuleUdpLog::instance(),
 };
 #define MODULE_TABLE_SIZE  (sizeof(k_module_table) / sizeof(k_module_table[0]))
 
@@ -693,10 +695,11 @@ static const hsys_task_desc_t k_task_table[] = {
     { "storage_task",     6*1024,  5,  0,   { MODULE_SPIFFS_ID,      MODULE_SD_ID,             MODULE_CONFIG_ID,     MODULE_DEVICE_INFO_ID,  MODULE_PLOG_ID, 0 } },
     { "timing_task",      3*1024,  4,  0,   { TICKER_MODULE_ID,      MODULE_TIMER_ID,          MODULE_TIMEMGR_ID,                            0 } },
     { "indicator_task",   2*1024,  4,  0,   { MODULE_SYSMON_ID,      MODULE_LEDS_ID,           MODULE_BUZZER_ID,                             0 } },
-    { "btn_task",         2*1024,  5,  0,   { MODULE_PRINT_BTN_ID,   MODULE_DEFAULT_BTN_ID,                                                  0 } },
+    { "btn_task",         3*1024,  5,  0,   { MODULE_PRINT_BTN_ID,   MODULE_DEFAULT_BTN_ID,                                                  0 } },
     { "fuel_task",        4*1024,  5,  0,   { MODULE_FUEL_ID,                                                                                0 } },
     { "network_task" ,   10*1024,  5,  0,   { MODULE_WIFI_ID,        MODULE_INTERNET_ID,       MODULE_MQTT_ID,                    
-                                              MODULE_CLOUD_ID,       MODULE_WEB_CLIENT_OTA_ID, MODULE_WEB_SERVER_ID,  MODULE_OTA_ID,         0 } },
+                                              MODULE_CLOUD_ID,       MODULE_WEB_CLIENT_OTA_ID, MODULE_WEB_SERVER_ID,  MODULE_OTA_ID,
+                                              MODULE_UDP_LOG_ID,     0 } },
     { "http_task",        5*1024,  5,  0,   { MODULE_HTTP_ID,                                                                                0 } },
     { "xlat_task",        3*1024,  5,  0,   { MODULE_MSG_TRANSLATOR_ID,                                                                      0 } }
 };
