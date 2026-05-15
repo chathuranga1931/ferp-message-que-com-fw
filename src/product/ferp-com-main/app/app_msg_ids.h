@@ -47,6 +47,7 @@ typedef enum : uint16_t
     MSG_ID_FUEL_PUMPED          = 0x0010,   ///< ModuleFuel -> all: complete fueling transaction
     MSG_ID_NOZZLE_STATE         = 0x0011,   ///< ModuleFuel -> all: nozzle state transition
     MSG_ID_FUEL_PRINT_OK        = 0x0012,   ///< Any -> all: receipt print confirmed (carries ABS_ID + timestamp)
+    MSG_ID_TOTALIZER_DATA       = 0x0013,   ///< Any -> all: nozzle totalizer reading (16-byte volume string)
 
     // ------------------------------------------------------------------
     // Buttons  (0x0020 – 0x002F)

@@ -68,6 +68,9 @@ idf_component_register(
         # ── HTTP client module ────────────────────────────────────────────────
         "${D_MODS}/module_http/module_http.cpp"
 
+        # ── Print client module ──────────────────────────────────────────────────
+        "${D_MODS}/module_printing/module_printing.cpp"
+
         # ── Utilities ────────────────────────────────────────────────────
         "${D_SUB}/utils/crc32.cpp"
 
@@ -116,6 +119,7 @@ idf_component_register(
         "${D_MSGS}/fuel/msg_nozzle_state.cpp"
         "${D_MSGS}/fuel/msg_printer_btn.cpp"
         "${D_MSGS}/fuel/msg_fuel_print_status.cpp"
+        "${D_MSGS}/fuel/msg_totalizer_data.cpp"
         # Device info messages
         "${D_MSGS}/deviceInfo/msg_dev_info_read.cpp"
         "${D_MSGS}/deviceInfo/msg_dev_info_write.cpp"
@@ -238,6 +242,7 @@ idf_component_register(
         "${D_MODS}/module_http"
         "${D_MODS}/module_msg_translator"
         "${D_MODS}/module_udp_log"
+        "${D_MODS}/module_printing"
         # App messages and peripherals
         "${D_MSGS}"
         "${D_MSGS}/buttons"

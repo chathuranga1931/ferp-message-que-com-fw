@@ -8,9 +8,10 @@
 #include <stdint.h>
 
 typedef enum : uint8_t {
-    NOZZLE_IDLE    = 0,   ///< No active transaction
-    NOZZLE_PUMPING = 1,   ///< Fuel is flowing
-    NOZZLE_PUMPED  = 2,   ///< Transaction complete (briefly, then → IDLE)
+    NOZZLE_IDLE       = 0,   ///< No active transaction
+    NOZZLE_PUMPING    = 1,   ///< Fuel is flowing
+    NOZZLE_PUMPED     = 2,   ///< Transaction complete (briefly, then → IDLE)
+    NOZZLE_TOTALIZER  = 3,   ///< Totalizer reading available for this nozzle
 } nozzle_state_t;
 
 /** Data emitted when a complete fuelling transaction is detected. */
@@ -27,9 +28,10 @@ typedef struct {
 static inline const char *nozzle_state_str(nozzle_state_t s)
 {
     switch (s) {
-        case NOZZLE_IDLE:    return "IDLE";
-        case NOZZLE_PUMPING: return "PUMPING";
-        case NOZZLE_PUMPED:  return "PUMPED";
-        default:             return "UNKNOWN";
+        case NOZZLE_IDLE:      return "IDLE";
+        case NOZZLE_PUMPING:   return "PUMPING";
+        case NOZZLE_PUMPED:    return "PUMPED";
+        case NOZZLE_TOTALIZER: return "TOTALIZER";
+        default:               return "UNKNOWN";
     }
 }

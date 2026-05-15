@@ -17,6 +17,7 @@
     {"id":  12, "name": "ModuleNozzle"},
     {"id":  13, "name": "ModuleCloud"},
     {"id":  20, "name": "ModuleSimBridge"},
-    {"id":  27, "name": "ModuleUdpLog"}
+    {"id":  27, "name": "ModuleUdpLog"},
+    {"id":  28, "name": "ModulePrinting"}
   ]
 }

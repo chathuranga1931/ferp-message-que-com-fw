@@ -57,6 +57,7 @@
 #define MODULE_PLOG_ID            ((hsys_module_id_t) 25)   ///< ModulePLog          — persistent SD-card logger
 #define MODULE_HTTP_ID            ((hsys_module_id_t) 26)   ///< ModuleHttp          — centralised HTTP/HTTPS client
 #define MODULE_UDP_LOG_ID         ((hsys_module_id_t) 27)   ///< ModuleUdpLog        — UDP log sink via WiFi
+#define MODULE_PRINTING_ID        ((hsys_module_id_t) 28)   ///< ModulePrinting      — receipt and totalizer print client
 
 // ------------------------------------------------------------------
 // Simulator-only / platform-specific  (20+)

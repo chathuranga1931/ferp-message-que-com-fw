@@ -46,6 +46,7 @@
 #include "module_leds.h"
 #include "module_default_btn.h"
 #include "module_print_btn.h"
+#include "module_printing.h"
 #include "module_fuel.h"
 #include "module_buzzer.h"
 #include "module_cubesphere.h"
@@ -99,6 +100,7 @@
 #include "msg_mqtt_status.h"
 #include "msg_default_btn.h"
 #include "msg_printer_btn.h"
+#include "msg_totalizer_data.h"
 #include "msg_sd_ready.h"
 #include "msg_sd_status.h"
 #include "msg_spiffs_ready.h"
@@ -349,6 +351,7 @@ static const app_msg_codec_entry_t k_codec_table[] = {
     // ── Fuel / dispenser ─────────────────────────────────────────────────────
     { "MsgFuelPumped",           MSG_ID_FUEL_PUMPED,           MsgFuelPumped::from_json,           MsgFuelPumped::to_json          },
     { "MsgNozzleState",          MSG_ID_NOZZLE_STATE,          MsgNozzleState::from_json,          MsgNozzleState::to_json         },
+    { "MsgTotalizerData",        MSG_ID_TOTALIZER_DATA,        MsgTotalizerData::from_json,        MsgTotalizerData::to_json       },
 
     // ── Buttons ───────────────────────────────────────────────────────────────
     { "MsgDefaultBtn",           MSG_ID_DEFAULT_BTN,           MsgDefaultBtn::from_json,           MsgDefaultBtn::to_json          },
@@ -668,6 +671,7 @@ static HsysModule *k_module_table[] = {
     ModuleHttp::instance(),
     ModuleMsgTranslator::instance(),
     ModuleUdpLog::instance(),
+    ModulePrinting::instance(),
 };
 #define MODULE_TABLE_SIZE  (sizeof(k_module_table) / sizeof(k_module_table[0]))
 
@@ -699,7 +703,7 @@ static const hsys_task_desc_t k_task_table[] = {
     { "storage_task",     6*1024,  5,  0,   { MODULE_SPIFFS_ID,      MODULE_SD_ID,             MODULE_CONFIG_ID,     MODULE_DEVICE_INFO_ID,  MODULE_PLOG_ID, 0 } },
     { "timing_task",      3*1024,  4,  0,   { TICKER_MODULE_ID,      MODULE_TIMER_ID,          MODULE_TIMEMGR_ID,                            0 } },
     { "indicator_task",   2*1024,  4,  0,   { MODULE_SYSMON_ID,      MODULE_LEDS_ID,           MODULE_BUZZER_ID,                             0 } },
-    { "btn_task",         3*1024,  5,  0,   { MODULE_PRINT_BTN_ID,   MODULE_DEFAULT_BTN_ID,                                                  0 } },
+    { "btn_task",         3*1024,  5,  0,   { MODULE_PRINT_BTN_ID,   MODULE_DEFAULT_BTN_ID,  MODULE_PRINTING_ID,                                                   0 } },
     { "fuel_task",        4*1024,  5,  0,   { MODULE_FUEL_ID,                                                                                0 } },
     { "network_task" ,   10*1024,  5,  0,   { MODULE_WIFI_ID,        MODULE_INTERNET_ID,       MODULE_MQTT_ID,                    
                                               MODULE_CLOUD_ID,       MODULE_WEB_CLIENT_OTA_ID, MODULE_WEB_SERVER_ID,  MODULE_OTA_ID,

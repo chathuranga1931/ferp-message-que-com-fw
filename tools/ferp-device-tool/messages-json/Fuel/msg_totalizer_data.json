@@ -1,0 +1,10 @@
+{
+  "type": "MsgTotalizerData",
+  "msg_id": "0x0013",
+  "direction": "notification",
+  "fields": [
+    {"name": "nozzle_idx",      "type": "uint8",  "default": 0},
+    {"name": "timestamp_epoch", "type": "uint32", "default": 0},
+    {"name": "totalizer_str",   "type": "string", "default": "000000.000"}
+  ]
+}

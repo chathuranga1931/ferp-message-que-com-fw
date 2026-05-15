@@ -178,6 +178,7 @@ add_library(app_messages STATIC
     ${APP_MSGS}/fuel/msg_nozzle_state.cpp
     ${APP_MSGS}/fuel/msg_printer_btn.cpp
     ${APP_MSGS}/fuel/msg_fuel_print_status.cpp
+    ${APP_MSGS}/fuel/msg_totalizer_data.cpp
     # System messages (extended)
     ${APP_MSGS}/system/msg_persist_log.cpp
     ${APP_MSGS}/system/msg_system_status.cpp
@@ -309,6 +310,8 @@ add_library(app_modules STATIC
     ${APP_MODS}/module_msg_translator/ModuleMsgTranslator.cpp
     # UDP log module
     ${APP_MODS}/module_udp_log/ModuleUdpLog.cpp
+    # Print client module
+    ${APP_MODS}/module_printing/module_printing.cpp
     # App-level translator support (shared static state)
     ${APP}/message_translater_support.cpp
     # Middleware: list manager + retransmission manager
@@ -349,6 +352,7 @@ target_include_directories(app_modules PUBLIC
     ${APP_MODS}/module_device_info     # module_device_info.h
     ${APP_MODS}/module_msg_translator  # ModuleMsgTranslator.h
     ${APP_MODS}/module_udp_log         # ModuleUdpLog.h
+    ${APP_MODS}/module_printing        # module_printing.h
     ${SUB_MODS}/utils               # crc32.h
     ${DRIVERS}/DS1307
     ${SUB_MODS}           # for ds1307.cpp: #include "pal/pal_i2c.h"
@@ -397,6 +401,7 @@ target_include_directories(app_product PUBLIC
     ${APP_MODS}/module_device_info     # module_device_info.h
     ${APP_MODS}/module_msg_translator  # ModuleMsgTranslator.h
     ${APP_MODS}/module_udp_log         # ModuleUdpLog.h
+    ${APP_MODS}/module_printing        # module_printing.h
     ${SUB_MODS}/utils               # crc32.h (transitively needed)
     ${APP_MSGS}
     ${APP_MSGS}/system               # msg_persist_log.h, msg_system_status.h

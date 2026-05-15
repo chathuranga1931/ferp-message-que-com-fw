@@ -56,6 +56,7 @@
 #include "msg_fuel_pumped.h"            // MsgFuelPumped          (0x0010)
 #include "msg_nozzle_state.h"           // MsgNozzleState         (0x0011)
 #include "msg_fuel_print_status.h"      // MsgFuelPrintStatus         (0x0012)
+#include "msg_totalizer_data.h"          // MsgTotalizerData           (0x0013)
 #include "msg_wifi_event.h"             // MsgWifiEvent           (0x0A00)
 #include "msg_internet_status.h"        // MsgInternetStatus      (0x0A01)
 #include "msg_cloud_status.h"           // MsgCloudStatus         (0x0A02)
@@ -126,6 +127,7 @@
         MsgFuelPumped::DESCRIPTOR,                                                \
         MsgNozzleState::DESCRIPTOR,                                               \
         MsgFuelPrintStatus::DESCRIPTOR,                                               \
+        MsgTotalizerData::DESCRIPTOR,                                                 \
         MsgWifiEvent::DESCRIPTOR,                                                 \
         MsgInternetStatus::DESCRIPTOR,                                            \
         MsgCloudStatus::DESCRIPTOR,                                               \
