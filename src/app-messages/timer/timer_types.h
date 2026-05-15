@@ -28,6 +28,7 @@ typedef enum : uint8_t {
 typedef struct {
     hsys_module_id_t  source_id;          ///< Owning module
     uint32_t          duration_ms;        ///< Period (repetitive) or one-shot duration
+    uint32_t          user_tag;           ///< Opaque tag supplied by caller; echoed in MsgTimerAlarm
     bool              is_repetitive;      ///< Repeats if true
     bool              active;             ///< Slot is in use
     uint64_t          next_fire_ms;       ///< Absolute uptime timestamp for next alarm

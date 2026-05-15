@@ -46,6 +46,7 @@ hsys_msg_t *MsgTimerStart::from_json(const char *payload_json, hsys_module_id_t 
     p.source_module_id = doc["source_module_id"].as<uint16_t>();
     p.start_offset_ms  = doc["start_offset_ms"].as<uint32_t>();
     p.duration_ms      = doc["duration_ms"].as<uint32_t>();
+    p.user_tag         = doc["user_tag"].as<uint32_t>();
     p.is_repetitive    = doc["is_repetitive"].as<bool>();
     p.forced           = doc["forced"].as<bool>();
     return create(sender_id, p);
@@ -54,10 +55,11 @@ hsys_msg_t *MsgTimerStart::from_json(const char *payload_json, hsys_module_id_t 
 int32_t MsgTimerStart::to_json(const hsys_msg_t *msg, char *data_json, uint32_t buf_len)
 {
     auto p = deserialize(*msg);
-    StaticJsonDocument<96> doc;
+    StaticJsonDocument<128> doc;
     doc["source_module_id"] = (int)p.source_module_id;
     doc["start_offset_ms"]  = p.start_offset_ms;
     doc["duration_ms"]      = p.duration_ms;
+    doc["user_tag"]         = p.user_tag;
     doc["is_repetitive"]    = p.is_repetitive;
     doc["forced"]           = p.forced;
     size_t w = serializeJson(doc, data_json, buf_len);

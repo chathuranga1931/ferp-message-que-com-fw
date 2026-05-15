@@ -39,6 +39,7 @@ public:
     struct Payload {
         hsys_module_id_t  source_module_id;   ///< Module the alarm is for
         uint32_t          elapsed_ms;         ///< ms since timer was started
+        uint32_t          user_tag;           ///< Tag echoed from MsgTimerStart (0 if unused)
     };
 
     // -----------------------------------------------------------------------

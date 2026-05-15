@@ -50,6 +50,7 @@ public:
         hsys_module_id_t  source_module_id;   ///< Module requesting the timer
         uint32_t          start_offset_ms;    ///< Additional delay before first fire
         uint32_t          duration_ms;        ///< Timer period / one-shot duration
+        uint32_t          user_tag;           ///< Opaque tag echoed back in MsgTimerAlarm (0 = unused)
         bool              is_repetitive;      ///< true = repeat, false = one-shot
         bool              forced;             ///< true = stop any existing slot and restart
         uint8_t           _pad[2];            ///< Explicit alignment padding

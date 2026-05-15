@@ -12,6 +12,12 @@
       "label": "Elapsed (ms)",
       "type": "uint32",
       "default": 0
+    },
+    {
+      "name": "user_tag",
+      "label": "User tag",
+      "type": "uint32",
+      "default": 0
     }
   ],
   "direction": "resp"

@@ -176,6 +176,7 @@ timer_result_t ModuleTimer::_start_timer(const MsgTimerStart::Payload &p)
     timer_meta_t &slot     = m_slots[idx];
     slot.source_id         = p.source_module_id;
     slot.duration_ms       = p.duration_ms;
+    slot.user_tag          = p.user_tag;
     slot.is_repetitive     = p.is_repetitive;
     slot.active            = true;
     slot.next_fire_ms      = now_ms + p.start_offset_ms + p.duration_ms;
@@ -244,6 +245,7 @@ void ModuleTimer::_send_alarm(int slot_index, uint32_t elapsed_ms)
     MsgTimerAlarm::Payload p{};
     p.source_module_id = slot.source_id;
     p.elapsed_ms       = elapsed_ms;
+    p.user_tag         = slot.user_tag;
 
     hsys_msg_t *msg = MsgTimerAlarm::create(id(), p);
     if (msg) {
