@@ -161,7 +161,7 @@ ferp-message-library/
 │   │   ├── module_print_btn/
 │   │   ├── module_fuel/
 │   │   ├── module_buzzer/
-│   │   ├── module_cloud/
+│   │   ├── module_cubesphere/   (was module_cloud/)
 │   │   ├── module_internet/
 │   │   ├── module_wifi/
 │   │   ├── module_sd/
@@ -169,6 +169,7 @@ ferp-message-library/
 │   │   ├── module_ota/      # OTA session manager (target-agnostic)
 │   │   ├── module_web_client_ota/   # HTTP-polling OTA source
 │   │   ├── module_mqtt/     # MQTT bridge + OTA source
+│   │   ├── module_udp_log/  # UDP log sink over WiFi (new)
 │   │   └── module_msg_translator/  # Rule-table message translator
 │   │
 │   ├── sub-modules/
@@ -189,11 +190,17 @@ ferp-message-library/
 │           └── ferp-com-simulator/  # macOS simulator build target
 │
 ├── tools/
-│   └── ferp-mqtt-tool/      # Python GUI + CLI MQTT tool
-│       ├── ferp_mqtt_gui.py
-│       ├── ferp_mqtt_ota.py
-│       ├── ferp_mqtt_listen.py
-│       └── messages/        # msg_loader.py, ota_session.py, msg_defs.py
+│   └── ferp-device-tool/    # Python/Tkinter GUI for device interaction
+│       ├── main.py           # Combined MQTT + Config + OTA tool
+│       ├── transports.py     # MqttRawClient, WebAPITransport, UARTTransport
+│       ├── mqtt_ota.py       # OTA via MQTT
+│       ├── webapi_ota.py     # OTA via HTTP WebAPI
+│       ├── ota_bundle.py     # .bdl bundle builder/parser
+│       ├── mqtt_auth.py      # Python impl of mqtt_auth_hash (must stay in sync with C)
+│       ├── config_keys.json  # Config key definitions
+│       ├── ferp_devices.json # Saved device list
+│       ├── run.mac.sh / run.win.bat
+│       └── messages/         # JSON message definitions for GUI
 │
 └── test-bins/               # Test firmware binaries for OTA testing
 ```
@@ -235,10 +242,10 @@ Every message class must:
 | Range | Domain |
 |-------|--------|
 | `0x0000` | Reserved (invalid) |
+| `0x0010 – 0x001F` | Fuel / dispenser |
 | `0x0100 – 0x010F` | Timer control |
 | `0x0200 – 0x02FF` | System / timing |
 | `0x0300 – 0x03FF` | Configuration |
-| `0x0800 – 0x08FF` | Fuel / dispenser |
 | `0x0900 – 0x09FF` | Buttons |
 | `0x0A00 – 0x0AFF` | Connectivity, OTA, MQTT |
 | `0xFFFF` | Reserved (invalid) |
@@ -272,13 +279,15 @@ Every message class must:
 | `MsgConfigMqtt` | `0x0309` | DIRECT | `host[64]`, `port`, `user[32]`, `password[32]` | ModuleConfig → requester |
 | `MsgConfigDt` | `0x030A` | DIRECT | `display_type`, `stabilize_delay_ms` | ModuleConfig → requester |
 | `MsgConfigOta` | `0x030C` | DIRECT | `server_url[128]`, `check_interval_s` | ModuleConfig → requester |
-| `MsgFuelPumped` | `0x0800` | NOTIF | `volume_ml`, `transaction_id` | ModuleFuel → all |
-| `MsgNozzleState` | `0x0801` | NOTIF | `state`, `nozzle_id` | ModuleFuel → all |
+| `MsgConfigUpdated` | TBD | NOTIF | `key` (uint16, CFG_KEY_*) | ModuleConfig → all (after any MsgConfigSet write) |
+| `MsgFuelPumped` | `0x0010` | NOTIF | `n_idx`, `unit_pricex100`, `total_pricex100`, `vol_lx1000`, `time_stamp` | ModuleFuel → all |
+| `MsgNozzleState` | `0x0011` | NOTIF | `n_idx`, `state` (IDLE/PUMPING/PUMPED) | ModuleFuel → all |
+| `MsgFuelPrintOk` | `0x0012` | NOTIF | `nozzle_idx`, `dispenser_event_id`, `timestamp_epoch` | Any → all *(WIP — untracked)* |
 | `MsgDefaultBtn` | `0x0900` | NOTIF | `button_id`, `press_type` | ModuleDefaultBtn → all |
 | `MsgPrinterBtn` | `0x0901` | NOTIF | `button_id`, `status` | ModulePrintBtn → all |
 | `MsgWifiEvent` | `0x0A00` | NOTIF | `event`, `rssi` | ModuleWifi → all |
 | `MsgInternetStatus` | `0x0A01` | NOTIF | `connected` | ModuleInternet → all |
-| `MsgCloudStatus` | `0x0A02` | NOTIF | `event`, `success` | ModuleCloud → all |
+| `MsgCloudStatus` | `0x0A02` | NOTIF | `event`, `success` | ModuleCubeSphere → all |
 | `MsgOtaStartRequest` | `0x0A03` | DIRECT | `target_idx`, `incoming_version[32]` | Source → OtaModule |
 | `MsgOtaStartResponse` | `0x0A04` | DIRECT | `result` | OtaModule → Source |
 | `MsgOtaRequestDriver` | `0x0A05` | DIRECT | — | Source → OtaModule |
@@ -343,15 +352,16 @@ Pool classes are defined per-product in `app.cpp`. Example configuration:
 | 10 | `ModulePrintBtn` | `btn_task` | Print button debounce |
 | 11 | `ModuleFuel` | `fuel_task` | Fuel dispenser state machine |
 | 12 | `ModuleBuzzer` | `indicator_task` | Piezo buzzer patterns |
-| 13 | `ModuleCloud` | `network_task` | HTTPS cloud backend |
+| 13 | `ModuleCubeSphere` | `network_task` | CubeSphere HTTPS cloud backend |
 | 14 | `ModuleInternet` | `network_task` | Internet ping monitor |
 | 15 | `ModuleWifi` | `network_task` | WiFi connection manager |
 | 16 | `ModuleSD` | `storage_task` | SD card mount |
 | 17 | `ModuleTimeMgr` | `timemgr_task` | RTC / NTP / SPIFFS backup |
 | 18 | `OtaModule` | `ota_task` | OTA session manager |
-| 19 | `ModuleWebClientOta` | `web_ota_task` | HTTP-polling OTA source |
+| 19 | `ModuleWebClientOta` | `ota_task` | HTTP-polling OTA source |
 | 22 | `ModuleMqtt` | platform task | MQTT bridge + OTA source |
-| 23 | `ModuleMsgTranslator` | `xlat_task` | Rule-table message translator |
+| 23 | `ModuleMsgTranslator` | embedded in task | Rule-table message translator |
+| 27 | `ModuleUdpLog` | `network_task` | UDP log sink over WiFi |
 
 ---
 
@@ -371,13 +381,14 @@ MsgSpiffsReady
                               │
                      ┌────────┴────────┐
                      ▼                 ▼
-               ModuleInternet     ModuleCloud
+               ModuleInternet    ModuleCubeSphere
+                     │                  │
+              MsgInternetStatus     (starts on
+              (connected)          MsgInternetStatus)
                      │
-              MsgInternetStatus(connected)
-                     │
-              ┌──────┴──────┐
-              ▼             ▼
-          ModuleMqtt    ModuleCloud
+              ┌──────┴──────┬─────────────────┐
+              ▼             ▼                 ▼
+          ModuleMqtt  ModuleCubeSphere  ModuleUdpLog
 ```
 
 ---
@@ -438,10 +449,14 @@ post_init() → publish MsgSpiffsReady
 ```mermaid
 stateDiagram-v2
     [*] --> WAIT_SPIFFS : init()
-    WAIT_SPIFFS --> READY : MsgSpiffsReady\n(load + save JSON)
+    WAIT_SPIFFS --> READY : MsgSpiffsReady\n(load + save JSON + publish MsgConfigReady)
     READY --> READY : MsgConfigGetWifi / GetCloud / GetMqtt / GetOta\n→ DIRECT response
-    READY --> READY : MsgConfigSet\n→ update + MsgConfigReady
+    READY --> READY : MsgConfigSet\n→ update RAM + file\n→ publish MsgConfigUpdated(key)
 ```
+
+> **`MsgConfigUpdated`** is published (not `MsgConfigReady`) after every `MsgConfigSet` write.
+> Payload carries the `uint16_t key` (a `CFG_KEY_*` constant) that changed so subscribers can
+> react selectively without re-reading all config. `MsgConfigReady` is published only once, at startup.
 
 | Subscribes | Publishes |
 |-----------|-----------|
@@ -532,9 +547,9 @@ stateDiagram-v2
 
 ---
 
-### 4.10 ModuleCloud
+### 4.10 ModuleCubeSphere (was: ModuleCloud)
 
-**Purpose:** HTTPS cloud backend, device registration, heartbeat, and data upload.
+**Purpose:** HTTPS cloud backend for the CubeSphere platform — device registration, heartbeat, fuel-end event upload, and retransmission of missed events.
 
 ```mermaid
 stateDiagram-v2
@@ -547,9 +562,14 @@ stateDiagram-v2
 
 | | |
 |--|--|
-| Backend | `cloud_driver_t` — set via `set_driver()` before `app_init()` |
-| HB interval | `MODULE_CLOUD_DEFAULT_HB_INTERVAL_MS` (60 000 ms) |
-| Retry | 60 000 ms |
+| Event types | `EVT_STARTUP`, `EVT_RECONNECT`, `EVT_HEARTBEAT`, `EVT_PUMPED`, `EVT_PUMPED_RETX`, `EVT_STATUS_UPDATE`; WIP: `EVT_TOTALIZED`, `EVT_PUMP_START`, `EVT_PRINT_OK` |
+| HB interval | `hb_interval` config key (default 60 s) |
+| Retry | 60 000 ms via ModuleTimer |
+| HTTP backend | Sessions go via ModuleHttp (DIRECT message exchange); only one session at a time |
+| Retx storage | `/sd/retx/evt_YYYYMMDD.txt`, one line per event, 7-day retention |
+
+> **Known limitation:** Only the early-reject path (HTTP busy / state not RUNNING) writes to retx.
+> Live-send non-2xx failures are currently lost — the `send_callback` in `_retx_init` is a TODO stub.
 
 ---
 
@@ -805,9 +825,10 @@ RUNNING           init_comms_distap(_on_frame_display1, _on_frame_display2)
 
 | Message | ID | Type | Payload |
 |---------|-----|------|---------|
-| `MsgFuelPumped` | `0x0800` | NOTIFICATION | `n_idx`, `unit_pricex100`, `total_pricex100`, `volume_lx1000`, `time_stamp` |
-| `MsgNozzleState` | `0x0801` | NOTIFICATION | `n_idx`, `state` (IDLE/PUMPING/PUMPED) |
-| `MsgDTFwVersion` | `0x0802` | NOTIFICATION | `version[32]`, `board_type` |
+| `MsgFuelPumped` | `0x0010` | NOTIFICATION | `n_idx`, `unit_pricex100`, `total_pricex100`, `volume_lx1000`, `time_stamp` |
+| `MsgNozzleState` | `0x0011` | NOTIFICATION | `n_idx`, `state` (IDLE/PUMPING/PUMPED) |
+| `MsgFuelPrintOk` | `0x0012` | NOTIFICATION | `nozzle_idx`, `dispenser_event_id` (ABS_ID), `timestamp_epoch` *(WIP — untracked)* |
+| `MsgDTFwVersion` | `0x0013` | NOTIFICATION | `version[32]`, `board_type` |
 
 > `MsgDispTapData` (raw frame) is **intentionally absent from the bus** — it is a direct call within `ModuleFuel`. Nozzle start/stop GPIO events are also **not on the bus** — handled internally via `hsys_tog_button_t` + event-group bits.
 
@@ -907,6 +928,44 @@ To add a translation rule:
 1. Declare function in `src/product/app/msg_translators.h`
 2. Implement in `src/product/app/msg_translators.cpp`
 3. Add row to `k_translator_table[]` in `src/product/app/app.cpp`
+
+---
+
+### 4.18 ModuleUdpLog (ID 27)
+
+**Purpose:** Streams log output to a UDP server over WiFi — enables remote debugging without a serial cable.
+
+#### Lifecycle
+
+1. **`MsgConfigReady`** → reads `en_udp_ser`, `udp_srvr_ip`, `udp_srvr_port` from config → `pal_udp_log_init(server_ip, port, mac_no_colon, wake_fn)`
+2. **`MsgWifiEvent(GOT_IP)`** → `pal_udp_log_start()` → `pal_logger_register_sink(pal_udp_log_sink)`
+3. **`MsgWifiEvent(DISCONNECTED)`** → `pal_logger_unregister_sink()` → `pal_udp_log_stop()`
+4. **`on_wake()`** → `pal_udp_log_drain()` — sends queued ≤256-byte log entries via UDP
+
+| | |
+|--|--|
+| Subscribes | `MsgConfigReady`, `MsgWifiEvent` |
+| Publishes | — |
+| Task | `network_task` |
+
+#### Config Keys Required
+
+| Key | Type | Default |
+|-----|------|---------|
+| `en_udp_ser` | bool | false |
+| `udp_srvr_ip` | string | — |
+| `udp_srvr_port` | uint32 | — |
+
+#### Simulator Note
+
+`pal_mac_udp_log.cpp` is a no-op stub — the macOS simulator does not send UDP log packets.
+
+#### Desktop Receiver
+
+```bash
+cd helper-scripts
+python3 udp-script.py   # listens on configured port, prints formatted log
+```
 
 ---
 
@@ -1146,7 +1205,7 @@ typedef struct {
 | `OTA_EVENT_COMPLETE` | Binary written successfully; reboot imminent |
 | `OTA_EVENT_TIMEOUT` | Session timed out |
 
-Subscribers of `MsgOtaEvent`: `ModuleLeds`, `ModuleBuzzer`, `ModuleCloud`.
+Subscribers of `MsgOtaEvent`: `ModuleLeds`, `ModuleBuzzer`, `ModuleCubeSphere`.
 
 ---
 
@@ -1362,6 +1421,47 @@ OTA progress event:
 ```
 
 #### 6.3.5 Data field — message payload mapping
+
+---
+
+### 6.3a Command Authentication (hop_idx / hash)
+
+Inbound `.../cmd` messages on public brokers are authenticated with a keyed hash to prevent MITM injection.
+
+**Extended cmd envelope:**
+```json
+{
+  "seq":      42,
+  "msg":      "MsgConfigSet",
+  "data":     { "key": "mqtt_host", "type": "string", "value": "broker.local" },
+  "hop_idx":  3,
+  "hash":     "a1b2c3d4e5f60718"
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `hop_idx` | uint8, 0–15 | Selects a row from the 16-entry 64-bit key table |
+| `hash` | hex string, 16 chars | `splitmix64(keys[hop_idx], seq)` rendered as lowercase hex |
+
+**Algorithm (splitmix64-style):**
+```c
+uint64_t h = key ^ (uint64_t)seq;
+h += 0x9e3779b97f4a7c15ULL;
+h = (h ^ (h >> 30)) * 0xbf58476d1ce4e5b9ULL;
+h = (h ^ (h >> 27)) * 0x94d049bb133111ebULL;
+h = h ^ (h >> 31);
+```
+
+**Key table:** `k_mqtt_auth_keys[16]` (uint64) defined in:
+- C: `src/app-modules/module_mqtt/mqtt_auth.h` — `mqtt_auth_hash()`, `mqtt_auth_verify()`
+- Python: `tools/ferp-device-tool/mqtt_auth.py` — `mqtt_auth_hash()`
+
+> **Both tables must remain identical.** If the key table changes in one, it must be updated in the other.
+
+If `hop_idx` or `hash` are absent from the envelope, the command is rejected before dispatch.
+
+---
 
 | `msg` | Direction | `data` fields |
 |---|---|---|
@@ -1655,28 +1755,39 @@ The PAL MQTT layer switches transport based on port/config. No code changes need
 
 ---
 
-### 6.9 MQTT Tool Overview
+### 6.9 Device Tool Overview
 
-Python-based tool for interacting with devices over MQTT. Provides GUI, CLI OTA, and listen modes.
+Python/Tkinter desktop GUI for interacting with devices. Supports MQTT, HTTP WebAPI, and UART transports.
 
 ```
-tools/ferp-mqtt-tool/
-├── ferp_mqtt_gui.py        # Tkinter GUI — message send + OTA panel
-├── ferp_mqtt_ota.py        # CLI OTA firmware update
-├── ferp_mqtt_listen.py     # CLI subscribe and print bus messages
-└── messages/
-    ├── msg_loader.py       # Loads all message defs from JSON folder
-    ├── ota_session.py      # Shared OTA MQTT session logic
-    └── msg_defs.py         # Re-export shim
+tools/ferp-device-tool/
+├── main.py             # Combined MQTT + Config + OTA Tkinter GUI
+├── transports.py       # MqttRawClient, WebAPITransport, UARTTransport
+├── mqtt_ota.py         # OTA over MQTT (bundle or raw bin)
+├── webapi_ota.py       # OTA via HTTP WebAPI
+├── ota_bundle.py       # .bdl bundle builder / parser
+├── mqtt_auth.py        # Python impl of mqtt_auth_hash (must match mqtt_auth.h)
+├── config_keys.json    # Config key definitions (no code change needed for new keys)
+├── ferp_devices.json   # Saved device list
+├── run.mac.sh          # macOS launcher (activates venv)
+├── run.win.bat         # Windows launcher
+└── messages/           # JSON message definitions for GUI dropdowns
 ```
 
 ---
 
-### 6.10 CLI Usage
+### 6.10 Device Tool Usage
 
-**OTA update:**
+**Launch GUI:**
+```bash
+cd tools/ferp-device-tool
+./run.mac.sh        # macOS (activates venv, runs main.py)
+run.win.bat         # Windows
 ```
-python3 ferp_mqtt_ota.py \
+
+**OTA update (MQTT transport):**
+```bash
+python3 mqtt_ota.py \
   --broker broker.emqx.io --port 1883 \
   --dev-type ferp-com --group default \
   --device-id 00000000-0000-0000-0000-000000000000 \
@@ -1685,12 +1796,10 @@ python3 ferp_mqtt_ota.py \
   --chunk-size 4096
 ```
 
-**Listen:**
-```
-python3 ferp_mqtt_listen.py \
-  --broker broker.emqx.io --port 1883 \
-  --dev-type ferp-com --group default \
-  --device-id 00000000-0000-0000-0000-000000000000
+**UDP log receiver (desktop debugging):**
+```bash
+cd helper-scripts
+python3 udp-script.py   # prints formatted log from device over UDP
 ```
 
 **Send a command:**
@@ -1766,7 +1875,7 @@ This section traces the complete path of a fuel transaction from the moment the 
 | Actor | Role |
 |-------|------|
 | `ModuleFuel` (ID 11) | Detects pump-end; owns the fuel state machine; publishes `MsgFuelPumped` |
-| `ModuleCloud` / `ModuleCubeSphere` (ID 13) | Cloud manager; subscribes to `MsgFuelPumped`; builds and POSTs event JSON to CubeSphere |
+| `ModuleCubeSphere` (ID 13) | Cloud manager; subscribes to `MsgFuelPumped`; builds and POSTs event JSON to CubeSphere |
 | `ModuleHttp` | Executes the actual HTTPS session on behalf of ModuleCubeSphere |
 | `ModuleTimer` (ID 7) | Heartbeat timer; drives the retransmission retry loop |
 | `ModuleSD` (ID 16) | SD card — backing store for the retransmission queue |
@@ -1798,7 +1907,7 @@ Fuel Dispenser HW                ModuleFuel (task: fuel_task)
       │                                 │   → state transitions to Pumping_State_Stopped
       │                                 │   → sanki6_get_event(&ev, 0)
       │                                 │
-      │                    MsgFuelPumped (NOTIFICATION, 0x0800)
+      │                    MsgFuelPumped (NOTIFICATION, 0x0010)
       │                    { nozzle_idx, vol_lx1000, unit_pricex100, total_pricex100 }
       │                                 │
       │                                 └──────────────────────────────────────────┐
@@ -1950,7 +2059,7 @@ sequenceDiagram
     Note over MF: nozzle state machine
     HW->>MF: GPIO edge (nozzle replaced)
     Note over MF: debounce 500 ms
-    MF->>MC: MsgFuelPumped [NOTIF 0x0800]
+    MF->>MC: MsgFuelPumped [NOTIF 0x0010]
 
     alt STATE==RUNNING && HTTP_IDLE && nozzle UUID known
         MC->>MH: MsgHttpStartRequest [DIRECT]
@@ -2016,17 +2125,24 @@ Acknowledged events are marked consumed by `list_mgr_ack()` (internal tombstone)
 stateDiagram-v2
     [*] --> WAIT_FOR_INTERNET : init()
 
-    WAIT_FOR_INTERNET --> REGISTERING : MsgWifiEvent(GOT_IP)\n+ cloud config received
+    WAIT_FOR_INTERNET --> REGISTERING : MsgInternetStatus(connected=true)\n+ cloud config received
 
     REGISTERING --> REGISTERING : HTTP 401 step1 (nonce received → step2)
     REGISTERING --> REGISTERING : HTTP 200 step2 (credentials → step3)
     REGISTERING --> RUNNING     : HTTP 200 step3 (nozzle config OK)
     REGISTERING --> REGISTERING : any failure → MsgTimerAlarm retry 60 s
 
-    RUNNING --> RUNNING : MsgFuelPumped → POST event
-    RUNNING --> RUNNING : MsgTimerAlarm → heartbeat + retx_process_one()
+    RUNNING --> RUNNING : MsgFuelPumped → POST event (EVT_PUMPED)
+    RUNNING --> RUNNING : MsgTimerAlarm → heartbeat (EVT_HEARTBEAT) + retx_process_one()
     RUNNING --> RUNNING : MsgWifiEvent(RECONNECTED) → EVT_RECONNECT
+    RUNNING --> RUNNING : MsgFuelPrintOk → EVT_PRINT_OK (WIP)
+    RUNNING --> WAIT_FOR_INTERNET : MsgInternetStatus(disconnected)
 ```
+
+> **Trigger change:** The transition from `WAIT_FOR_INTERNET` to `REGISTERING` is now gated on
+> `MsgInternetStatus(connected=true)`, **not** on `MsgWifiEvent(GOT_IP)` directly. `ModuleCubeSphere`
+> subscribes to `MsgInternetStatus` (published by `ModuleInternet` after a successful ping), so the
+> registration only starts when internet connectivity is confirmed, not just when a local IP is obtained.
 
 #### Registration Handshake (3-step SAS-AC1)
 

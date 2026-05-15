@@ -228,7 +228,7 @@ void pal_logger_log(bool en, const char *format, ...)
         if (s_sink_count > 0) {
             for (int i = 0; i < PAL_LOGGER_MAX_SINKS; i++) {
                 if (s_sinks[i]) {
-                    s_sinks[i](s_line_buf, (size_t)line_len);
+                    s_sinks[i](s_line_buf, "", (size_t)line_len);
                 }
             }
         }

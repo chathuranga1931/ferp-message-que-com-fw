@@ -4,6 +4,8 @@
 #include "pal_logger.h"
 #include <ArduinoJson.h>
 #include <string.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 #define __TAG__ "MSG_FUEL"
 
@@ -36,23 +38,31 @@ MsgFuelPumped::Payload MsgFuelPumped::deserialize(const hsys_msg_t &msg)
 int32_t MsgFuelPumped::to_json(const hsys_msg_t *msg, char *data_json, uint32_t buf_len)
 {
     auto p = deserialize(*msg);
-    StaticJsonDocument<128> doc;
+    StaticJsonDocument<256> doc;
     doc["nozzle_idx"]      = p.nozzle_idx;
     doc["vol_lx1000"]      = p.vol_lx1000;
     doc["unit_pricex100"]  = p.unit_pricex100;
     doc["total_pricex100"] = p.total_pricex100;
+    doc["time_stamp"]      = p.time_stamp;
+    // ne_id is uint64 — encode as string to avoid JSON integer overflow
+    char ne_id_str[24];
+    snprintf(ne_id_str, sizeof(ne_id_str), "%llu", (unsigned long long)p.ne_id);
+    doc["ne_id"]           = ne_id_str;
     size_t w = serializeJson(doc, data_json, buf_len);
     return (w > 0) ? 0 : -2;
 }
 
 hsys_msg_t *MsgFuelPumped::from_json(const char *payload_json, hsys_module_id_t sender_id)
 {
-    StaticJsonDocument<128> doc;
+    StaticJsonDocument<256> doc;
     if (deserializeJson(doc, payload_json) != DeserializationError::Ok) return nullptr;
     Payload p{};
     p.nozzle_idx      = doc["nozzle_idx"]      | (uint8_t)0;
     p.vol_lx1000      = doc["vol_lx1000"]      | (uint32_t)0;
     p.unit_pricex100  = doc["unit_pricex100"]  | (uint32_t)0;
     p.total_pricex100 = doc["total_pricex100"] | (uint32_t)0;
+    p.time_stamp      = doc["time_stamp"]      | (uint32_t)0;
+    const char *ne_id_str = doc["ne_id"] | "0";
+    p.ne_id = (uint64_t)strtoull(ne_id_str, nullptr, 10);
     return create(sender_id, p);
 }

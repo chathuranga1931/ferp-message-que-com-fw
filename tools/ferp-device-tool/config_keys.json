@@ -41,7 +41,9 @@
         { "key": "0x6003", "name": "EN_RETX",             "type": "BOOL",    "label": "Enable ReTx",    "description": "Enable retransmission" },
         { "key": "0x6004", "name": "NOZZLE_SWAP",         "type": "BOOL",    "label": "Nozzle Swap",    "description": "Swap nozzle channels" },
         { "key": "0x6005", "name": "TOT_CNT",             "type": "UINT32",  "label": "Total Count",    "description": "Total transaction count" },
-        { "key": "0x6006", "name": "TOT_DUR",             "type": "UINT32",  "label": "Total Duration", "description": "Total duration accumulator" }
+        { "key": "0x6006", "name": "TOT_DUR",             "type": "UINT32",  "label": "Total Duration", "description": "Total duration accumulator" },
+        { "key": "0x6007", "name": "NOZZLE_0_ID",         "type": "STRING",  "label": "Nozzle 1 ID",    "description": "Nozzle 1 string ID (max 4 chars, e.g. P01)" },
+        { "key": "0x6008", "name": "NOZZLE_1_ID",         "type": "STRING",  "label": "Nozzle 2 ID",    "description": "Nozzle 2 string ID (max 4 chars, e.g. P02)" }
       ]
     },
     {

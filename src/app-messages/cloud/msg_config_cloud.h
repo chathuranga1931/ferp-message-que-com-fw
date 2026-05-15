@@ -22,10 +22,10 @@ public:
     static constexpr hsys_msg_id_t ID = MSG_ID_CONFIG_CLOUD;
 
     struct Payload {
-        const char *root_ca;        ///< Pointer to PEM root-CA string (static lifetime, e.g. app_rootca.h)
-        bool        hb_enabled;     ///< Heartbeat enabled flag
+        const char *root_ca;          ///< Pointer to PEM root-CA string (static lifetime, e.g. app_rootca.h)
+        bool        hb_enabled;       ///< Heartbeat enabled flag
         uint8_t     _pad[3];
-        uint32_t    hb_interval_s;  ///< Heartbeat interval in seconds
+        uint32_t    hb_interval_s;    ///< Heartbeat interval in seconds
     };
 
     static constexpr hsys_msg_desc_t DESCRIPTOR =

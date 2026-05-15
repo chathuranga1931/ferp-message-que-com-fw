@@ -31,7 +31,7 @@
 #include "list_manager.h"
 #include "msg_fuel_pumped.h"
 #include "msg_nozzle_state.h"    // MsgNozzleState — pump-start trigger
-#include "msg_fuel_print_ok.h"  // MsgFuelPrintOk — printok trigger
+#include "msg_fuel_print_status.h"  // MsgFuelPrintStatus — print status trigger
 #include "app_module_ids.h"
 #include <time.h>
 
@@ -211,8 +211,8 @@ private:
     bool _pending_print_ok      = false;
     bool _pending_totalized     = false;
 
-    uint32_t _hb_interval_ms = MODULE_CUBESPHERE_DEFAULT_HB_INTERVAL_MS;
-    bool     _hb_enabled     = true;
+    uint32_t _hb_interval_ms   = MODULE_CUBESPHERE_DEFAULT_HB_INTERVAL_MS;
+    bool     _hb_enabled        = true;
 
     // ── Cached data for follow-up events ─────────────────────────────────────
     // Pump-start: nozzle index that just went PUMPING
@@ -223,10 +223,11 @@ private:
     uint32_t _last_pumped_unit_px100   = 0;
     uint64_t _last_pumped_total_px100  = 0;
     time_t   _last_pumped_ts_epoch     = 0;
-    // Print-ok: dispenser event ID (ABS_ID) for the NE_ID computation
-    uint32_t _print_ok_dispenser_event_id = 0;
-    int64_t  _print_ok_timestamp_epoch    = 0;
-    uint8_t  _print_ok_nozzle_idx         = 0;
+    uint32_t       _print_ok_dispenser_event_id = 0;
+    int64_t        _print_ok_timestamp_epoch    = 0;
+    uint8_t        _print_ok_nozzle_idx         = 0;
+    print_status_t _print_ok_status             = PRINT_STATUS_OK;
+    uint64_t       _print_ok_ne_id              = 0;  ///< NE_ID from MsgFuelPrintStatus
 
     // ── CubeSphere cloud credentials ──────────────────────────────────────────
     static const char   _cs_key[];
@@ -289,11 +290,6 @@ private:
     static void _cs_format_iso8601(time_t epoch_sec, const char *tz_offset,
                                     char *buf, size_t buf_len);
 
-    // ── Unique event ID (NE_ID) for printok ──────────────────────────────────
-    /// Compute a 64-bit NE_ID from timestamp + nozzle_id, matching the
-    /// original ferp_client get_unique_event_id() algorithm.
-    static uint64_t _cs_compute_ne_id(int64_t timestamp_epoch, const char *nozzle_id);
-
     // ── Payload builders ──────────────────────────────────────────────────────
     cs_startup_info_t _build_startup_info() const;
     cs_hb_info_t      _build_hb_info()      const;
@@ -310,12 +306,13 @@ private:
 
     // ── Common JSON builder ───────────────────────────────────────────────────
     /// Build the CubeSphere pump-end event JSON into _event_json.
-    /// event_id == 0 means omit the ID field (used for retransmissions).
+    /// ne_id == 0 → omit ID/ABS_ID fields.
     /// Returns false if the nozzle is unconfigured or serialisation fails.
-    bool _build_pumped_event_json(uint8_t nozzle_idx,
+    bool _build_pumped_event_json(uint8_t  nozzle_idx,
                                   uint32_t vol_lx1000,
                                   uint32_t unit_pricex100,
                                   uint64_t total_pricex100,
-                                  time_t ts_epoch,
-                                  uint32_t event_id = 0);
+                                  time_t   ts_epoch,
+                                  uint32_t event_id = 0,
+                                  uint64_t ne_id    = 0);
 };

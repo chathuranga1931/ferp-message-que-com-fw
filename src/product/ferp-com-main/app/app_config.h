@@ -62,6 +62,8 @@ typedef struct {
     bool     nozzle_swap;           ///< Swap nozzle 1 and 2 assignment
     uint32_t tot_cnt;               ///< Totalizer stabilisation count
     uint32_t tot_dur;               ///< Totalizer stabilisation duration (ms)
+    char     nozzle_0_id[8];        ///< Nozzle 1 string ID (max 4 chars, e.g. "P01")
+    char     nozzle_1_id[8];        ///< Nozzle 2 string ID (max 4 chars, e.g. "P02")
 
     // Printer
     char     printer_url[128];
@@ -124,6 +126,8 @@ typedef struct {
 #define CFG_KEY_NOZZLE_SWAP            0x6004u
 #define CFG_KEY_TOT_CNT                0x6005u
 #define CFG_KEY_TOT_DUR                0x6006u
+#define CFG_KEY_NOZZLE_0_ID            0x6007u
+#define CFG_KEY_NOZZLE_1_ID            0x6008u
 
 // Printer
 #define CFG_KEY_PRINTER_URL            0x7001u

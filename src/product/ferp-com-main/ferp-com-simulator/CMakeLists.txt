@@ -177,6 +177,7 @@ add_library(app_messages STATIC
     ${APP_MSGS}/fuel/msg_fuel_pumped.cpp
     ${APP_MSGS}/fuel/msg_nozzle_state.cpp
     ${APP_MSGS}/fuel/msg_printer_btn.cpp
+    ${APP_MSGS}/fuel/msg_fuel_print_status.cpp
     # System messages (extended)
     ${APP_MSGS}/system/msg_persist_log.cpp
     ${APP_MSGS}/system/msg_system_status.cpp

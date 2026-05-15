@@ -80,6 +80,9 @@ private:
     // mirrors the hardware GPIO toggle-button state in the real firmware).
     bool                  _nozzle_state[FUEL_MAX_NOZZLES] = {};
 
+    // Nozzle string IDs received from MsgConfigDT (e.g. "P01", "D02")
+    char                  _nozzle_str_id[FUEL_MAX_NOZZLES][8] = {{"P01"}, {"P02"}};
+
     display_type_t        _display_type = (display_type_t)0;
     bool                  _started = false;
 
@@ -96,4 +99,9 @@ private:
     void _publish_fuel_pumped (uint8_t nozzle_idx, const nozzle_event_t &ev);
     void _stop_tick_timer();
     void _start_tick_timer();
+
+    /// Compute the nozzle-event unique ID using the legacy algorithm.
+    /// @param nozzle_idx  0-based nozzle index
+    /// @param timestamp   Unix epoch seconds (e.g. from pal_time_get_epoch_time)
+    uint64_t _compute_ne_id(uint8_t nozzle_idx, uint32_t timestamp) const;
 };

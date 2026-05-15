@@ -37,6 +37,8 @@ public:
         uint32_t vol_lx1000;        ///< Volume in litres × 1000  (e.g. 5000 = 5.000 L)
         uint32_t unit_pricex100;    ///< Unit price × 100         (e.g. 300 = $3.00)
         uint32_t total_pricex100;   ///< Total price × 100        (e.g. 1500 = $15.00)
+        uint64_t ne_id;             ///< Nozzle event unique ID (from _compute_ne_id)
+        uint32_t time_stamp;        ///< Unix epoch seconds at pump-end
     };
 
     static constexpr hsys_msg_desc_t DESCRIPTOR =

@@ -236,9 +236,9 @@ void ModuleConfig::_send_config_cloud(hsys_module_id_t requester)
     if (!cfg) return;
 
     MsgConfigCloud::Payload p{};
-    p.root_ca       = root_ca;   // pointer to static PEM string in app_rootca.h
-    p.hb_enabled    = cfg->cloud_hb_enabled;
-    p.hb_interval_s = cfg->cloud_hb_interval_s;
+    p.root_ca          = root_ca;   // pointer to static PEM string in app_rootca.h
+    p.hb_enabled       = cfg->cloud_hb_enabled;
+    p.hb_interval_s    = cfg->cloud_hb_interval_s;
 
     hsys_msg_t *out = MsgConfigCloud::create(id(), p);
     if (out) {
@@ -284,6 +284,8 @@ void ModuleConfig::_send_config_dt(hsys_module_id_t requester)
     p.stabilize_delay_ms  = cfg->stabilize_delay_ms;
     p.printer_copy_count  = cfg->printer_copy_count;
     strncpy(p.printer_url, cfg->printer_url, sizeof(p.printer_url) - 1);
+    strncpy(p.nozzle_id[0], cfg->nozzle_0_id, sizeof(p.nozzle_id[0]) - 1);
+    strncpy(p.nozzle_id[1], cfg->nozzle_1_id, sizeof(p.nozzle_id[1]) - 1);
 
     hsys_msg_t *out = MsgConfigDT::create(id(), p);
     if (out) {
@@ -294,6 +296,8 @@ void ModuleConfig::_send_config_dt(hsys_module_id_t requester)
         LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "  stabilize_delay_ms = %u", (unsigned)p.stabilize_delay_ms);
         LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "  printer_url        = \"%s\"", p.printer_url);
         LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "  printer_copy_count = %u", (unsigned)p.printer_copy_count);
+        LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "  nozzle_id[0]       = \"%s\"", p.nozzle_id[0]);
+        LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "  nozzle_id[1]       = \"%s\"", p.nozzle_id[1]);
     }
 }
 

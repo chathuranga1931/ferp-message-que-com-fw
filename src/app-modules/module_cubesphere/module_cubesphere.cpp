@@ -14,7 +14,7 @@
 #include "msg_cubesphere_status.h"
 #include "msg_fuel_pumped.h"
 #include "msg_nozzle_state.h"
-#include "msg_fuel_print_ok.h"
+#include "msg_fuel_print_status.h"
 #include "msg_timer_start.h"
 #include "msg_timer_alarm.h"
 #include "msg_sd_ready.h"
@@ -74,7 +74,7 @@ void ModuleCubeSphere::init()
     subscribe(MsgInternetStatus::ID);
     subscribe(MsgFuelPumped::ID);
     subscribe(MsgNozzleState::ID);         // pump-start
-    subscribe(MsgFuelPrintOk::ID);         // printok
+    subscribe(MsgFuelPrintStatus::ID);         // printok
     subscribe(MsgTimerAlarm::ID);
     subscribe(MsgSdReady::ID);
     subscribe(MSG_ID_TICK_1000MS);
@@ -106,7 +106,7 @@ void ModuleCubeSphere::on_msg_received(const hsys_msg_t &msg)
         case MsgInternetStatus::ID:        _on_internet_status(msg);     break;
         case MsgFuelPumped::ID:            _on_fuel_pumped(msg);         break;
         case MsgNozzleState::ID:           _on_nozzle_state(msg);        break;
-        case MsgFuelPrintOk::ID:           _on_fuel_print_ok(msg);       break;
+        case MsgFuelPrintStatus::ID:           _on_fuel_print_ok(msg);       break;
         case MsgSdReady::ID:               _on_sd_ready();               break;
         case MsgTimerAlarm::ID:            _on_timer_alarm();            break;
         case MSG_ID_TICK_1000MS:           _on_tick();                   break;
@@ -145,7 +145,7 @@ void ModuleCubeSphere::_on_config_cloud(const hsys_msg_t &msg)
     auto p = MsgConfigCloud::deserialize(msg);
     _cloud_root_ca = p.root_ca;
     if (p.hb_interval_s > 0) _hb_interval_ms = p.hb_interval_s * 1000UL;
-    _hb_enabled = p.hb_enabled;
+    _hb_enabled         = p.hb_enabled;
     _cloud_config_ready = true;
 
     LOG_MSG_INFO(CSP_LOG_EN, "cloud config: root_ca=%s hb_enabled=%d interval=%us",
@@ -239,11 +239,10 @@ void ModuleCubeSphere::_on_fuel_pumped(const hsys_msg_t &msg)
     }
 
     // Build the pumped event JSON into _event_json
-    struct timeval now_tv;
-    gettimeofday(&now_tv, nullptr);
     uint32_t event_id = _pumped_success + _pumped_failure + 1;
     if (!_build_pumped_event_json(p.nozzle_idx, p.vol_lx1000, p.unit_pricex100,
-                                   p.total_pricex100, now_tv.tv_sec, event_id)) {
+                                   p.total_pricex100, (time_t)p.time_stamp,
+                                   event_id, p.ne_id)) {
         LOG_MSG_ERROR(CSP_LOG_EN, "failed to build pumped event JSON — storing for retx");
         _pumped_failure++;
         _publish_status(CUBESPHERE_STATUS_PUMPED_FAILED, p.nozzle_idx);
@@ -256,7 +255,7 @@ void ModuleCubeSphere::_on_fuel_pumped(const hsys_msg_t &msg)
     _last_pumped_vol_lx1000  = p.vol_lx1000;
     _last_pumped_unit_px100  = p.unit_pricex100;
     _last_pumped_total_px100 = p.total_pricex100;
-    _last_pumped_ts_epoch    = now_tv.tv_sec;
+    _last_pumped_ts_epoch    = (time_t)p.time_stamp;
     _pending_totalized       = true;  // arm totalized follow-up
 
     _cur_evt = EVT_PUMPED;
@@ -283,7 +282,7 @@ void ModuleCubeSphere::_on_nozzle_state(const hsys_msg_t &msg)
 
 void ModuleCubeSphere::_on_fuel_print_ok(const hsys_msg_t &msg)
 {
-    auto p = MsgFuelPrintOk::deserialize(msg);
+    auto p = MsgFuelPrintStatus::deserialize(msg);
     if (p.nozzle_idx >= CS_NO_NOZZLES) return;
 
     if (_state != STATE_RUNNING) {
@@ -293,8 +292,10 @@ void ModuleCubeSphere::_on_fuel_print_ok(const hsys_msg_t &msg)
     }
 
     _print_ok_nozzle_idx          = p.nozzle_idx;
+    _print_ok_status              = p.status;
     _print_ok_dispenser_event_id  = p.dispenser_event_id;
     _print_ok_timestamp_epoch     = p.timestamp_epoch;
+    _print_ok_ne_id               = p.ne_id;
     _pending_print_ok             = true;
     _start_next_event();
 }
@@ -748,23 +749,25 @@ bool ModuleCubeSphere::_build_event_json(evt_type_t evt)
             break;
         }
         case EVT_PRINT_OK: {
-            // app.fuel/printok — sent when receipt is confirmed printed
+            // app.fuel/printok or app.fuel/printfailed — based on print status
             if (_print_ok_nozzle_idx >= CS_NO_NOZZLES ||
                 _cs_nozzles[_print_ok_nozzle_idx].uuid[0] == '\0') return false;
             char pok_ts[64] = {};
             _cs_format_iso8601((time_t)_print_ok_timestamp_epoch + (int)(3600 * 5.5),
                                "+05:30", pok_ts, sizeof(pok_ts));
-            uint64_t ne_id = _cs_compute_ne_id(_print_ok_timestamp_epoch,
-                                               _cs_nozzles[_print_ok_nozzle_idx].nozzle_id);
-            char ne_id_str[24] = {};
-            snprintf(ne_id_str, sizeof(ne_id_str), "%llu", (unsigned long long)ne_id);
             JsonObject e0   = events.add<JsonObject>();
             e0["device"]    = _cs_nozzles[_print_ok_nozzle_idx].uuid;
             e0["time"]      = pok_ts;
-            e0["event"]     = "app.fuel/printok";
+            e0["event"]     = (_print_ok_status == PRINT_STATUS_OK)
+                              ? "app.fuel/printok" : "app.fuel/printfailed";
             JsonObject body = e0["body"].to<JsonObject>();
-            body["NE_ID"]   = ne_id_str;
-            body["ABS_ID"]  = _print_ok_dispenser_event_id;
+            if (_print_ok_ne_id != 0) {
+                char ne_id_str[24] = {};
+                snprintf(ne_id_str, sizeof(ne_id_str), "%llu",
+                         (unsigned long long)_print_ok_ne_id);
+                body["NE_ID"]  = ne_id_str;
+                body["ABS_ID"] = _print_ok_dispenser_event_id;
+            }
             break;
         }
         default: return false;
@@ -781,7 +784,8 @@ bool ModuleCubeSphere::_build_pumped_event_json(
     uint32_t unit_pricex100,
     uint64_t total_pricex100,
     time_t   ts_epoch,
-    uint32_t event_id)
+    uint32_t event_id,
+    uint64_t ne_id)
 {
     if (nozzle_idx >= CS_NO_NOZZLES || _cs_nozzles[nozzle_idx].uuid[0] == '\0') return false;
 
@@ -800,11 +804,16 @@ bool ModuleCubeSphere::_build_pumped_event_json(
     body["T"] = _cs_nozzles[nozzle_idx].fuel_type;
     body["P"] = total_pricex100 * 0.01;
     body["U"] = unit_pricex100  * 0.01;
-    if (event_id != 0) body["ID"] = event_id;
+    if (ne_id != 0) {
+        char ne_id_str[24] = {};
+        snprintf(ne_id_str, sizeof(ne_id_str), "%llu", (unsigned long long)ne_id);
+        body["ID"]     = ne_id_str;
+        body["ABS_ID"] = event_id;
+    }
 
     size_t written = serializeJson(doc, _event_json, sizeof(_event_json));
-    LOG_MSG_DEBUG(CSP_LOG_EN, "built pumped JSON (nozzle=%u id=%u): %s",
-                  nozzle_idx, event_id, _event_json);
+    LOG_MSG_DEBUG(CSP_LOG_EN, "built pumped JSON (nozzle=%u neid=%llu): %s",
+                  nozzle_idx, (unsigned long long)ne_id, _event_json);
     return (written > 0);
 }
 
@@ -1062,42 +1071,6 @@ void ModuleCubeSphere::_cs_format_iso8601(time_t epoch_sec, const char *tz_offse
              tm_info.tm_hour, tm_info.tm_min, tm_info.tm_sec, tz_offset);
 }
 
-// NE_ID nozzle-type code table (mirrors old ferp_client.cpp nozzle_id_table)
-static struct { const char id[6]; uint8_t code; } const _ne_id_table[] = {
-    {"P01",11},{"P02",12},{"P03",13},{"P04",14},{"P05",15},
-    {"P06",16},{"P07",17},{"P08",18},{"P09",19},{"P10",11},
-    {"D01",21},{"D02",22},{"D03",23},{"D04",24},{"D05",25},
-    {"D06",26},{"D07",27},{"D08",28},{"D09",29},{"D10",30},
-    {"SP01",41},{"SP02",42},{"SP03",43},{"SP04",44},{"SP05",45},
-    {"SD01",51},{"SD02",52},{"SD03",53},{"SD04",54},{"SD05",55},
-    {"K01",91},{"K02",92},{"K03",93},{"K04",94},{"K05",95},
-};
-
-uint64_t ModuleCubeSphere::_cs_compute_ne_id(int64_t timestamp_epoch,
-                                              const char *nozzle_id)
-{
-    // Replicate original get_unique_event_id() algorithm:
-    //   1. Subtract base epoch (2024-12-18 ≈ 1734480000)
-    //   2. Extract last two digits; divide by 100; re-attach at ×10000
-    //   3. Add fuel_type_code × 100
-    if (!nozzle_id) return 0;
-
-    uint64_t ts_base = (uint64_t)((timestamp_epoch > 1734480000LL)
-                                  ? (timestamp_epoch - 1734480000LL) : 0);
-    uint8_t  last2   = (uint8_t)(ts_base % 100);
-    ts_base = (ts_base / 100) * 10000 + last2;
-
-    uint8_t fuel_code = 0;
-    for (size_t i = 0; i < sizeof(_ne_id_table)/sizeof(_ne_id_table[0]); i++) {
-        if (strncmp(nozzle_id, _ne_id_table[i].id, sizeof(_ne_id_table[i].id)) == 0) {
-            fuel_code = _ne_id_table[i].code;
-            break;
-        }
-    }
-
-    return ts_base + (uint64_t)(fuel_code * 100);
-}
-
 // ── Retransmission ────────────────────────────────────────────────────────────
 
 void ModuleCubeSphere::_on_sd_ready()
@@ -1144,10 +1117,10 @@ void ModuleCubeSphere::_retx_store_pumped(const MsgFuelPumped::Payload &p)
 
     char json[256];
     snprintf(json, sizeof(json),
-             "{\"nozzle\":%u,\"vol\":%lu,\"unit\":%lu,\"total\":%lu,\"ts\":%llu}",
+             "{\"nozzle\":%u,\"vol\":%lu,\"unit\":%lu,\"total\":%lu,\"ts\":%llu,\"neid\":\"%llu\"}",
              (unsigned)p.nozzle_idx, (unsigned long)p.vol_lx1000,
              (unsigned long)p.unit_pricex100, (unsigned long)p.total_pricex100,
-             (unsigned long long)time(nullptr));
+             (unsigned long long)p.time_stamp, (unsigned long long)p.ne_id);
 
     char date_key[16] = "00000000";
     time_t now = time(nullptr);
@@ -1216,6 +1189,11 @@ bool ModuleCubeSphere::_retx_try_send_one()
     uint32_t unit_pricex100   = (uint32_t)pdoc["unit"].as<long>();
     uint64_t total_pricex100  = (uint64_t)pdoc["total"].as<long long>();
     time_t   ts_epoch         = (time_t)pdoc["ts"].as<long long>();
+    uint64_t ne_id            = 0;
+    if (pdoc["neid"].is<const char *>()) {
+        const char *neid_str = pdoc["neid"].as<const char *>();
+        if (neid_str) ne_id = (uint64_t)strtoull(neid_str, nullptr, 10);
+    }
 
     if (nozzle_idx >= CS_NO_NOZZLES || _cs_nozzles[nozzle_idx].uuid[0] == '\0') {
         LOG_MSG_ERROR(CSP_LOG_EN, "retx: invalid nozzle_idx %u — skipping", nozzle_idx);
@@ -1224,7 +1202,7 @@ bool ModuleCubeSphere::_retx_try_send_one()
     }
 
     if (!_build_pumped_event_json(nozzle_idx, vol_lx1000, unit_pricex100,
-                                   total_pricex100, ts_epoch)) {
+                                   total_pricex100, ts_epoch, 0, ne_id)) {
         LOG_MSG_ERROR(CSP_LOG_EN, "retx: failed to build event JSON — skipping");
         list_mgr_ack(&_retx_mgr.list_mgr, &rh);
         return false;

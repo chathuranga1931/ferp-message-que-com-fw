@@ -12,6 +12,7 @@
 #include "IHsysMsg.h"
 #include "hsys_msg.h"
 #include "app_msg_ids.h"
+#include "fuel_config.h"
 #include <stdint.h>
 
 class MsgConfigDT : public IHsysMsg
@@ -24,6 +25,7 @@ public:
         uint32_t stabilize_delay_ms;    ///< Nozzle stabilization delay
         char     printer_url[128];      ///< Receipt printer endpoint
         uint32_t printer_copy_count;    ///< Number of receipt copies
+        char     nozzle_id[FUEL_MAX_NOZZLES][8]; ///< Nozzle string IDs (e.g. "P01", "D02")
     };
 
     static constexpr hsys_msg_desc_t DESCRIPTOR =
