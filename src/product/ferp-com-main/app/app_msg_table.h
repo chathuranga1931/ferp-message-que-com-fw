@@ -73,6 +73,10 @@
 #include "msg_dev_info_write.h"         // MsgDevInfoWrite        (0x0041)
 #include "msg_dev_info_value.h"         // MsgDevInfoValue        (0x0042)
 #include "msg_system_status.h"          // MsgSystemStatus        (0x0206)
+#include "msg_pool_get_json.h"           // MsgPoolGetJson         (0x0207)
+#include "msg_pool_json.h"              // MsgPoolJson            (0x0208)
+#include "msg_get_file_list_spiffs.h"   // MsgGetFileListSpiffs   (0x0209)
+#include "msg_file_list_spiffs.h"       // MsgFileListSpiffs      (0x020A)
 #include "msg_http_start_request.h"     // MsgHttpStartRequest    (0x0C00)
 #include "msg_http_start_response.h"    // MsgHttpStartResponse   (0x0C01)
 #include "msg_http_set_url_request.h"   // MsgHttpSetUrlRequest   (0x0C02)
@@ -144,6 +148,10 @@
         MsgDevInfoWrite::DESCRIPTOR,                                              \
         MsgDevInfoValue::DESCRIPTOR,                                              \
         MsgSystemStatus::DESCRIPTOR,                                              \
+        MsgPoolGetJson::DESCRIPTOR,                                               \
+        MsgPoolJson::DESCRIPTOR,                                                  \
+        MsgGetFileListSpiffs::DESCRIPTOR,                                         \
+        MsgFileListSpiffs::DESCRIPTOR,                                            \
         MsgHttpStartRequest::DESCRIPTOR,                                          \
         MsgHttpStartResponse::DESCRIPTOR,                                         \
         MsgHttpSetUrlRequest::DESCRIPTOR,                                         \

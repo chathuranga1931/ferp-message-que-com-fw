@@ -56,6 +56,16 @@ fi
 echo "Python $PYTHON_VERSION found."
 
 # ── 3. Create virtual environment if needed ────────────────────────────────────
+VENV_STALE=false
+if [[ -d "$VENV_DIR" ]]; then
+    # Check if the venv's Python interpreter is still valid (path may have changed)
+    if ! "$VENV_DIR/bin/python" -c "" &>/dev/null 2>&1; then
+        echo "Existing virtual environment is stale (interpreter path changed). Recreating..."
+        rm -rf "$VENV_DIR"
+        VENV_STALE=true
+    fi
+fi
+
 if [[ ! -d "$VENV_DIR" ]]; then
     echo "Creating virtual environment..."
     "$PYTHON" -m venv "$VENV_DIR"

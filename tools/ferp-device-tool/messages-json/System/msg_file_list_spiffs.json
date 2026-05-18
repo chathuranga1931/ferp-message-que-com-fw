@@ -1,0 +1,12 @@
+{
+  "msg_id": "0x020A",
+  "direction": "resp",
+  "fields": [
+    {
+      "name": "f",
+      "label": "SPIFFS Files",
+      "type": "string",
+      "default": ""
+    }
+  ]
+}

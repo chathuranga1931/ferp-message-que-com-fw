@@ -62,6 +62,8 @@ protected:
 
 private:
     void print_report();
+    void _publish_pool_json();
+    void _publish_file_list_spiffs();
 
     uint32_t m_tick_count = 0;
 };

@@ -27,8 +27,9 @@
 #endif
 
 #ifndef HSYS_MAX_REGISTERED_MSGS
-#define HSYS_MAX_REGISTERED_MSGS  64  ///< Sizes s_sub_table[] — 18 bytes per slot = 1.1 KB.
-                                      ///< Currently 58 messages registered; 64 gives headroom.
+#define HSYS_MAX_REGISTERED_MSGS  80  ///< Sizes s_sub_table[] — 18 bytes per slot = 1.4 KB.
+                                      ///< Currently 65 messages registered (incl. MsgPoolGetJson/Json);
+                                      ///< 80 gives headroom for further additions.
 #endif
 
 #ifndef HSYS_POOL_MAX_BYTES

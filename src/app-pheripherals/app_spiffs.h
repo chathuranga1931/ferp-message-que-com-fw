@@ -136,6 +136,32 @@ int32_t app_spiffs_append_file(const char *path, const uint8_t *data, size_t siz
  */
 int32_t app_spiffs_get_info(app_spiffs_info_t *info);
 
+/**
+ * @brief  Callback type for app_spiffs_list_files.
+ *
+ * Called once per regular file while the SPIFFS mutex is held.
+ * Implementations must not call any other app_spiffs_* function
+ * (would deadlock).  Copy data out; do not retain pointers after return.
+ *
+ * @param  name  File name (relative, no leading "/spiffs/")
+ * @param  size  File size in bytes
+ * @param  ctx   Caller-supplied context pointer
+ */
+typedef void (*app_spiffs_file_cb_t)(const char *name, size_t size, void *ctx);
+
+/**
+ * @brief  Enumerate regular files on the SPIFFS partition.
+ *
+ * Acquires the SPIFFS mutex, walks the "/spiffs" directory, and invokes
+ * @p cb for every regular file (macOS resource-fork sidecars are skipped).
+ *
+ * @param  cb          Callback invoked for each file
+ * @param  ctx         Opaque pointer forwarded to @p cb
+ * @param  timeout_ms  Mutex acquire timeout in milliseconds
+ * @return APP_SPIFFS_OK on success
+ */
+int32_t app_spiffs_list_files(app_spiffs_file_cb_t cb, void *ctx, uint32_t timeout_ms);
+
 #ifdef __cplusplus
 }
 #endif

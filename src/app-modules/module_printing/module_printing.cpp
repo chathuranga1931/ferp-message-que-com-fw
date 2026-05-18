@@ -144,6 +144,12 @@ void ModulePrinting::_on_fuel_pumped(const hsys_msg_t &msg)
     r.time_stamp     = p.time_stamp;
     r.print_count    = 0;   // new transaction — reset print counter
 
+    // New transaction supersedes any pending print from the previous one
+    if (_pending[p.nozzle_idx].valid) {
+        _pending[p.nozzle_idx].valid = false;
+        MLOG("nozzle[%u] pending print cancelled — new transaction", (unsigned)p.nozzle_idx);
+    }
+
     MLOG("nozzle[%u] pumped: vol=%lu unit=%lu total=%lu",
          (unsigned)p.nozzle_idx,
          (unsigned long)p.vol_lx1000,
@@ -409,6 +415,7 @@ void ModulePrinting::_send_http_request()
         char body[512];
         _build_body(body, sizeof(body));
         uint32_t len = (uint32_t)strnlen(body, sizeof(body));
+        MLOG("JSON body: %s", body);
         hsys_msg_t *m = MsgHttpBodyRequest::create(id(), body, len);
         if (m) send(m, MODULE_HTTP_ID);
     }

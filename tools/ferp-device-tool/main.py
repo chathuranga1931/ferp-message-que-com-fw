@@ -523,7 +523,7 @@ class OtaPanel(ttk.LabelFrame):
 
         lf = ttk.LabelFrame(self, text="OTA Log")
         lf.pack(fill="both", expand=True, padx=6, pady=(4, 6))
-        self._log = scrolledtext.ScrolledText(lf, height=6, wrap="word", state="disabled",
+        self._log = scrolledtext.ScrolledText(lf, height=8, wrap="word", state="disabled",
                                               font=("Courier", 10))
         self._log.pack(fill="both", expand=True, padx=4, pady=4)
         self._log.tag_config("error", foreground="#cc0000")
@@ -1062,7 +1062,7 @@ class FerpDeviceTool(tk.Tk):
         _GUI_INSTANCE = self
 
         self.title("FERP Device Tool")
-        self.minsize(1000, 700)
+        self.minsize(650, 700)
         self.resizable(True, True)
 
         self._devices      = _load_devices()
@@ -1298,6 +1298,10 @@ class FerpDeviceTool(tk.Tk):
         self._console = scrolledtext.ScrolledText(
             lf, height=9, wrap="word", state="disabled", font=("Courier", 11))
         self._console.pack(fill="both", expand=True, padx=4, pady=4)
+        # Allow selection and copy even though the widget is read-only.
+        self._console.bind("<Button-1>", lambda e: self._console.focus_set())
+        self._console.bind("<Command-c>", self._console_copy_selection)
+        self._console.bind("<Control-c>", self._console_copy_selection)
         for tag, color in [
             ("cmd",   "#b8860b"),
             ("resp",  "#228b22"),
@@ -1596,8 +1600,29 @@ class FerpDeviceTool(tk.Tk):
         self._console.delete("1.0", "end")
         self._console.config(state="disabled")
 
+    def _console_copy_selection(self, event=None):
+        """Copy the current selection (Cmd/Ctrl+C on the console widget)."""
+        try:
+            text = self._console.selection_get()
+        except tk.TclError:
+            return "break"  # nothing selected
+        self._set_clipboard(text)
+        return "break"
+
     def _copy_console(self):
         text = self._console.get("1.0", "end").strip()
+        self._set_clipboard(text)
+
+    def _set_clipboard(self, text: str):
+        """Write *text* to the system clipboard reliably on macOS and other platforms."""
+        import sys, subprocess
+        if sys.platform == "darwin":
+            try:
+                subprocess.run(["pbcopy"], input=text.encode("utf-8"), check=True)
+                return
+            except Exception:
+                pass
+        # Fallback: Tkinter clipboard (works on Windows/Linux; unreliable on macOS)
         self.clipboard_clear()
         self.clipboard_append(text)
 

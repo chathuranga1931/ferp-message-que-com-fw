@@ -25,6 +25,8 @@
 #include "msg_config_ota.h"
 #include "msg_mqtt_status.h"
 #include "msg_dev_info_value.h"
+#include "msg_pool_json.h"          // MsgPoolJson (0x0208) — pool snapshot broadcast
+#include "msg_file_list_spiffs.h"    // MsgFileListSpiffs (0x020A) — SPIFFS listing broadcast
 
 // OTA source messages
 #include "msg_ota_start_request.h"
@@ -123,6 +125,8 @@ void ModuleMqtt::init()
 
     // Device identity — notified when a field is updated by permitted writer
     subscribe(MsgDevInfoValue::ID);
+    subscribe(MsgPoolJson::ID);      // NOTIFICATION → pool snapshot response
+    subscribe(MsgFileListSpiffs::ID); // NOTIFICATION → SPIFFS file listing response
 
     LOG_MSG_INFO(MQTT_LOG, "init — state=WAIT_CONFIG");
 }
@@ -313,6 +317,20 @@ void ModuleMqtt::on_msg_received(const hsys_msg_t &msg)
             } else {
                 // Direct read response — forward to the resp topic so the tool receives it
                 _on_outbound_msg(msg, false);
+            }
+            break;
+
+        case MsgPoolJson::ID:
+            // Pool status snapshot — always a NOTIFICATION broadcast
+            if (_state == STATE_CONNECTED) {
+                _on_outbound_msg(msg, false /*resp*/);
+            }
+            break;
+
+        case MsgFileListSpiffs::ID:
+            // SPIFFS file listing — always a NOTIFICATION broadcast
+            if (_state == STATE_CONNECTED) {
+                _on_outbound_msg(msg, false /*resp*/);
             }
             break;
 

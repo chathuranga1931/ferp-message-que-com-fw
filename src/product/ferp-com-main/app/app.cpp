@@ -124,6 +124,10 @@
 #include "msg_dev_info_read.h"
 #include "msg_dev_info_value.h"
 #include "msg_system_status.h"
+#include "msg_pool_get_json.h"
+#include "msg_pool_json.h"
+#include "msg_get_file_list_spiffs.h"
+#include "msg_file_list_spiffs.h"
 
 #include "message_translater_support.h"
 
@@ -391,6 +395,12 @@ static const app_msg_codec_entry_t k_codec_table[] = {
     // ── Device info ───────────────────────────────────────────────────────────
     { "MsgDevInfoRead",          MSG_ID_DEV_INFO_READ,         MsgDevInfoRead::from_json,          MsgDevInfoRead::to_json         },
     { "MsgDevInfoValue",         MSG_ID_DEV_INFO_VALUE,        MsgDevInfoValue::from_json,         MsgDevInfoValue::to_json        },
+
+    // ── Pool diagnostics ──────────────────────────────────────────────────────
+    { "MsgPoolGetJson",          MSG_ID_POOL_GET_JSON,         MsgPoolGetJson::from_json,          MsgPoolGetJson::to_json         },
+    { "MsgPoolJson",             MSG_ID_POOL_JSON,             MsgPoolJson::from_json,             MsgPoolJson::to_json            },
+    { "MsgGetFileListSpiffs",    MSG_ID_GET_FILE_LIST_SPIFFS,  MsgGetFileListSpiffs::from_json,    MsgGetFileListSpiffs::to_json   },
+    { "MsgFileListSpiffs",       MSG_ID_FILE_LIST_SPIFFS,      MsgFileListSpiffs::from_json,       MsgFileListSpiffs::to_json      },
 };
 
 // ============================================================================
@@ -442,6 +452,11 @@ static const app_msg_mqtt_route_t k_mqtt_route_table[] = {
 
     // ── Device info → device info module ───────────────────────────────────
     { MSG_ID_DEV_INFO_READ,         MODULE_DEVICE_INFO_ID, false },
+
+    // ── Pool diagnostics → broadcast (ModuleSysmon subscribes) ───────────────
+    { MSG_ID_POOL_GET_JSON,         (hsys_module_id_t)0,   false },
+    // ── SPIFFS file listing → broadcast (ModuleSysmon subscribes) ─────────────
+    { MSG_ID_GET_FILE_LIST_SPIFFS,  (hsys_module_id_t)0,   false },
 };
 
 // ============================================================================
@@ -568,7 +583,9 @@ static const ModuleWebServer::ApiMsgRouteDef k_api_routes[] = {
     { MSG_ID_CONFIG_GET_KEY,   MODULE_CONFIG_ID,      MSG_ID_CONFIG_VALUE  },
     { MSG_ID_CONFIG_SET,       (hsys_module_id_t)0,  (hsys_msg_id_t)0     }, // broadcast
     { MSG_ID_DEV_INFO_READ,    MODULE_DEVICE_INFO_ID, MSG_ID_DEV_INFO_VALUE },
-    { (hsys_msg_id_t)0,        (hsys_module_id_t)0,  (hsys_msg_id_t)0     }  // sentinel
+    { MSG_ID_POOL_GET_JSON,    (hsys_module_id_t)0,   MSG_ID_POOL_JSON      }, // broadcast → sysmon responds
+    { MSG_ID_GET_FILE_LIST_SPIFFS, (hsys_module_id_t)0, MSG_ID_FILE_LIST_SPIFFS }, // broadcast → sysmon responds
+    { (hsys_msg_id_t)0,        (hsys_module_id_t)0,   (hsys_msg_id_t)0     }  // sentinel
 };
 
 // ============================================================================

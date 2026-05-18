@@ -16,6 +16,8 @@
 
 #include <string.h>
 #include <stddef.h>
+#include <dirent.h>
+#include <sys/stat.h>
 
 #define __TAG__  "SPIFFS_P"
 
@@ -217,5 +219,39 @@ int32_t app_spiffs_get_info(app_spiffs_info_t *info)
     info->total_bytes = pi.total_bytes;
     info->used_bytes  = pi.used_bytes;
     info->free_bytes  = pi.free_bytes;
+    return APP_SPIFFS_OK;
+}
+
+int32_t app_spiffs_list_files(app_spiffs_file_cb_t cb, void *ctx, uint32_t timeout_ms)
+{
+    if (!s_initialized) return APP_SPIFFS_ERR_NOT_INIT;
+    if (!cb)            return APP_SPIFFS_ERR_INVALID;
+
+    int32_t rc = _lock(timeout_ms);
+    if (rc != APP_SPIFFS_OK) return rc;
+
+    DIR *dir = opendir("/spiffs");
+    if (!dir) {
+        _unlock();
+        LOG_MSG_ERROR(APP_SPIFFS_LOG_EN, "list_files: opendir failed");
+        return APP_SPIFFS_ERR_IO;
+    }
+
+    struct dirent *entry;
+    while ((entry = readdir(dir)) != nullptr) {
+        // Skip macOS Apple Double resource-fork sidecars.
+        if (entry->d_name[0] == '.' && entry->d_name[1] == '_') continue;
+        // Skip non-regular entries on targets that populate d_type.
+        if (entry->d_type != DT_REG) continue;
+
+        char full_path[270];  // "/spiffs/" (8) + NAME_MAX (255) + NUL
+        snprintf(full_path, sizeof(full_path), "/spiffs/%s", entry->d_name);
+        struct stat st;
+        size_t file_size = (stat(full_path, &st) == 0) ? (size_t)st.st_size : 0;
+
+        cb(entry->d_name, file_size, ctx);
+    }
+    closedir(dir);
+    _unlock();
     return APP_SPIFFS_OK;
 }

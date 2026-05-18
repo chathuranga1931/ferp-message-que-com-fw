@@ -14,6 +14,7 @@
 5. [OTA](#5-ota)
 6. [MQTT](#6-mqtt)
 7. [FuelEnd Event Flow and Retransmission](#7-fuelend-event-flow-and-retransmission)
+8. [ModulePrinting — Receipt & Totalizer Print Client](#8-moduleprinting--receipt--totalizer-print-client)
 
 ---
 
@@ -169,7 +170,8 @@ ferp-message-library/
 │   │   ├── module_ota/      # OTA session manager (target-agnostic)
 │   │   ├── module_web_client_ota/   # HTTP-polling OTA source
 │   │   ├── module_mqtt/     # MQTT bridge + OTA source
-│   │   ├── module_udp_log/  # UDP log sink over WiFi (new)
+│   │   ├── module_udp_log/  # UDP log sink over WiFi
+│   │   ├── module_printing/ # Receipt and totalizer print client (new)
 │   │   └── module_msg_translator/  # Rule-table message translator
 │   │
 │   ├── sub-modules/
@@ -261,11 +263,11 @@ Every message class must:
 | `MsgSdReady` | `0x0202` | NOTIF | — | ModuleSD → all |
 | `MsgSdStatus` | `0x0203` | NOTIF | `type`, `size_mb`, `free_mb` | ModuleSD → all |
 | `MsgTimeStatus` | `0x0204` | NOTIF | `source`, `valid`, `epoch` | ModuleTimeMgr → all |
-| `MsgTimerStart` | `0x0100` | NOTIF | `duration_ms`, `repetitive` | Any → ModuleTimer |
+| `MsgTimerStart` | `0x0100` | NOTIF | `duration_ms`, `is_repetitive`, `forced`, `user_tag` | Any → ModuleTimer |
 | `MsgTimerStop` | `0x0101` | NOTIF | — | Any → ModuleTimer |
 | `MsgTimerStartResponse` | `0x0102` | DIRECT | `result` | ModuleTimer → requester |
 | `MsgTimerStopResponse` | `0x0103` | DIRECT | `result` | ModuleTimer → requester |
-| `MsgTimerAlarm` | `0x0104` | DIRECT | — | ModuleTimer → registered |
+| `MsgTimerAlarm` | `0x0104` | DIRECT | `user_tag` | ModuleTimer → registered |
 | `MsgConfigReady` | `0x0300` | NOTIF | — | ModuleConfig → all |
 | `MsgConfigSet` | `0x0301` | NOTIF | `key[32]`, `value[64]` | Any → ModuleConfig |
 | `MsgConfigGet` | `0x0302` | NOTIF | — | Any → ModuleConfig |
@@ -281,8 +283,9 @@ Every message class must:
 | `MsgConfigOta` | `0x030C` | DIRECT | `server_url[128]`, `check_interval_s` | ModuleConfig → requester |
 | `MsgConfigUpdated` | TBD | NOTIF | `key` (uint16, CFG_KEY_*) | ModuleConfig → all (after any MsgConfigSet write) |
 | `MsgFuelPumped` | `0x0010` | NOTIF | `n_idx`, `unit_pricex100`, `total_pricex100`, `vol_lx1000`, `time_stamp` | ModuleFuel → all |
-| `MsgNozzleState` | `0x0011` | NOTIF | `n_idx`, `state` (IDLE/PUMPING/PUMPED) | ModuleFuel → all |
-| `MsgFuelPrintOk` | `0x0012` | NOTIF | `nozzle_idx`, `dispenser_event_id`, `timestamp_epoch` | Any → all *(WIP — untracked)* |
+| `MsgNozzleState` | `0x0011` | NOTIF | `n_idx`, `state` (IDLE/PUMPING/PUMPED/TOTALIZER) | ModuleFuel → all |
+| `MsgFuelPrintStatus` | `0x0012` | NOTIF | `nozzle_idx`, `status`, `dispenser_event_id`, `timestamp_epoch`, `ne_id` | ModulePrinting → all |
+| `MsgTotalizerData` | `0x0013` | NOTIF | `nozzle_idx`, `timestamp_epoch`, `totalizer_str[16]` | Any → all |
 | `MsgDefaultBtn` | `0x0900` | NOTIF | `button_id`, `press_type` | ModuleDefaultBtn → all |
 | `MsgPrinterBtn` | `0x0901` | NOTIF | `button_id`, `status` | ModulePrintBtn → all |
 | `MsgWifiEvent` | `0x0A00` | NOTIF | `event`, `rssi` | ModuleWifi → all |
@@ -362,6 +365,7 @@ Pool classes are defined per-product in `app.cpp`. Example configuration:
 | 22 | `ModuleMqtt` | platform task | MQTT bridge + OTA source |
 | 23 | `ModuleMsgTranslator` | embedded in task | Rule-table message translator |
 | 27 | `ModuleUdpLog` | `network_task` | UDP log sink over WiFi |
+| 28 | `ModulePrinting` | `btn_task` | Receipt & totalizer print client |
 
 ---
 
@@ -479,7 +483,7 @@ stateDiagram-v2
 sequenceDiagram
     participant A as Any Module
     participant T as ModuleTimer
-    A->>T: MsgTimerStart (NOTIF, duration_ms, repetitive)
+    A->>T: MsgTimerStart (NOTIF, duration_ms, is_repetitive, forced, user_tag)
     T-->>A: MsgTimerStartResponse (DIRECT, result)
     Note over T: tick every 100 ms
     T-->>A: MsgTimerAlarm (DIRECT, on expiry)
@@ -492,6 +496,10 @@ sequenceDiagram
 | Max slots | `MODULE_TIMER_MAX_SLOTS` (default 20) |
 | Resolution | ±100 ms |
 | Task | `timing_task` |
+
+> **`user_tag`:** An opaque `uint32_t` supplied by the caller in `MsgTimerStart` and echoed back unchanged in `MsgTimerAlarm`. Lets a single module distinguish between multiple concurrent timers without maintaining external state.
+>
+> **`forced`:** When `true`, cancels any existing timer slot held by the calling module and starts a fresh slot with the new duration. Use this to reschedule without first sending `MsgTimerStop`.
 
 ---
 
@@ -826,9 +834,9 @@ RUNNING           init_comms_distap(_on_frame_display1, _on_frame_display2)
 | Message | ID | Type | Payload |
 |---------|-----|------|---------|
 | `MsgFuelPumped` | `0x0010` | NOTIFICATION | `n_idx`, `unit_pricex100`, `total_pricex100`, `volume_lx1000`, `time_stamp` |
-| `MsgNozzleState` | `0x0011` | NOTIFICATION | `n_idx`, `state` (IDLE/PUMPING/PUMPED) |
-| `MsgFuelPrintOk` | `0x0012` | NOTIFICATION | `nozzle_idx`, `dispenser_event_id` (ABS_ID), `timestamp_epoch` *(WIP — untracked)* |
-| `MsgDTFwVersion` | `0x0013` | NOTIFICATION | `version[32]`, `board_type` |
+| `MsgNozzleState` | `0x0011` | NOTIFICATION | `n_idx`, `state` (IDLE/PUMPING/PUMPED/TOTALIZER) |
+| `MsgFuelPrintStatus` | `0x0012` | NOTIFICATION | `nozzle_idx`, `status`, `dispenser_event_id`, `timestamp_epoch`, `ne_id` |
+| `MsgTotalizerData` | `0x0013` | NOTIFICATION | `nozzle_idx`, `timestamp_epoch`, `totalizer_str[16]` |
 
 > `MsgDispTapData` (raw frame) is **intentionally absent from the bus** — it is a direct call within `ModuleFuel`. Nozzle start/stop GPIO events are also **not on the bus** — handled internally via `hsys_tog_button_t` + event-group bits.
 
@@ -966,6 +974,114 @@ To add a translation rule:
 cd helper-scripts
 python3 udp-script.py   # listens on configured port, prints formatted log
 ```
+
+---
+
+### 4.19 ModulePrinting (ID 28)
+
+**Purpose:** Receipt and totalizer print client. Listens for print button presses, buffers them per nozzle in a pending array, fires the HTTP print request after a configurable delay, and retries on failure.
+
+#### State Machine
+
+```mermaid
+stateDiagram-v2
+    [*] --> WAIT_CONFIG : init()
+    WAIT_CONFIG --> IDLE : MsgConfigReady
+    IDLE --> HTTP : pending slot expires\nor print_delay_ms == 0
+    HTTP --> IDLE : MsgHttpResult (success or retries exhausted)
+    HTTP --> HTTP : MsgHttpResult (fail, retries remain)
+    IDLE --> IDLE : MsgTimerAlarm (scan pending array)
+```
+
+#### Pending-Array Design
+
+Each nozzle owns one slot in `_pending[FUEL_MAX_NOZZLES]`. When a print button press is received the data snapshot is stored in that slot together with the receive timestamp. A timer is armed for the remaining delay. When the alarm fires, all expired slots are processed; if any slot is still waiting, the timer is rescheduled for the nearest remaining deadline.
+
+This means:
+- A second button press for the same nozzle while a slot is occupied is **ignored** (logged).
+- Pending data is captured at button-press time — a new `MsgFuelPumped` before the delay expires does **not** change the pending print.
+- After HTTP completes, `_try_schedule()` is called once more to drain any slots that became ready in the meantime.
+
+#### Copy Numbering
+
+| `copy_number` in slot | `print_note` in HTTP body |
+|---|---|
+| 1 | `"Original"` |
+| 2 | `"Copy - 1"` |
+| 3 | `"Copy - 2"` |
+
+`printer_copy_count = 0` means only the Original is printed. A button press is rejected once `print_count > printer_copy_count`.
+
+#### Button Press Handling
+
+| Press type | Condition to accept | Action |
+|---|---|---|
+| Short press | `nozzle_rec.valid` AND `print_count <= printer_copy_count` | Queue receipt print |
+| Long press | `totalizer_valid[nozzle_idx]` | Queue totalizer print |
+
+#### HTTP Request Format
+
+**Receipt body** (POST to `printer_url`):
+```json
+{
+  "time":       1716800000,
+  "print_time": 1716800000,
+  "nozzel_id":  "P01",
+  "print_note": "Original",
+  "measurements": {
+    "L": 5.000,
+    "T": "",
+    "P": 15.00,
+    "U": 3.00,
+    "NE_ID":  "...",
+    "ABS_ID": 12345678
+  }
+}
+```
+`NE_ID` and `ABS_ID` are included only when `enable_nid_print = true`.
+
+**Totalizer body** (POST to `printer_url + "-totalizer"`):
+```json
+{
+  "time":      1716800000,
+  "nozzel_id": "P01",
+  "print_note": "Totalizer",
+  "measurements": { "L": "000005.000" }
+}
+```
+
+#### Config Keys Required
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `printer_url` | string | Base URL for receipt POST (no trailing slash) |
+| `printer_copy_count` | uint32 | Number of extra copies (0 = original only) |
+| `print_delay_ms` | uint32 | Delay after button press before firing (0 = immediate) |
+| `enable_nid_print` | bool | Include `NE_ID` / `ABS_ID` fields in receipt body |
+| `nozzle_ids` | string array | Per-nozzle identifier strings (e.g. `"P01"`, `"P02"`) |
+
+#### Retry Policy
+
+Up to `k_max_retries = 2` retries on any non-2xx result or HTTP error. On exhaustion, publishes `MsgFuelPrintStatus` with `status = PRINT_STATUS_FAILED`.
+
+#### Messages
+
+| Direction | Message | Notes |
+|-----------|---------|-------|
+| Subscribes | `MsgConfigReady` | Reads config, transitions WAIT_CONFIG → IDLE |
+| Subscribes | `MsgFuelPumped` | Updates per-nozzle data record |
+| Subscribes | `MsgTotalizerData` | Caches totalizer string per nozzle |
+| Subscribes | `MsgPrinterBtn` | Short = receipt, long = totalizer |
+| Subscribes | `MsgTimerAlarm` | Scans pending array |
+| Receives (DIRECT) | `MsgHttpResult` | HTTP outcome from ModuleHttp |
+| Sends (DIRECT) | `MsgHttpStart/SetUrl/Header/Body/SendRequest` | To MODULE_HTTP_ID |
+| Sends (DIRECT) | `MsgTimerStart` (`forced=true`) | Reschedule pending alarm |
+| Publishes | `MsgFuelPrintStatus` | Print OK or FAILED broadcast |
+
+| | |
+|--|--|
+| Task | `btn_task` |
+| Module ID | 28 (`MODULE_PRINTING_ID`) |
 
 ---
 

@@ -976,6 +976,7 @@ void ModuleCubeSphere::_burst_post(const char *url, const char *auth_value,
     { hsys_msg_t *m = MsgHttpSetUrlRequest::create(id(), url);                             if (m) send(m, MODULE_HTTP_ID); }
     { hsys_msg_t *m = MsgHttpHeaderRequest::create(id(), "Authorization", auth_value);     if (m) send(m, MODULE_HTTP_ID); }
     { hsys_msg_t *m = MsgHttpHeaderRequest::create(id(), "Content-Type", "application/json"); if (m) send(m, MODULE_HTTP_ID); }
+    LOG_MSG_DEBUG(CSP_LOG_EN, "JSON body: %.*s", (int)json_len, json_body);
     { hsys_msg_t *m = MsgHttpBodyRequest::create(id(), json_body, json_len);               if (m) send(m, MODULE_HTTP_ID); }
     { hsys_msg_t *m = MsgHttpSendRequest::create(id());                                    if (m) send(m, MODULE_HTTP_ID); }
 }

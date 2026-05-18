@@ -117,6 +117,10 @@ typedef enum : uint16_t
     MSG_ID_TIME_STATUS      = 0x0204,   ///< ModuleTimeMgr -> all: current time source and validity
     MSG_ID_PERSIST_LOG      = 0x0205,   ///< Any -> ModulePLog: write a text string to the SD-card log
     MSG_ID_SYSTEM_STATUS    = 0x0206,   ///< ModuleMsgTranslator -> all: aggregated system busy/idle state
+    MSG_ID_POOL_GET_JSON    = 0x0207,   ///< Any -> ModuleSysmon: request pool status JSON snapshot (NOTIFICATION)
+    MSG_ID_POOL_JSON        = 0x0208,   ///< ModuleSysmon -> all: pool status JSON response (NOTIFICATION)
+    MSG_ID_GET_FILE_LIST_SPIFFS = 0x0209, ///< Any -> ModuleSysmon: request SPIFFS file listing as JSON (NOTIFICATION)
+    MSG_ID_FILE_LIST_SPIFFS     = 0x020A, ///< ModuleSysmon -> all: SPIFFS file list JSON response (NOTIFICATION)
 
     // ------------------------------------------------------------------
     // Config  (0x0300 – 0x03FF)
@@ -145,7 +149,7 @@ typedef enum : uint16_t
     // ------------------------------------------------------------------
     // Sentinel — keep one above the highest assigned ID
     // ------------------------------------------------------------------
-    MSG_ID_MAX              = 0x0310,   ///< highest used is 0x030F (CONFIG_UPDATED)
+    MSG_ID_MAX              = 0x0310,   ///< highest used is 0x030F (CONFIG_UPDATED) — pool IDs at 0x0207/0x0208
 
 } app_msg_id_e;
 

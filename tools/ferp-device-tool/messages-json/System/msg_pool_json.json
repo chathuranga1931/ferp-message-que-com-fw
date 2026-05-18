@@ -1,0 +1,12 @@
+{
+  "msg_id": "0x0208",
+  "direction": "resp",
+  "fields": [
+    {
+      "name": "classes",
+      "label": "Pool Classes",
+      "type": "string",
+      "default": ""
+    }
+  ]
+}

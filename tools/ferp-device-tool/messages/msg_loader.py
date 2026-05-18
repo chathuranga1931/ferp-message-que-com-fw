@@ -97,7 +97,7 @@ def reload(msgs_dir: str = MSGS_DIR) -> None:
     for root, dirs, files in os.walk(msgs_dir):
         dirs.sort()
         for fname in sorted(files):
-            if not fname.endswith(".json"):
+            if fname.startswith("._") or not fname.endswith(".json"):
                 continue
             stem       = fname[:-5]                # "msg_config_mqtt"
             class_name = _snake_to_class(stem)     # "MsgConfigMqtt"

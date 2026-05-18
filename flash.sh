@@ -73,6 +73,17 @@ if ! command -v idf.py &>/dev/null; then
     exit 1
 fi
 
+# ── Helper: strip macOS resource-fork sidecar files from the SPIFFS data dir ─
+# macOS creates "._filename" Apple Double files alongside every file it writes
+# to non-APFS volumes.  These leak into the SPIFFS image if not removed first.
+clean_spiffs_data() {
+    local DATA_DIR="$PROJECT_DIR/data"
+    if [[ -d "$DATA_DIR" ]]; then
+        echo "Removing macOS ._* sidecar files from $DATA_DIR ..."
+        find "$DATA_DIR" -name "._*" -delete
+    fi
+}
+
 # ── Move to project directory ────────────────────────────────────────────────
 cd "$PROJECT_DIR" || { echo "ERROR: Project directory not found: $PROJECT_DIR"; exit 1; }
 echo "Project: $PROJECT_DIR"
@@ -83,8 +94,11 @@ echo ""
 
 if $CLEANALL; then
     echo "=== Clean all ==="
-    idf.py fullclean
+    # Use rm -rf directly to avoid idf.py fullclean crashing on stale macOS temp files
+    rm -rf "$PROJECT_DIR/build"
+    echo "Build directory removed."
 
+    clean_spiffs_data
     echo "=== Build all ==="
     idf.py build
 
@@ -94,6 +108,7 @@ if $CLEANALL; then
     echo "=== Done (clean + flash all) ==="
 
 elif $FLASHALL; then
+    clean_spiffs_data
     echo "=== Build all ==="
     idf.py build
 
@@ -103,6 +118,7 @@ elif $FLASHALL; then
     echo "=== Done (flash all) ==="
 
 elif $FLASHSPIFFS; then
+    clean_spiffs_data
     echo "=== Build SPIFFS image ==="
     idf.py build spiffs
 
