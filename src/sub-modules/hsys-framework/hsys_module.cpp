@@ -83,24 +83,19 @@ void HsysModule::log(const char *fmt, ...) const
 {
     va_list ap;
     va_start(ap, fmt);
-    char buf[256];
-    int off = snprintf(buf, sizeof(buf), "[%s] ", m_name);
-    if (off > 0 && (size_t)off < sizeof(buf))
-        vsnprintf(buf + off, sizeof(buf) - (size_t)off, fmt, ap);
+    // pal_logger_vlog_prefix formats "[name] user_message" directly into the
+    // already-static s_log_buffer under the log mutex — no stack buffer needed
+    // for the message content.
+    pal_logger_vlog_prefix(HSYS_MOD_LOG_EN, false, m_name, fmt, ap);
     va_end(ap);
-    LOG_MSG_INFO(HSYS_MOD_LOG_EN, "%s", buf);
 }
 
 void HsysModule::log_error(const char *fmt, ...) const
 {
     va_list ap;
     va_start(ap, fmt);
-    char buf[256];
-    int off = snprintf(buf, sizeof(buf), "[%s] ", m_name);
-    if (off > 0 && (size_t)off < sizeof(buf))
-        vsnprintf(buf + off, sizeof(buf) - (size_t)off, fmt, ap);
+    pal_logger_vlog_prefix(HSYS_MOD_LOG_EN, true, m_name, fmt, ap);
     va_end(ap);
-    LOG_MSG_ERROR(HSYS_MOD_LOG_EN, "%s", buf);
 }
 
 // ---------------------------------------------------------------------------

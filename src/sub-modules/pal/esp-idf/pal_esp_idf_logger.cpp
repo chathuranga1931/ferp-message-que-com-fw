@@ -10,6 +10,8 @@
 #include "pal_time.h"
 #include "hsys_mutex.h"
 #include "pal_logger_uart.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 #include <string.h>
 #include <cstdarg>
@@ -30,6 +32,12 @@ static uint32_t             s_sink_count = 0;
 
 // Log line counter (wraps at 9999)
 static uint32_t log_index = 0;
+
+// Re-entrancy guard: tracks which task currently holds s_log_mutex.
+// If the same task tries to log again (e.g. from a sink callback), bail out
+// silently rather than timing-out on the mutex and triggering
+// vTaskPriorityDisinheritAfterTimeout.
+static TaskHandle_t s_logging_task = NULL;
 
 // Legacy compatibility
 char sprintf_buff[100];
@@ -96,7 +104,7 @@ void pal_logger_init(void) {
 // ============================================================================
 // Core Logging Functions
 // ============================================================================
-#define MAX_MSG_LEN 120  // Max visible characters of user message per line
+#define MAX_MSG_LEN 500  // Max visible characters of user message per line
 
 // Returns the number of visible (non-ANSI-escape) characters in a string
 static uint32_t visible_strlen(const char *s) {
@@ -120,7 +128,7 @@ static uint32_t visible_strlen(const char *s) {
 
 static char chunk[MAX_MSG_LEN + 1];
 
-void pal_logger_log(bool en, const char *format, ...) {
+void pal_logger_vlog(bool en, const char *format, va_list args) {
 
     if (s_log_mutex == NULL) {
         return;
@@ -131,6 +139,12 @@ void pal_logger_log(bool en, const char *format, ...) {
         return;
     }
 
+    // Re-entrancy guard: if this task already holds the log mutex (e.g. a sink
+    // callback triggered another log call), return immediately.  Trying to
+    // acquire the mutex would time-out and assert in
+    // vTaskPriorityDisinheritAfterTimeout.
+    if (s_logging_task == xTaskGetCurrentTaskHandle()) return;
+
     if(!hsys_mutex_try_lock(s_log_mutex, 100))
     {
         // Failed to acquire mutex within timeout — print on its own line so it
@@ -138,11 +152,10 @@ void pal_logger_log(bool en, const char *format, ...) {
         s_log_uart.print_str("\r\n[Log Missed]\r\n");
         return;
     }
-    
-    va_list args;
-    va_start(args, format);
+    s_logging_task = xTaskGetCurrentTaskHandle();
+
+    // Format directly into the static buffer — no intermediate stack buffer.
     vsnprintf(s_log_buffer, sizeof(s_log_buffer), format, args);
-    va_end(args);
 
     // Find where the user message starts — after the last " : " separator
     // The format is always: "<ANSI>LVL<ANSI> TAG  NNNN : <user message>"
@@ -216,7 +229,73 @@ void pal_logger_log(bool en, const char *format, ...) {
         }
     }
     
+    s_logging_task = NULL;
     hsys_mutex_unlock(s_log_mutex);   
+}
+
+void pal_logger_log(bool en, const char *format, ...) {
+    va_list args;
+    va_start(args, format);
+    pal_logger_vlog(en, format, args);
+    va_end(args);
+}
+
+void pal_logger_vlog_prefix(bool en, bool is_error, const char *prefix,
+                             const char *format, va_list args)
+{
+    if (s_log_mutex == NULL || !en || !prefix || !format) return;
+    if (s_logging_task == xTaskGetCurrentTaskHandle()) return;
+
+    if (!hsys_mutex_try_lock(s_log_mutex, 100)) {
+        s_log_uart.print_str("\r\n[Log Missed]\r\n");
+        return;
+    }
+    s_logging_task = xTaskGetCurrentTaskHandle();
+
+    // Format the level tag + "[prefix] " header into the static buffer first.
+    const char *level = is_error ? ERROR_CODE : INFO_CODE;
+    int off = snprintf(s_log_buffer, sizeof(s_log_buffer), "%s[%s] ", level, prefix);
+    if (off < 0) off = 0;
+    if (off < (int)sizeof(s_log_buffer)) {
+        // Append the user message directly — no stack buffer involved.
+        vsnprintf(s_log_buffer + off, sizeof(s_log_buffer) - (size_t)off, format, args);
+    }
+
+    // Reuse the same display path as pal_logger_vlog via the already-filled
+    // s_log_buffer.  Print timestamp, sinks, UART, footer.
+    snprintf(header, sizeof(header), "%6ld %4ld", (long)pal_time_get_ms(), log_index++);
+    if (log_index > 9999) log_index = 0;
+    s_log_uart.print_char_buff(header);
+
+    if (s_sink_count > 0) {
+        for (int i = 0; i < PAL_LOGGER_MAX_SINKS; i++) {
+            if (s_sinks[i]) s_sinks[i](header, s_log_buffer, strlen(s_log_buffer));
+        }
+    }
+
+    // Print in MAX_MSG_LEN chunks so long messages wrap with alignment.
+    uint32_t msg_len = strlen(s_log_buffer);
+    uint32_t pos = 0;
+    bool first = true;
+    while (pos < msg_len || first) {
+        if (!first) pal_logger_log_header_empty(strlen(header));
+        uint32_t n = (msg_len - pos > MAX_MSG_LEN) ? MAX_MSG_LEN : (msg_len - pos);
+        strncpy(chunk, s_log_buffer + pos, n);
+        chunk[n] = '\0';
+        s_log_uart.print_str(chunk);
+        pal_logger_log_footer(true);
+        pos += n;
+        first = false;
+    }
+
+    if (s_sink_count > 0) {
+        for (int i = 0; i < PAL_LOGGER_MAX_SINKS; i++) {
+            if (s_sinks[i]) s_sinks[i](" ", "\n", 1);
+        }
+    }
+
+    s_logging_task = NULL;
+    hsys_mutex_unlock(s_log_mutex);
 }
 
 void pal_logger_log_only_serial(bool en, const char *format, ...) {

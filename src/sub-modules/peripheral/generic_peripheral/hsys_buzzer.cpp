@@ -31,8 +31,8 @@ static void hsys_buz_timer_callback(void* user_data) {
             if (buz->repeat_count == 0xFF) {
                 // Repeat forever
                 buz->current_step = 0;
-            } else if (buz->repeat_counter < buz->repeat_count) {
-                // Repeat limited times
+            } else if (buz->repeat_counter + 1 < buz->repeat_count) {
+                // Repeat until total play count (repeat_count) is reached
                 buz->current_step = 0;
                 buz->repeat_counter++;
             } else {

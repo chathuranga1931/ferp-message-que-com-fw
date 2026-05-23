@@ -237,7 +237,7 @@ hsys_msg_t *hsys_msg_create(hsys_msg_id_t msg_id, hsys_module_id_t sender_id)
     msg->priority     = HSYS_PRIORITY_NORMAL;
     msg->payload_size = desc->payload_size;
     msg->desc         = desc;
-    msg->ref_count    = 0;  // set to subscriber count at publish time
+    msg->ref_count    = 1;  // caller holds one ref; publish/send will overwrite before enqueueing
 
     if (desc->payload_size > 0) {
         msg->payload = hsys_pool_alloc(desc->payload_size);

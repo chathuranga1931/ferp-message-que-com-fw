@@ -15,6 +15,7 @@ extern "C" {
 
 #include <stdint.h>
 #include <stddef.h>
+#include <stdarg.h>
 
 // ============================================================================
 // Type Definitions
@@ -157,6 +158,33 @@ void pal_logger_init(void);
  */
 void pal_logger_log(bool en, const char *format, ...);
 
+/**
+ * @brief Log a formatted message (va_list variant — no intermediate buffer)
+ *
+ * Same as pal_logger_log() but accepts an already-opened va_list.  Callers
+ * with their own variadic argument list (e.g. wrapper functions) should use
+ * this instead of pre-formatting into a stack buffer and calling
+ * pal_logger_log("%s", buf), which would waste up to 1 KB of stack and run
+ * vsnprintf twice.
+ */
+void pal_logger_vlog(bool en, const char *format, va_list args);
+
+/**
+ * @brief Log with a module-name prefix (zero stack cost for message content).
+ *
+ * Formats "[module_name] user_message" directly into the already-static
+ * internal log buffer under the log mutex.  The message content never
+ * touches the caller's stack — only the va_list pointer is passed.
+ *
+ * @param en         Enable flag (false = no-op).
+ * @param is_error   true → ERROR level colour, false → INFO level colour.
+ * @param prefix     Module name or other short prefix string.
+ * @param format     Printf-style user format string.
+ * @param args       Opened va_list for the user format arguments.
+ */
+void pal_logger_vlog_prefix(bool en, bool is_error, const char *prefix,
+                             const char *format, va_list args);
+
 void pal_logger_log_only_serial(bool en, const char *format, ...);
 /**
  * @brief Log a formatted message without newline
@@ -247,7 +275,6 @@ void pal_logger_log_footer(bool en);
 
 #ifdef __cplusplus
 
-#include <cstdarg>
 #include <cstdio>
 
 /**
@@ -265,19 +292,15 @@ public:
     void log(const char *format, ...) {
         va_list args;
         va_start(args, format);
-        char buffer[1024];
-        vsnprintf(buffer, sizeof(buffer), format, args);
+        pal_logger_vlog(true, format, args);
         va_end(args);
-        pal_logger_log("%s", buffer);
     }
     
     void log_no_newline(const char *format, ...) {
         va_list args;
         va_start(args, format);
-        char buffer[1024];
-        vsnprintf(buffer, sizeof(buffer), format, args);
+        pal_logger_vlog(true, format, args);
         va_end(args);
-        pal_logger_log_no_newline(true, "%s", buffer);
     }
     
     void log_buffer(byte *buffer, uint16_t size) {

@@ -1,0 +1,10 @@
+# Virtual environment
+.env/
+
+# Saved session config (port, baudrate, filters)
+config.json
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo

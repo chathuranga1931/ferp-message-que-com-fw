@@ -2,9 +2,9 @@
 //
 // ModuleBuzzer — drives the piezo buzzer via hsys_buz.
 //
-// Pattern reference (CUE_RESOLUTION_MS = 250 ms per bit):
-//   0b11111111, length=8, repeat=1  → 8 × 250 ms = 2 s solid tone (print press)
-//   0b101,      length=3, repeat=1  → ON-OFF-ON × 250 ms = double blip (fuel pumped)
+// Pattern reference (CUE_RESOLUTION_MS = 100 ms per bit):
+//   0b11111111, length=8, repeat=1  → 8 × 100 ms = 2 s solid tone (print press)
+//   0b101,      length=3, repeat=1  → ON-OFF-ON × 100 ms = double blip (fuel pumped)
 
 #include "module_buzzer.h"
 #include "msg_printer_btn.h"
@@ -91,23 +91,23 @@ void ModuleBuzzer::on_msg_received(const hsys_msg_t &msg)
 
 void ModuleBuzzer::_play_print_press()
 {
-    // 8 × 250 ms = 2 s solid tone, play once
+    // 8 × 100 ms = 2 s solid tone, play once
     hsys_buz_stop(&_buz);
-    hsys_buz_set_pattern(&_buz, 0b11111111, 8, 1);
+    hsys_buz_set_pattern(&_buz, 0b1100, 4, 1);
     hsys_buz_start(&_buz);
 }
 
 void ModuleBuzzer::_play_fuel_pumped()
 {
-    // ON-OFF-ON × 250 ms = double blip, play once
+    // ON-OFF-ON × 100 ms = double blip, play once
     hsys_buz_stop(&_buz);
-    hsys_buz_set_pattern(&_buz, 0b101, 3, 1);
+    hsys_buz_set_pattern(&_buz, 0b1010, 4, 1);
     hsys_buz_start(&_buz);
 }
 
 void ModuleBuzzer::_play_config_ready()
 {
-    // ON-OFF-ON-OFF × 250 ms = two short beeps, play once
+    // ON-OFF-ON-OFF × 100 ms = two short beeps, play once
     hsys_buz_stop(&_buz);
     hsys_buz_set_pattern(&_buz, 0b1010, 4, 1);
     hsys_buz_start(&_buz);

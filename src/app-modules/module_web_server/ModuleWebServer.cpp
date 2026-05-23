@@ -1038,7 +1038,6 @@ int32_t ModuleWebServer::_hdl_post_message(pal_http_request_t req, void *ctx)
 
     /* ── Look up route ──────────────────────────────────────────────────────────────────── */
     if (!self->m_api_routes) {
-        msg->ref_count = 1;
         hsys_msg_release(msg);
         pal_http_resp_set_status(req, 503);
         return pal_http_resp_send(req, "{\"ok\":false,\"error\":\"no route table\"}", 0);
@@ -1049,7 +1048,6 @@ int32_t ModuleWebServer::_hdl_post_message(pal_http_request_t req, void *ctx)
         if (r->msg_id == msg->msg_id) { route = r; break; }
     }
     if (!route) {
-        msg->ref_count = 1;
         hsys_msg_release(msg);
         pal_http_resp_set_status(req, 403);
         return pal_http_resp_send(req,

@@ -242,6 +242,34 @@ void pal_logger_log(bool en, const char *format, ...)
     hsys_mutex_unlock(s_log_mutex);
 }
 
+void pal_logger_vlog(bool en, const char *format, va_list args)
+{
+    if (!en || s_log_mutex == nullptr) return;
+
+    hsys_mutex_lock(s_log_mutex);
+    vsnprintf(s_log_buffer, sizeof(s_log_buffer), format, args);
+    hsys_mutex_unlock(s_log_mutex);
+
+    // Re-use pal_logger_log so formatting/sinks are consistent.
+    pal_logger_log(en, "%s", s_log_buffer);
+}
+
+void pal_logger_vlog_prefix(bool en, bool is_error, const char *prefix,
+                             const char *format, va_list args)
+{
+    if (!en || s_log_mutex == nullptr || !prefix || !format) return;
+
+    // Build "[prefix] user_message" in s_log_buffer under the mutex.
+    hsys_mutex_lock(s_log_mutex);
+    const char *level = is_error ? ERROR_CODE : INFO_CODE;
+    int off = snprintf(s_log_buffer, sizeof(s_log_buffer), "%s[%s] ", level, prefix);
+    if (off > 0 && off < (int)sizeof(s_log_buffer))
+        vsnprintf(s_log_buffer + off, sizeof(s_log_buffer) - (size_t)off, format, args);
+    hsys_mutex_unlock(s_log_mutex);
+
+    pal_logger_log(en, "%s", s_log_buffer);
+}
+
 void pal_logger_log_no_newline(bool en, const char *format, ...)
 {
     if (!en || s_log_mutex == nullptr) return;

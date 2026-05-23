@@ -243,7 +243,7 @@ esp_err_t init_comms_distap(void (*dis1_fuel_event)(display_type_t type, uint8_t
     dis2_cb = dis2_fuel_event;
     if (ser_rx_task_hdl != NULL)
         return ret;
-    if (xTaskCreate(serial_receive_task, "serial_receive_task", 2 * 1024, NULL, 5, &ser_rx_task_hdl) != pdPASS)
+    if (xTaskCreate(serial_receive_task, "serial_receive_task", 6 * 1024, NULL, 5, &ser_rx_task_hdl) != pdPASS)
     {
         return ESP_FAIL;
     }
