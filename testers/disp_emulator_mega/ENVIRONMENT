@@ -1,0 +1,24 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# ENVIRONMENT — Configuration for flash.sh (disp_emulator_mega)
+# Edit these variables to match your machine, then run ./flash.sh
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Serial port the Arduino Mega is connected to.
+# The board is programmed via TX0/RX0 using an external USB-serial adapter.
+# Wiring: adapter TX → Mega RX0 (pin 0), adapter RX → Mega TX0 (pin 1), GND → GND
+# ⚠ No auto-reset: you must press the RESET button manually when prompted during upload.
+# Run: arduino-cli board list    to find the correct port.
+COMPORT="/dev/tty.usbserial-A5069RR4"
+
+# Serial baud rate for the monitor (must match Serial.begin() in the sketch).
+BAUD=115200
+
+# Board FQBN (Fully Qualified Board Name) — do not change for Mega 2560.
+FQBN="arduino:avr:mega"
+
+# Path to the bundled arduino-cli inside Arduino IDE 2.x on macOS.
+# If you installed arduino-cli separately, replace with its full path.
+ARDUINO_CLI="/Applications/Arduino IDE.app/Contents/Resources/app/lib/backend/resources/arduino-cli"
+
+# Directory where compiled binaries are cached between builds.
+BUILD_PATH="/tmp/disp_emulator_mega_build"

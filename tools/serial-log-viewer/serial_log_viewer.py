@@ -195,9 +195,10 @@ class App(tk.Tk):
         self._rx_q    = queue.Queue()
         self._reader  = SerialReader(self._rx_q)
 
-        self._level_vars: dict[str, tk.BooleanVar] = {}
-        self._tag_vars:   dict[str, tk.BooleanVar] = {}
-        self._history:    list[dict]                = []
+        self._level_vars:      dict[str, tk.BooleanVar] = {}
+        self._tag_vars:        dict[str, tk.BooleanVar] = {}
+        self._history:         list[dict]                = []
+        self._auto_scroll_var: tk.BooleanVar             = tk.BooleanVar(value=True)
 
         self._build_ui()
         self._restore_state()
@@ -269,6 +270,14 @@ class App(tk.Tk):
         tk.Button(bar, text="Clear All", bg=BG3, fg=FG,
                   font=("Menlo", 10), relief=tk.FLAT, cursor="hand2",
                   command=self._clear_all).pack(side=tk.RIGHT, padx=8)
+
+        # Auto-scroll checkbox (right-aligned, left of Clear All)
+        tk.Checkbutton(
+            bar, text="Auto-scroll", variable=self._auto_scroll_var,
+            bg=BG2, fg=DIM, selectcolor=BG3,
+            activebackground=BG2, activeforeground=FG,
+            font=("Menlo", 10),
+        ).pack(side=tk.RIGHT, padx=(0, 4))
 
     # ── Filter sidebar ────────────────────────────────────────────────────────
     def _build_sidebar(self, parent) -> tk.Frame:
@@ -589,7 +598,8 @@ class App(tk.Tk):
                 self._live_txt.delete("1.0", f"{TRIM_CHUNK + 1}.0")
 
             self._live_txt.config(state=tk.DISABLED)
-            self._live_txt.see(tk.END)
+            if self._auto_scroll_var.get():
+                self._live_txt.see(tk.END)
 
         self.after(POLL_MS, self._poll)
 

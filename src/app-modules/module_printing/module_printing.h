@@ -133,6 +133,7 @@ private:
     void _on_totalizer_data(const hsys_msg_t &msg);
     void _on_printer_btn(const hsys_msg_t &msg);
     void _on_timer_alarm();
+    void _on_http_start_response(const hsys_msg_t &msg);
     void _on_http_result(const hsys_msg_t &msg);
 
     // ── Scheduling helpers ───────────────────────────────────────────────────

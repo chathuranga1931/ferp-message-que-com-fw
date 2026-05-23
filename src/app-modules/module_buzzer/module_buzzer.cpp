@@ -58,10 +58,12 @@ void ModuleBuzzer::on_msg_received(const hsys_msg_t &msg)
             auto p = MsgPrinterBtn::deserialize(msg);
             LOG_MSG_INFO(BUZ_LOG_EN, "MsgPrinterBtn — btn=%u status=%u",
                          p.button_id, (uint8_t)p.status);
-            if (p.button_id == MsgPrinterBtn::BTN_ID_PRINT1 &&
-                p.status    == BTN_SHORT_PRESS)
+            if ((p.button_id == MsgPrinterBtn::BTN_ID_PRINT1 ||
+                 p.button_id == MsgPrinterBtn::BTN_ID_PRINT2) &&
+                p.status == BTN_SHORT_PRESS)
             {
-                LOG_MSG_INFO(BUZ_LOG_EN, "print-1 short press — playing tone");
+                LOG_MSG_INFO(BUZ_LOG_EN, "print-%u short press — playing tone",
+                             (unsigned)p.button_id);
                 _play_print_press();
             }
             break;

@@ -90,6 +90,8 @@ void ModuleCubeSphere::init()
     subscribe(MSG_ID_HTTP_HEADER_RESPONSE);
     subscribe(MSG_ID_HTTP_BODY_RESPONSE);
 
+    hsys_queue_init(&_pump_q, k_pump_q_size, sizeof(PumpedQEntry));
+
     LOG_MSG_INFO(CSP_LOG_EN, "init — state=WAIT_FOR_INTERNET");
 }
 
@@ -222,14 +224,6 @@ void ModuleCubeSphere::_on_fuel_pumped(const hsys_msg_t &msg)
         return;
     }
 
-    if (_http_phase != HTTP_IDLE) {
-        LOG_MSG_WARNING(CSP_LOG_EN, "HTTP busy — storing pumped event for retx");
-        _pumped_failure++;
-        _publish_status(CUBESPHERE_STATUS_PUMPED_FAILED, p.nozzle_idx);
-        _retx_store_pumped(p);
-        return;
-    }
-
     if (p.nozzle_idx >= CS_NO_NOZZLES || _cs_nozzles[p.nozzle_idx].uuid[0] == '\0') {
         LOG_MSG_ERROR(CSP_LOG_EN, "invalid nozzle_idx %u or unconfigured nozzle", p.nozzle_idx);
         _pumped_failure++;
@@ -238,29 +232,37 @@ void ModuleCubeSphere::_on_fuel_pumped(const hsys_msg_t &msg)
         return;
     }
 
-    // Build the pumped event JSON into _event_json
-    uint32_t event_id = _pumped_success + _pumped_failure + 1;
-    if (!_build_pumped_event_json(p.nozzle_idx, p.vol_lx1000, p.unit_pricex100,
-                                   p.total_pricex100, (time_t)p.time_stamp,
-                                   event_id, p.ne_id)) {
-        LOG_MSG_ERROR(CSP_LOG_EN, "failed to build pumped event JSON — storing for retx");
+    // Two entries per transaction: EVT_PUMPED then EVT_TOTALIZED.
+    // Reject both together if there is not enough room to avoid orphaned entries.
+    if (hsys_queue_size(&_pump_q) + 2U > k_pump_q_size) {
+        LOG_MSG_WARNING(CSP_LOG_EN,
+                        "pump queue full (nozzle=%u, q=%u) — storing for retx",
+                        (unsigned)p.nozzle_idx, (unsigned)hsys_queue_size(&_pump_q));
         _pumped_failure++;
         _publish_status(CUBESPHERE_STATUS_PUMPED_FAILED, p.nozzle_idx);
         _retx_store_pumped(p);
         return;
     }
 
-    // Cache last pumped data for the follow-up app.fuel/totalized event
-    _last_pumped_nozzle_idx  = p.nozzle_idx;
-    _last_pumped_vol_lx1000  = p.vol_lx1000;
-    _last_pumped_unit_px100  = p.unit_pricex100;
-    _last_pumped_total_px100 = p.total_pricex100;
-    _last_pumped_ts_epoch    = (time_t)p.time_stamp;
-    _pending_totalized       = true;  // arm totalized follow-up
+    uint32_t event_id = _pumped_success + _pumped_failure + 1;
 
-    _cur_evt = EVT_PUMPED;
-    _send_http_start(PAL_HTTP_METHOD_POST, 10000, nullptr);
-    LOG_MSG_DEBUG(CSP_LOG_EN, "pumped event queued (nozzle=%u id=%u)", p.nozzle_idx, event_id);
+    PumpedQEntry e;
+    e.is_totalized    = false;
+    e.nozzle_idx      = p.nozzle_idx;
+    e.vol_lx1000      = p.vol_lx1000;
+    e.unit_pricex100  = p.unit_pricex100;
+    e.total_pricex100 = p.total_pricex100;
+    e.ts_epoch        = (time_t)p.time_stamp;
+    e.event_id        = event_id;
+    e.ne_id           = p.ne_id;
+
+    hsys_queue_send(&_pump_q, &e, 0);
+    e.is_totalized = true;
+    hsys_queue_send(&_pump_q, &e, 0);  // totalized entry uses identical data, different event type
+
+    LOG_MSG_DEBUG(CSP_LOG_EN, "pumped + totalized queued (nozzle=%u id=%u q=%u)",
+                  (unsigned)p.nozzle_idx, (unsigned)event_id, (unsigned)hsys_queue_size(&_pump_q));
+    _start_next_event();
 }
 
 void ModuleCubeSphere::_on_nozzle_state(const hsys_msg_t &msg)
@@ -631,9 +633,19 @@ void ModuleCubeSphere::_start_next_event()
             }
         }
         _cur_evt = EVT_PUMP_START;
-    } else if (_pending_totalized) {
-        _pending_totalized = false;
-        _cur_evt = EVT_TOTALIZED;
+    } else if (!hsys_queue_is_empty(&_pump_q)) {
+        // Dequeue the next pump-end entry and load its data into the _last_pumped_*
+        // fields used by _build_event_json().
+        PumpedQEntry e;
+        hsys_queue_receive(&_pump_q, &e, 0);
+        _last_pumped_nozzle_idx  = e.nozzle_idx;
+        _last_pumped_vol_lx1000  = e.vol_lx1000;
+        _last_pumped_unit_px100  = e.unit_pricex100;
+        _last_pumped_total_px100 = e.total_pricex100;
+        _last_pumped_ts_epoch    = e.ts_epoch;
+        _last_pumped_ne_id       = e.ne_id;
+        _last_pumped_event_id    = e.event_id;
+        _cur_evt = e.is_totalized ? EVT_TOTALIZED : EVT_PUMPED;
     } else if (_pending_print_ok) {
         _pending_print_ok = false;
         _cur_evt = EVT_PRINT_OK;
@@ -770,6 +782,16 @@ bool ModuleCubeSphere::_build_event_json(evt_type_t evt)
             }
             break;
         }
+        case EVT_PUMPED:
+            // JSON is built by _build_pumped_event_json() which serialises directly into _event_json
+            return _build_pumped_event_json(
+                _last_pumped_nozzle_idx,
+                _last_pumped_vol_lx1000,
+                _last_pumped_unit_px100,
+                _last_pumped_total_px100,
+                _last_pumped_ts_epoch,
+                _last_pumped_event_id,
+                _last_pumped_ne_id);
         default: return false;
     }
 

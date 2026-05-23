@@ -29,6 +29,7 @@
 #include "msg_http_start_request.h"
 #include "retransmission_manager.h"
 #include "list_manager.h"
+#include "hsys_queue.h"
 #include "msg_fuel_pumped.h"
 #include "msg_nozzle_state.h"    // MsgNozzleState — pump-start trigger
 #include "msg_fuel_print_status.h"  // MsgFuelPrintStatus — print status trigger
@@ -209,10 +210,25 @@ private:
     bool _pending_status_update = false;
     bool _pending_pump_start[CS_NO_NOZZLES] = {}; ///< nozzle went to PUMPING
     bool _pending_print_ok      = false;
-    bool _pending_totalized     = false;
 
     uint32_t _hb_interval_ms   = MODULE_CUBESPHERE_DEFAULT_HB_INTERVAL_MS;
     bool     _hb_enabled        = true;
+
+    // ── Local pump-end event queue ────────────────────────────────────────────
+    // Each fuel transaction enqueues two entries: EVT_PUMPED then EVT_TOTALIZED.
+    // 4 slots = 2 entries × 2 concurrent transactions; hsys_queue copies by value.
+    static constexpr uint8_t k_pump_q_size = 4;
+    struct PumpedQEntry {
+        bool     is_totalized    = false;
+        uint8_t  nozzle_idx      = 0;
+        uint32_t vol_lx1000      = 0;
+        uint32_t unit_pricex100  = 0;
+        uint64_t total_pricex100 = 0;
+        time_t   ts_epoch        = 0;
+        uint32_t event_id        = 0;
+        uint64_t ne_id           = 0;
+    };
+    hsys_queue_handle_t _pump_q = {};  ///< FIFO of PumpedQEntry, depth k_pump_q_size
 
     // ── Cached data for follow-up events ─────────────────────────────────────
     // Pump-start: nozzle index that just went PUMPING
@@ -223,6 +239,8 @@ private:
     uint32_t _last_pumped_unit_px100   = 0;
     uint64_t _last_pumped_total_px100  = 0;
     time_t   _last_pumped_ts_epoch     = 0;
+    uint64_t _last_pumped_ne_id        = 0;
+    uint32_t _last_pumped_event_id     = 0;
     uint32_t       _print_ok_dispenser_event_id = 0;
     int64_t        _print_ok_timestamp_epoch    = 0;
     uint8_t        _print_ok_nozzle_idx         = 0;
