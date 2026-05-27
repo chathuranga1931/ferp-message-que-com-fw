@@ -31,17 +31,7 @@ _MONO          = ("Menlo", 10)
 _MONO_SM       = ("Menlo", 9)
 _MONO_LG       = ("Menlo", 11, "bold")
 
-# display_type_t enum values (from display_types.h)
-DISPLAY_TYPES: dict[str, int] = {
-    "DIS_NONE (0)":           0,
-    "CENSTAR 6-digit (1)":    1,
-    "CENSTAR 7-digit (2)":    2,
-    "CENSTAR 7-digit CS (3)": 3,
-    "HONGYANG 8-digit (4)":   4,
-    "WAYNE 6-digit (5)":      5,
-    "SANKI 6-digit (6)":      6,
-    "LONGFENG 8-digit (7)":   7,
-}
+from sim_core import DISPLAY_TYPES   # display_type_t enum values (from display_types.h)
 _DEFAULT_DISPLAY = "SANKI 6-digit (6)"
 
 

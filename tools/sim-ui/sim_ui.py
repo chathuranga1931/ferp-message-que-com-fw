@@ -46,72 +46,7 @@ from widgets.sdcard_widget         import SdCardWidget
 from widgets.message_inject_widget import MessageInjectWidget
 from widgets.mqtt_widget           import MqttWidget
 from widgets.cloud_widget          import CloudWidget
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# TCP reader — runs in a background thread, puts parsed JSON into a queue
-# ─────────────────────────────────────────────────────────────────────────────
-
-class SimConnection:
-    def __init__(self, host: str, port: int, rx_queue: queue.Queue):
-        self._host     = host
-        self._port     = port
-        self._q        = rx_queue
-        self._sock     = None
-        self._running  = False
-        self._send_lock = threading.Lock()
-
-    def connect(self) -> bool:
-        try:
-            self._sock = socket.create_connection((self._host, self._port), timeout=5)
-            self._sock.settimeout(None)
-            self._running = True
-            t = threading.Thread(target=self._reader, daemon=True)
-            t.start()
-            return True
-        except OSError as e:
-            self._q.put({"id": "_SIM_ERROR", "data": {"msg": str(e)}})
-            return False
-
-    def send(self, obj: dict):
-        if self._sock is None:
-            return
-        line = json.dumps(obj) + "\n"
-        with self._send_lock:
-            try:
-                self._sock.sendall(line.encode())
-            except OSError:
-                pass
-
-    def _reader(self):
-        buf = b""
-        while self._running:
-            try:
-                chunk = self._sock.recv(4096)
-                if not chunk:
-                    break
-                buf += chunk
-                while b"\n" in buf:
-                    line, buf = buf.split(b"\n", 1)
-                    line = line.strip()
-                    if line:
-                        try:
-                            obj = json.loads(line.decode())
-                            self._q.put(obj)
-                        except json.JSONDecodeError:
-                            # Not JSON — treat as plain log line
-                            self._q.put({"id": "_LOG", "data": {"text": line.decode()}})
-            except OSError:
-                break
-        self._q.put({"id": "_SIM_DISCONNECTED", "data": {}})
-
-    def close(self):
-        self._running = False
-        if self._sock:
-            try:
-                self._sock.close()
-            except OSError:
-                pass
+from sim_core                      import SimConnection
 
 
 # ─────────────────────────────────────────────────────────────────────────────
