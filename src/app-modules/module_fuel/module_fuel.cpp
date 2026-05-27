@@ -379,7 +379,6 @@ void ModuleFuel::_process_queues()
         static fuel_frame_item_t item[NO_NOZZELS];
         static app_display_data_t display_data[NO_NOZZELS] = {0}; 
         static unsigned long ts_last_data_received[NO_NOZZELS] =  {0};
-        bool is_pumped[NO_NOZZELS] = {0};
         bool is_received = false;
 
         do 
@@ -400,6 +399,7 @@ void ModuleFuel::_process_queues()
             switch(dtype)
             {
                 case DIS_NONE:
+                    // MLOG("DIS_NONE");
                 break;
                 case DIS_LONGFENG_8_DIGIT:
                 case DIS_CENSTAR_6_DIGIT:
@@ -408,13 +408,14 @@ void ModuleFuel::_process_queues()
                 case DIS_WAYNE_6_DIGIT:
                 case DIS_SANKI_6_DIGIT:
                 {
-                    // SANKI does not have nozzle stat in the frame
-                    display_data[idx].start_stop = _nozzle_state[idx];  // Ensure latest nozzle state from toggle-button GPIO    
+                    display_data[idx].start_stop = _nozzle_state[idx];  
+                    // MLOG("CEN/SAN/LONG %s", display_data[idx].start_stop ? "UP" : "DN");
                 }
                 break;
                 case DIS_HONGYANG_8_DIGIT:
                 break;
                 default:
+                    MLOG("UNKNOWN DISPLAY TYPE");
                 break;
             }
 
@@ -470,7 +471,7 @@ void ModuleFuel::_process_queues()
             bool is_valid = pump_drivers[dtype].process_data(&display_data[idx]);
             if (!is_valid) 
             {
-                // MLOG("nozzle[%u] sanki6_process_data rejected frame", (unsigned)idx);
+                MLOG("nozzle[%u] process_data rejected frame", (unsigned)idx);
                 continue;
             }
 
@@ -612,7 +613,11 @@ void ModuleFuel::_stop_tick_timer()
     MsgTimerStop::Payload sp{};
     sp.source_module_id = id();
     hsys_msg_t *smsg = MsgTimerStop::create(id(), sp);
-    if (smsg) publish(smsg);
+    if (smsg) {
+        // Use a short bounded wait instead of fire-and-forget: dropping the
+        // STOP message can leave the watchdog timer running across queue churn.
+        (void)send(smsg, MODULE_TIMER_ID, 50);
+    }
 }
 
 void ModuleFuel::_start_tick_timer()
@@ -627,5 +632,9 @@ void ModuleFuel::_start_tick_timer()
     tp.forced           = false;
 
     hsys_msg_t *tmsg = MsgTimerStart::create(id(), tp);
-    if (tmsg) publish(tmsg);
+    if (tmsg) {
+        // START is required for the watchdog path, so make it delivery-safe as
+        // well.  A short wait is enough for the timing task to drain normally.
+        (void)send(tmsg, MODULE_TIMER_ID, 50);
+    }
 }
