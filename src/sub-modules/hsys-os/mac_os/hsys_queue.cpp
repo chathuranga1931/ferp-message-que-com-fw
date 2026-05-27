@@ -124,3 +124,56 @@ bool hsys_queue_receive_from_isr(hsys_queue_handle_t *queue_handle, void *item,
     q->cv_not_full.notify_one();
     return true;
 }
+
+bool hsys_queue_peek(hsys_queue_handle_t *queue_handle, void *item, uint32_t wait_time_ms)
+{
+    if (!queue_handle || !queue_handle->queueHandle || !item) return false;
+    MacOsQueue *q = static_cast<MacOsQueue *>(queue_handle->queueHandle);
+
+    std::unique_lock<std::mutex> lock(q->mtx);
+
+    auto item_available = [&]() { return !q->items.empty(); };
+
+    if (wait_time_ms == 0xFFFFFFFFUL) {
+        q->cv_not_empty.wait(lock, item_available);
+    } else {
+        bool ok = q->cv_not_empty.wait_for(lock,
+                      std::chrono::milliseconds(wait_time_ms),
+                      item_available);
+        if (!ok) return false;
+    }
+
+    std::memcpy(item, q->items.front().data(), q->item_size);
+    // Item is NOT removed — peek only
+    return true;
+}
+
+uint32_t hsys_queue_size(hsys_queue_handle_t *queue_handle)
+{
+    if (!queue_handle || !queue_handle->queueHandle) return 0;
+    MacOsQueue *q = static_cast<MacOsQueue *>(queue_handle->queueHandle);
+    std::unique_lock<std::mutex> lock(q->mtx);
+    return static_cast<uint32_t>(q->items.size());
+}
+
+bool hsys_queue_is_empty(hsys_queue_handle_t *queue_handle)
+{
+    if (!queue_handle || !queue_handle->queueHandle) return true;
+    MacOsQueue *q = static_cast<MacOsQueue *>(queue_handle->queueHandle);
+    std::unique_lock<std::mutex> lock(q->mtx);
+    return q->items.empty();
+}
+
+bool hsys_queue_is_full(hsys_queue_handle_t *queue_handle)
+{
+    if (!queue_handle || !queue_handle->queueHandle) return false;
+    MacOsQueue *q = static_cast<MacOsQueue *>(queue_handle->queueHandle);
+    std::unique_lock<std::mutex> lock(q->mtx);
+    return q->items.size() >= q->max_length;
+}
+
+void hsys_yield_from_isr(void)
+{
+    // No-op on macOS — there is no ISR preemption to yield from.
+}
+
