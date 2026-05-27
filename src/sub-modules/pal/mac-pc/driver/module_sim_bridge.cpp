@@ -42,6 +42,8 @@
 #include "msg_printer_btn.h"
 #include "msg_nozzle_state.h"
 #include "msg_fuel_pumped.h"
+// ── System reboot ──
+#include "msg_system_reboot.h"
 // ── Connectivity ──
 #include "msg_wifi_event.h"
 #include "msg_internet_status.h"
@@ -63,34 +65,41 @@ ModuleSimBridge *ModuleSimBridge::instance() { return &s_instance; }
 void ModuleSimBridge::init()
 {
     // ── Timer (notifications only; responses/alarms are DIRECT) ──
-    subscribe(MSG_ID_TIMER_START);
-    subscribe(MSG_ID_TIMER_STOP);
+    auto _sub = [this](hsys_msg_id_t id) {
+        hsys_status_t st = subscribe(id);
+        if (st != HSYS_OK && st != HSYS_ERR_ALREADY_EXISTS)
+            fprintf(stderr, "[DBG] sim_bridge subscribe(0x%04X) FAILED st=%d\n", (unsigned)id, (int)st);
+    };
+    _sub(MSG_ID_TIMER_START);
+    _sub(MSG_ID_TIMER_STOP);
     // ── System / timing ──
-    // subscribe(MSG_ID_TICK_1000MS);
-    subscribe(MSG_ID_SPIFFS_READY);
-    subscribe(MSG_ID_SD_READY);
-    subscribe(MSG_ID_SD_STATUS);
-    subscribe(MSG_ID_TIME_STATUS);
+    // _sub(MSG_ID_TICK_1000MS);
+    _sub(MSG_ID_SPIFFS_READY);
+    _sub(MSG_ID_SD_READY);
+    _sub(MSG_ID_SD_STATUS);
+    _sub(MSG_ID_TIME_STATUS);
     // ── Config ──
-    subscribe(MSG_ID_CONFIG_READY);
-    subscribe(MSG_ID_CONFIG_SET);
-    subscribe(MSG_ID_CONFIG_GET);
-    subscribe(MSG_ID_CONFIG_GET_WIFI);
-    subscribe(MSG_ID_CONFIG_GET_CLOUD);
-    subscribe(MSG_ID_CONFIG_GET_MQTT);
-    subscribe(MSG_ID_CONFIG_GET_DT);
-    subscribe(MSG_ID_CONFIG_GET_KEY);
-    subscribe(MSG_ID_CONFIG_VALUE);
+    _sub(MSG_ID_CONFIG_READY);
+    _sub(MSG_ID_CONFIG_SET);
+    _sub(MSG_ID_CONFIG_GET);
+    _sub(MSG_ID_CONFIG_GET_WIFI);
+    _sub(MSG_ID_CONFIG_GET_CLOUD);
+    _sub(MSG_ID_CONFIG_GET_MQTT);
+    _sub(MSG_ID_CONFIG_GET_DT);
+    _sub(MSG_ID_CONFIG_GET_KEY);
+    _sub(MSG_ID_CONFIG_VALUE);
     // ── Fuel / dispenser / buttons ──
-    subscribe(MSG_ID_DEFAULT_BTN);
-    subscribe(MSG_ID_PRINTER_BTN);
-    subscribe(MSG_ID_NOZZLE_STATE);
-    subscribe(MSG_ID_FUEL_PUMPED);
+    _sub(MSG_ID_DEFAULT_BTN);
+    _sub(MSG_ID_PRINTER_BTN);
+    _sub(MSG_ID_NOZZLE_STATE);
+    _sub(MSG_ID_FUEL_PUMPED);
+    // ── System reboot ──
+    _sub(MSG_ID_SYSTEM_REBOOT);
     // ── Connectivity ──
-    subscribe(MSG_ID_WIFI_EVENT);
-    subscribe(MSG_ID_INTERNET_STATUS);
-    subscribe(MSG_ID_CUBESPHERE_STATUS);
-    subscribe(MSG_ID_MQTT_STATUS);
+    _sub(MSG_ID_WIFI_EVENT);
+    _sub(MSG_ID_INTERNET_STATUS);
+    _sub(MSG_ID_CUBESPHERE_STATUS);
+    _sub(MSG_ID_MQTT_STATUS);
 
     mac_driver_set_connect_cb(&ModuleSimBridge::on_ui_connected);
 
@@ -270,7 +279,8 @@ void ModuleSimBridge::on_msg_received(const hsys_msg_t &msg)
         case MSG_ID_CONFIG_VALUE: {
             // Forward to Python UI as JSON byte array (same format as HTTP API)
             char json_buf[512] = {};
-            MsgConfigValue::to_json(&msg, json_buf, sizeof(json_buf));
+            int32_t tj = MsgConfigValue::to_json(&msg, json_buf, sizeof(json_buf));
+            (void)tj;
             _send_json("MSG_CONFIG_VALUE", json_buf);
             break;
         }
@@ -318,6 +328,15 @@ void ModuleSimBridge::on_msg_received(const hsys_msg_t &msg)
             _send_json("MSG_FUEL_PUMPED", data);
             break;
         }
+
+        // ── System reboot ─────────────────────────────────────────────────
+
+        case MSG_ID_SYSTEM_REBOOT:
+            // Forward to Python before ModuleSysmon calls pal_power_reset().
+            // May or may not be delivered depending on task scheduling.
+            snprintf(data, sizeof(data), "{}");
+            _send_json("MSG_SYSTEM_REBOOT", data);
+            break;
 
         // ── Connectivity ──────────────────────────────────────────────────
 
