@@ -17,7 +17,7 @@
 #endif
 
 #ifndef HSYS_MAX_MODULES
-#define HSYS_MAX_MODULES    24   ///< 17 shared + OtaModule + ModuleSimBridge + ModuleWebServer (sim) + headroom
+#define HSYS_MAX_MODULES    32   ///< 24 shared + OtaModule + ModuleSimBridge + ModuleWebServer (sim) + headroom
 #endif
 
 #ifndef HSYS_MAX_MSG_IDS

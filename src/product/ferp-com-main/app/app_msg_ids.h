@@ -121,6 +121,7 @@ typedef enum : uint16_t
     MSG_ID_POOL_JSON        = 0x0208,   ///< ModuleSysmon -> all: pool status JSON response (NOTIFICATION)
     MSG_ID_GET_FILE_LIST_SPIFFS = 0x0209, ///< Any -> ModuleSysmon: request SPIFFS file listing as JSON (NOTIFICATION)
     MSG_ID_FILE_LIST_SPIFFS     = 0x020A, ///< ModuleSysmon -> all: SPIFFS file list JSON response (NOTIFICATION)
+    MSG_ID_SYSTEM_REBOOT        = 0x020B, ///< Any -> ModuleSysmon: reboot the device immediately (no payload)
 
     // ------------------------------------------------------------------
     // Config  (0x0300 – 0x03FF)

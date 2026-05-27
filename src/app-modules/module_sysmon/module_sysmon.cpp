@@ -10,7 +10,9 @@
 #include "msg_pool_json.h"
 #include "msg_get_file_list_spiffs.h"
 #include "msg_file_list_spiffs.h"
+#include "msg_system_reboot.h"
 #include "app_spiffs.h"
+#include "pal_power.h"
 #include <ArduinoJson.h>
 
 // ---------------------------------------------------------------------------
@@ -31,6 +33,7 @@ void ModuleSysmon::init()
     subscribe(MsgTick1000ms::ID);
     subscribe(MsgPoolGetJson::ID);
     subscribe(MsgGetFileListSpiffs::ID);
+    subscribe(MsgSystemReboot::ID);
 }
 
 // ---------------------------------------------------------------------------
@@ -52,6 +55,10 @@ void ModuleSysmon::on_msg_received(const hsys_msg_t &msg)
         case MsgGetFileListSpiffs::ID:
             _publish_file_list_spiffs();
             break;
+        case MsgSystemReboot::ID:
+            log("reboot requested — calling pal_power_reset()");
+            pal_power_reset();
+            break; // never reached
         default:
             break;
     }

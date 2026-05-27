@@ -32,6 +32,7 @@
 #pragma once
 
 #include "hsys_module.h"
+#include "hsys_mutex.h"
 #include "hsys_soft_timer.h"
 #include "timer_types.h"       // timer_meta_t, timer_result_t
 #include "msg_timer_start.h"   // MsgTimerStart::Payload used in private helpers
@@ -84,10 +85,11 @@ private:
     // ── Helpers ──────────────────────────────────────────────────────────────
     void _send_start_response(hsys_module_id_t dest, timer_result_t result);
     void _send_stop_response(hsys_module_id_t dest, timer_result_t result);
-    void _send_alarm(int slot_index, uint32_t elapsed_ms);
+    bool _send_alarm_direct(hsys_module_id_t dest, uint32_t elapsed_ms, uint32_t user_tag);
 
     // ── State ────────────────────────────────────────────────────────────────
     timer_meta_t         m_slots[MODULE_TIMER_MAX_SLOTS] = {};
     hsys_timer_handle_t  m_tick_timer = nullptr;
     uint64_t             m_start_uptime_ms[MODULE_TIMER_MAX_SLOTS] = {};
+    hsys_mutex_handle_t  m_slots_mutex = nullptr;
 };

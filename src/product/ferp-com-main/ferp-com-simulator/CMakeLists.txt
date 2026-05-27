@@ -186,6 +186,7 @@ add_library(app_messages STATIC
     ${APP_MSGS}/system/msg_pool_json.cpp
     ${APP_MSGS}/system/msg_get_file_list_spiffs.cpp
     ${APP_MSGS}/system/msg_file_list_spiffs.cpp
+    ${APP_MSGS}/system/msg_system_reboot.cpp
     # Device info messages
     ${APP_MSGS}/deviceInfo/msg_dev_info_read.cpp
     ${APP_MSGS}/deviceInfo/msg_dev_info_write.cpp

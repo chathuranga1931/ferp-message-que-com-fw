@@ -86,6 +86,7 @@ idf_component_register(
         "${D_MSGS}/system/msg_pool_json.cpp"
         "${D_MSGS}/system/msg_get_file_list_spiffs.cpp"
         "${D_MSGS}/system/msg_file_list_spiffs.cpp"
+        "${D_MSGS}/system/msg_system_reboot.cpp"
         # Config messages
         "${D_MSGS}/configs/msg_config_ready.cpp"
         "${D_MSGS}/configs/msg_config_set.cpp"
