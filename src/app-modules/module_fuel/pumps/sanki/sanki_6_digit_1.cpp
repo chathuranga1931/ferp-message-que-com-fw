@@ -173,16 +173,13 @@ bool sanki6_process_data(app_display_data_t * display_data){
             display_data->total_pricex100 = corrected_total_price(true, total_price_expectedx100);
         }    
         else if(ABS(gapx100) > 1.0){
-            if(total_price_expectedx100 >= 10000000){
-                display_data->total_pricex100 = display_data->total_pricex100 + (((uint32_t)(total_price_expectedx100))/10000000)*1000000;
-                gapx100 = total_price_expectedx100 - display_data->total_pricex100;
-                if(ABS(gapx100) > 100){
-                    error_code_for_debugging = 8;
-                    break;
-                }
-            }
-            else if(total_price_expectedx100 >= 1000000){
-                display_data->total_pricex100 = display_data->total_pricex100 + (((uint32_t)(total_price_expectedx100))/1000000)*1000000;
+            if(total_price_expectedx100 >= 1000000){
+                // Correct for display wrap: the 6-digit price display rolls over
+                // every 1,000,000 (i.e. at $9,999.99). Divide expected by the
+                // rollover size to get the wrap count, then add back the missing
+                // multiples.  Works for any number of wraps (e.g. $500,000 = 49
+                // wraps).
+                display_data->total_pricex100 = display_data->total_pricex100 + (total_price_expectedx100 / 1000000) * 1000000;
                 gapx100 = total_price_expectedx100 - display_data->total_pricex100;
                 if(ABS(gapx100) > 100){
                     error_code_for_debugging = 4;
@@ -268,17 +265,24 @@ bool sanki6_process_state_machine(const app_display_data_t * display_data, uint8
         deravative_int = -1;
     }
 
+    // Snapshot the count before any reset so the nozzle-down condition check
+    // below sees the number of increments accumulated during the pump, not 0.
+    uint32_t final_pump_count = pumping_increment_count[nozzle_id];
+
     if(is_zeroed)
     {
         pumping_increment_count[nozzle_id] = 0;
+        final_pump_count = 0;
     }
     else if(!(display_data->start_stop))
     {
         pumping_increment_count[nozzle_id] = 0;
+        // final_pump_count keeps the pre-reset value for the check below
     }
     else if(deravative_int == 1)
     {
         pumping_increment_count[nozzle_id]++;
+        final_pump_count = pumping_increment_count[nozzle_id];
     }
 
     unsigned long ts = pal_time_get_ms();
@@ -325,7 +329,7 @@ bool sanki6_process_state_machine(const app_display_data_t * display_data, uint8
             {                
                 if(
                     ((ts - pumping_state_nozzle_ts[nozzle_id]) < 4000) &&
-                    (pumping_increment_count[nozzle_id] < 10 )
+                    (final_pump_count < 10 )
                 )
                 {
                     pumping_state_nozzle_ts[nozzle_id] = ts;
