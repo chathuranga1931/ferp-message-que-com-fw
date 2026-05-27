@@ -44,6 +44,7 @@
 #include "msg_wifi_event.h"
 #include "msg_internet_status.h"
 #include "msg_cubesphere_status.h"
+#include "msg_system_reboot.h"
 
 #define __TAG__         "SIM_INJ "
 #define SIM_INJ_LOG     true
@@ -133,7 +134,9 @@ void sim_msg_inject_handle(const char *cmd_json)
         case MSG_ID_SPIFFS_READY:
             _publish(MsgSpiffsReady::from_json(payload_buf, src), msg_id);
             break;
-
+        case MSG_ID_SYSTEM_REBOOT:
+            _publish(MsgSystemReboot::from_json(payload_buf, src), msg_id);
+            break;
         // ── Config ───────────────────────────────────────────────────────────
         case MSG_ID_CONFIG_READY:
             _publish(MsgConfigReady::from_json(payload_buf, src), msg_id);
