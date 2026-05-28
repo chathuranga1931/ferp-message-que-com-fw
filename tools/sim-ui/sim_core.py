@@ -337,13 +337,59 @@ def encode_frame_passthrough(real_vol_lx1000: int, unit_pricex100: int) -> tuple
     return real_vol_lx1000, total_x100
 
 
+def encode_frame_censtar7(real_vol_lx1000: int, unit_pricex100: int) -> tuple[int, int]:
+        """
+        Encode Censtar 7-digit frame values.
+
+        In the simulator path, ModuleFuel expects normalized units:
+            - unit_price in x100
+            - total_price in x100
+            - volume in x1000
+
+        Censtar 7 has an extra integer digit vs 6-digit families, so total/volume
+        rollover is modeled at 10x the 6-digit boundary.
+        """
+        real_total_x100 = (unit_pricex100 * real_vol_lx1000) // 1000
+        disp_vol = real_vol_lx1000 % 100_000_000   # 7-digit style volume window
+        disp_total = real_total_x100 % 10_000_000  # 7-digit style price window
+        return disp_vol, disp_total
+
+
+def encode_frame_hongyang8(real_vol_lx1000: int, unit_pricex100: int) -> tuple[int, int]:
+        """
+        Encode Hongyang 8-digit frame values.
+
+        Hongyang is treated as normalized x100/x1000 in the simulator path.  Keep
+        two decimal digits for price and three decimal digits for volume.
+        """
+        real_total_x100 = (unit_pricex100 * real_vol_lx1000) // 1000
+        disp_vol = real_vol_lx1000 % 1_000_000_000
+        disp_total = real_total_x100 % 100_000_000
+        return disp_vol, disp_total
+
+
+def encode_frame_wayne6(real_vol_lx1000: int, unit_pricex100: int) -> tuple[int, int]:
+        """
+        Encode Wayne 6-digit frame values.
+
+        Wayne hardware has different decimal placement, but in this simulator path
+        ModuleFuel receives normalized values (x100 price, x1000 volume) from
+        SIM_DISTAP_FRAME. Keep a dedicated encoder so Wayne-specific rules can be
+        adjusted independently later if the DT-normalization contract changes.
+        """
+        real_total_x100 = (unit_pricex100 * real_vol_lx1000) // 1000
+        disp_vol = real_vol_lx1000 % 10_000_000
+        disp_total = real_total_x100 % 10_000_000
+        return disp_vol, disp_total
+
+
 # Per-display-type frame encoder registry (extend as new types are verified)
 _FRAME_ENCODERS = {
     DT_SANKI_6:   encode_frame_sanki6,
-    DT_CENSTAR_7: encode_frame_passthrough,
+    DT_CENSTAR_7: encode_frame_censtar7,
     DT_CENSTAR_6: encode_frame_censtar6,
-    DT_WAYNE_6:   encode_frame_passthrough,
-    DT_HONGYANG:  encode_frame_passthrough,
+    DT_WAYNE_6:   encode_frame_wayne6,
+    DT_HONGYANG:  encode_frame_hongyang8,
     DT_LONGFENG:  encode_frame_passthrough,
 }
 
@@ -386,6 +432,8 @@ class PumpEmulator:
         rate_ml_s:         float = 500.0,
         interval_ms:       int   = 100,
         timeout_s:         float = 60.0,
+        pause_after_fraction: float | None = None,
+        pause_duration_s: float = 0.0,
     ) -> dict | None:
         """
         Run a complete pump transaction and return MSG_FUEL_PUMPED data.
@@ -398,6 +446,9 @@ class PumpEmulator:
         rate_ml_s          Simulated pump rate in mL/s.
         interval_ms        Frame send interval in milliseconds.
         timeout_s          Maximum time to wait for MSG_FUEL_PUMPED after pump stop.
+        pause_after_fraction Optional fraction of target volume where pumping
+                   pauses temporarily while nozzle stays up.
+        pause_duration_s   Duration of the pause before pumping resumes.
 
         Returns
         -------
@@ -439,6 +490,12 @@ class PumpEmulator:
             ramp_vol_ml = min(_RAMP_VOL_ML, target_vol_lx1000 // 2)
             ramp_rate   = min(rate_ml_s * _RAMP_FRACTION, _RAMP_RATE_CAP_ML_S)
             accumulated_ml = 0.0
+            pause_done = False
+            pause_target_ml = None
+            if pause_after_fraction is not None:
+                pause_target_ml = int(round(target_vol_lx1000 * pause_after_fraction))
+                if pause_target_ml <= 0 or pause_target_ml >= target_vol_lx1000:
+                    pause_target_ml = None
 
             while accumulated_ml < target_vol_lx1000:
                 in_ramp = (
@@ -452,6 +509,17 @@ class PumpEmulator:
                 disp_vol, disp_total = encode(vol, unit_price_x100)
                 self._send_frame(display_type, unit_price_x100,
                                  disp_vol, disp_total, flags=1)
+
+                if (not pause_done and pause_target_ml is not None and vol >= pause_target_ml):
+                    self._send_frame(display_type, unit_price_x100,
+                                     disp_vol, disp_total, flags=0)
+                    print(
+                        f"  [DBG] pausing at {vol} mL for {pause_duration_s:.1f}s with nozzle up",
+                        flush=True,
+                    )
+                    time.sleep(pause_duration_s)
+                    pause_done = True
+
                 time.sleep(interval_ms / 1000.0)
 
             # 3. Stop frame (flags=0)

@@ -1,5 +1,5 @@
 """
-test_pumping_censtar6.py — Censtar 6-digit pump configuration for shared pumping tests.
+test_pumping_hongyang8.py — Hongyang 8-digit pump configuration for shared pumping tests.
 """
 
 import os
@@ -7,15 +7,15 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from atu import AutomatedTestUnit, DT_CENSTAR_6
+from atu import AutomatedTestUnit, DT_HONGYANG
 from tests.test_pumping import CommonPumpingTests, PumpSuiteConfig, COMMON_RANDOM_CASES_X100
 
 
 CONFIG = PumpSuiteConfig(
-    display_type=DT_CENSTAR_6,
-    display_name="Censtar 6-digit",
-    display_id_label="1",
-    test_prefix="censtar6",
+    display_type=DT_HONGYANG,
+    display_name="Hongyang 8-digit",
+    display_id_label="4",
+    test_prefix="hongyang8",
     unit_price_x100=42_300,
     nozzle=0,
     pump_rate_ml_s=21_000,
@@ -29,9 +29,10 @@ CONFIG = PumpSuiteConfig(
     ],
     pause_resume_total_x100=5_000_000,
     random_cases_x100=COMMON_RANDOM_CASES_X100,
+    enable_pause_resume=False,
 )
 
 
-class Censtar6PumpingTests(CommonPumpingTests):
+class Hongyang8PumpingTests(CommonPumpingTests):
     def __init__(self, atu: AutomatedTestUnit, launcher=None):
         super().__init__(atu, CONFIG, launcher=launcher)

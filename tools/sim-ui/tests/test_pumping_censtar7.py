@@ -1,5 +1,5 @@
 """
-test_pumping_censtar6.py — Censtar 6-digit pump configuration for shared pumping tests.
+test_pumping_censtar7.py — Censtar 7-digit pump configuration for shared pumping tests.
 """
 
 import os
@@ -7,15 +7,15 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from atu import AutomatedTestUnit, DT_CENSTAR_6
+from atu import AutomatedTestUnit, DT_CENSTAR_7
 from tests.test_pumping import CommonPumpingTests, PumpSuiteConfig, COMMON_RANDOM_CASES_X100
 
 
 CONFIG = PumpSuiteConfig(
-    display_type=DT_CENSTAR_6,
-    display_name="Censtar 6-digit",
-    display_id_label="1",
-    test_prefix="censtar6",
+    display_type=DT_CENSTAR_7,
+    display_name="Censtar 7-digit",
+    display_id_label="2",
+    test_prefix="censtar7",
     unit_price_x100=42_300,
     nozzle=0,
     pump_rate_ml_s=21_000,
@@ -32,6 +32,6 @@ CONFIG = PumpSuiteConfig(
 )
 
 
-class Censtar6PumpingTests(CommonPumpingTests):
+class Censtar7PumpingTests(CommonPumpingTests):
     def __init__(self, atu: AutomatedTestUnit, launcher=None):
         super().__init__(atu, CONFIG, launcher=launcher)

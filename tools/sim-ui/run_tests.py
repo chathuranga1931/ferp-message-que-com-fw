@@ -7,8 +7,11 @@ Usage
     # With simulator already running:
     python3 run_tests.py --suite pumping_sanki
     python3 run_tests.py --suite pumping_censtar6
+    python3 run_tests.py --suite pumping_censtar7
+    python3 run_tests.py --suite pumping_wayne6
+    python3 run_tests.py --suite pumping_hongyang8
 
-    # Run all suites in sequence (Sanki first, then Censtar 6):
+    # Run all suites in sequence:
     python3 run_tests.py --suite all
 
     # Let the runner launch the simulator automatically:
@@ -27,11 +30,13 @@ Available suites
 ----------------
     pumping_sanki    Sanki 6-digit pump transaction tests (below 1K/10K/100K/1M total)
     pumping_censtar6 Censtar 6-digit pump transaction tests (below 1K/10K/100K/200K total)
-    all              Run pumping_sanki then pumping_censtar6 in sequence
+    pumping_censtar7 Censtar 7-digit pump transaction tests
+    pumping_wayne6   Wayne 6-digit pump transaction tests
+    pumping_hongyang8 Hongyang 8-digit pump transaction tests
+    all              Run all pumping suites in sequence
 
-Note: when using --launch-sim with 'all', the setup for pumping_censtar6
-will automatically change display_type to 1 (Censtar) and reboot the
-simulator, so no manual reconfiguration is needed.
+Note: when using --launch-sim with 'all', each suite setup automatically
+changes display_type and reboots the simulator before running cases.
 
 Exit code
 ---------
@@ -49,16 +54,28 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from atu import AutomatedTestUnit, SimLauncher
 from tests.test_pumping_sanki   import SankiPumpingTests
 from tests.test_pumping_censtar6 import Censtar6PumpingTests
+from tests.test_pumping_censtar7 import Censtar7PumpingTests
+from tests.test_pumping_wayne6 import Wayne6PumpingTests
+from tests.test_pumping_hongyang8 import Hongyang8PumpingTests
 
 # ── Suite registry ────────────────────────────────────────────────────────────
 # Add new suites here.  Each value is a class with run_all(self) -> list[dict].
 SUITES = {
     "pumping_sanki":    SankiPumpingTests,
     "pumping_censtar6": Censtar6PumpingTests,
+    "pumping_censtar7": Censtar7PumpingTests,
+    "pumping_wayne6": Wayne6PumpingTests,
+    "pumping_hongyang8": Hongyang8PumpingTests,
 }
 
 # Ordered list used by the 'all' meta-suite (runs suites in this sequence).
-SUITE_ORDER = ["pumping_sanki", "pumping_censtar6"]
+SUITE_ORDER = [
+    "pumping_sanki",
+    "pumping_censtar6",
+    "pumping_censtar7",
+    "pumping_wayne6",
+    "pumping_hongyang8",
+]
 
 
 # ── Reporting ─────────────────────────────────────────────────────────────────
@@ -99,8 +116,8 @@ def main() -> int:
                     help="Simulator backdoor port (default: 9000)")
     ap.add_argument("--suite",      default="pumping_sanki",
                     choices=list(SUITES) + ["all"],
-                    help="Test suite to run; 'all' runs pumping_sanki then "
-                         "pumping_censtar6 in sequence (default: pumping_sanki)")
+                    help="Test suite to run; 'all' runs all pumping suites in "
+                        "sequence (default: pumping_sanki)")
     ap.add_argument("--launch-sim", action="store_true",
                     help="Start the simulator binary before running tests")
     ap.add_argument("--sim-binary", default=None,
