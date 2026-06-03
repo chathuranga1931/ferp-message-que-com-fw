@@ -18,6 +18,16 @@ extern "C" {
 #endif
 
 // ============================================================================
+// PAL HTTP Transport Error Codes
+// Returned by pal_http_client_get() / pal_http_client_post() on failure.
+// Values < 0 indicate a transport-level error (no HTTP status code available).
+// ============================================================================
+#define PAL_HTTP_ERR_GENERIC   (-1)   /**< Unclassified transport error */
+#define PAL_HTTP_ERR_CONNECT   (-2)   /**< TCP connection failed (unreachable / refused) */
+#define PAL_HTTP_ERR_TIMEOUT   (-3)   /**< Connection or read timed out */
+#define PAL_HTTP_ERR_TLS       (-4)   /**< TLS handshake or certificate error */
+
+// ============================================================================
 // Configuration Constants
 // ============================================================================
 

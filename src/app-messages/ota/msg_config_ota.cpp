@@ -54,7 +54,7 @@ hsys_msg_t *MsgConfigOta::from_json(const char *payload_json, hsys_module_id_t s
     if (deserializeJson(doc, payload_json) != DeserializationError::Ok) return nullptr;
     Payload p{};
     strncpy(p.server_url, doc["server_url"] | "", sizeof(p.server_url) - 1);
-    p.root_ca          = nullptr;  // can't transfer pointer via JSON
+    // p.root_ca          = nullptr;  // can't transfer pointer via JSON
     p.check_interval_s = doc["check_interval_s"] | (uint32_t)0;
     return create(sender_id, p);
 }

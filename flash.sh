@@ -12,9 +12,10 @@
 #   --flashapp    Build without clean, flash app partition only
 #   --console     Open serial monitor (idf.py monitor)
 #   --release     Build paired release binaries (even=OTA-test, odd=production)
-#                 Reads FW_VERSION from version.h, produces two builds (+1 even,
-#                 +2 odd), copies both into releases/<odd-version>/, then leaves
-#                 version.h at the odd version.
+#                 Reads FW_VERSION from version.h, computes next odd build as the
+#                 production release, pairs it with the preceding even build,
+#                 copies both into releases/<odd-version>/, then leaves version.h
+#                 at the odd version.
 #
 # Variables (edit as needed):
 COMPORT="/dev/tty.usbserial-A5069RR4"
@@ -160,10 +161,20 @@ elif $RELEASE; then
         exit 1
     fi
 
-    # Even  = current + 1  (OTA-test binary — same code, different version string)
-    EVEN_VER="$V1.$V2.$V3.$((V4 + 1))"
-    # Odd   = current + 2  (production binary — this is the real release)
-    ODD_VER="$V1.$V2.$V3.$((V4 + 2))"
+    # Always choose an odd production release build number.
+    # If current build is even, next odd is +1.
+    # If current build is odd, next odd is +2.
+    if (( V4 % 2 == 0 )); then
+        ODD_BUILD=$((V4 + 1))
+    else
+        ODD_BUILD=$((V4 + 2))
+    fi
+    EVEN_BUILD=$((ODD_BUILD - 1))
+
+    # Even = OTA-test binary (same code, different version string)
+    EVEN_VER="$V1.$V2.$V3.$EVEN_BUILD"
+    # Odd  = production release version
+    ODD_VER="$V1.$V2.$V3.$ODD_BUILD"
 
     RELEASE_DIR="$RELEASES_DIR/$ODD_VER"
     mkdir -p "$RELEASE_DIR"

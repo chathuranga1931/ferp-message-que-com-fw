@@ -236,7 +236,7 @@ void ModuleConfig::_send_config_cloud(hsys_module_id_t requester)
     if (!cfg) return;
 
     MsgConfigCloud::Payload p{};
-    p.root_ca          = root_ca;   // pointer to static PEM string in app_rootca.h
+    p.root_ca          = nullptr;   // pointer to static PEM string in app_rootca.h
     p.hb_enabled       = cfg->cloud_hb_enabled;
     p.hb_interval_s    = cfg->cloud_hb_interval_s;
 
@@ -245,7 +245,7 @@ void ModuleConfig::_send_config_cloud(hsys_module_id_t requester)
         out->receiver_id = requester;
         send(out, requester);
         LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "MsgConfigCloud -> module %u:", (unsigned)requester);
-        LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "  root_ca      = %s", p.root_ca ? "***" : "(null)");
+        // LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "  root_ca      = %s", p.root_ca ? "***" : "(null)");
         LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "  hb_enabled   = %d", (int)p.hb_enabled);
         LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "  hb_interval  = %us", (unsigned)p.hb_interval_s);
     }
@@ -308,7 +308,6 @@ void ModuleConfig::_send_config_ota(hsys_module_id_t requester)
 
     MsgConfigOta::Payload p{};
     strncpy(p.server_url,  cfg->ota_server_url, sizeof(p.server_url)  - 1);
-    p.root_ca          = root_ca;   // pointer to static PEM string in app_rootca.h
     p.check_interval_s = cfg->ota_check_interval_s;
 
     hsys_msg_t *out = MsgConfigOta::create(id(), p);
@@ -318,7 +317,6 @@ void ModuleConfig::_send_config_ota(hsys_module_id_t requester)
         LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "MsgConfigOta -> module %u:", (unsigned)requester);
         LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "  server_url       = \"%s\"", p.server_url);
         LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "  check_interval_s = %u",     (unsigned)p.check_interval_s);
-        LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "  root_ca          = %s", p.root_ca ? "***" : "(null)");
     }
 }
 

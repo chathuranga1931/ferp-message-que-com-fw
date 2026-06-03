@@ -370,6 +370,7 @@ void ModuleMqtt::_on_config_mqtt(const hsys_msg_t &msg)
     // Use device_uuid as client ID (set from app_config by the device)
     // We'll leave client_id empty to let pal_mac_mqtt auto-generate a unique one
     cfg.keepalive            = 60;
+    cfg.network_timeout_ms   = 20000;   // 20 s — gives WiFi time to recover a lost TCP segment mid-frame
     cfg.reconnect_timeout_ms = 5000;
 
     // Build topic paths using hardware MAC address + hardcoded device group.

@@ -448,11 +448,13 @@ void ModuleHttp::_execute()
     // Determine result code
     http_result_t result;
     if (rc < 0) {
-        // PAL uses negative codes for transport/TLS errors
-        if (rc == -0x4E || rc == -0x50) {
+        // Map PAL transport error codes (pal_http_client.h) to http_result_t
+        if (rc == PAL_HTTP_ERR_TLS) {
             result = HTTP_RESULT_TLS_FAILED;
-        } else if (rc == -0x6800 || rc == -0x6900) {
+        } else if (rc == PAL_HTTP_ERR_TIMEOUT) {
             result = HTTP_RESULT_TIMEOUT;
+        } else if (rc == PAL_HTTP_ERR_CONNECT) {
+            result = HTTP_RESULT_CONNECT_FAILED;
         } else {
             result = HTTP_RESULT_ERROR;
         }

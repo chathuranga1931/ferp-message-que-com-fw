@@ -92,7 +92,7 @@ bool ModuleWebClientOta::_build_cfg(uint8_t slot, hsys_ota_cfg_t *out) const
     strncpy(out->firmware_type,   _targets[slot].firmware_type,       sizeof(out->firmware_type)   - 1);
     strncpy(out->current_version, _targets[slot].current_version,     sizeof(out->current_version) - 1);
     out->timeout_ms = 30000;
-    out->cert_pem   = _cert_pem;
+    // out->cert_pem   = _cert_pem;
     return true;
 }
 
@@ -332,7 +332,7 @@ void ModuleWebClientOta::on_msg_received(const hsys_msg_t &msg)
     case MsgConfigOta::ID: {
         auto p = MsgConfigOta::deserialize(msg);
         strncpy(_server_url, p.server_url, sizeof(_server_url) - 1);
-        _cert_pem = p.root_ca;
+        // _cert_pem = p.root_ca;
 
         uint32_t raw = p.check_interval_s;
         if (raw < WEB_OTA_CHECK_INTERVAL_MIN_S) raw = WEB_OTA_CHECK_INTERVAL_MIN_S;

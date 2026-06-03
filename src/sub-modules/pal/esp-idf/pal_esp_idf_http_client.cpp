@@ -244,9 +244,18 @@ int32_t pal_http_client_get(pal_http_client_handle_t handle,
     int status_code = esp_http_client_get_status_code(client->esp_client);
     
     if (err != ESP_OK && status_code < 200) {
-        // Only fail if we couldn't connect at all
-        LOG_MSG_ERROR(HTTP_ERROR_LOG_EN, "HTTP GET request failed: %s", esp_err_to_name(err));
-        return -1;
+        int32_t pal_rc;
+        if (err == ESP_ERR_HTTP_CONNECT) {
+            pal_rc = PAL_HTTP_ERR_CONNECT;
+        } else if (err >= 0x8000u && err < 0x9000u) {
+            // ESP-IDF TLS error range (ESP_ERR_TLS_BASE = 0x8000)
+            pal_rc = PAL_HTTP_ERR_TLS;
+        } else {
+            pal_rc = PAL_HTTP_ERR_GENERIC;
+        }
+        LOG_MSG_ERROR(HTTP_ERROR_LOG_EN, "HTTP GET failed: %s (0x%x) → PAL %d",
+                      esp_err_to_name(err), (unsigned)err, pal_rc);
+        return pal_rc;
     }
     
     if (response != NULL) {
@@ -299,8 +308,18 @@ int32_t pal_http_client_post(pal_http_client_handle_t handle,
     // Perform request
     esp_err_t err = esp_http_client_perform(client->esp_client);
     if (err != ESP_OK) {
-        LOG_MSG_ERROR(HTTP_ERROR_LOG_EN, "HTTP POST request failed");
-        return -1;
+        int32_t pal_rc;
+        if (err == ESP_ERR_HTTP_CONNECT) {
+            pal_rc = PAL_HTTP_ERR_CONNECT;
+        } else if (err >= 0x8000u && err < 0x9000u) {
+            // ESP-IDF TLS error range (ESP_ERR_TLS_BASE = 0x8000)
+            pal_rc = PAL_HTTP_ERR_TLS;
+        } else {
+            pal_rc = PAL_HTTP_ERR_GENERIC;
+        }
+        LOG_MSG_ERROR(HTTP_ERROR_LOG_EN, "HTTP POST failed: %s (0x%x) → PAL %d",
+                      esp_err_to_name(err), (unsigned)err, pal_rc);
+        return pal_rc;
     }
 
     int status_code = esp_http_client_get_status_code(client->esp_client);
@@ -459,6 +478,9 @@ int32_t pal_http_client_cleanup(pal_http_client_handle_t handle)
     pal_http_client_internal_t* client = (pal_http_client_internal_t*)handle;
     
     // Cleanup ESP HTTP client
+    // NOTE: esp_http_client_cleanup() already calls esp_http_client_close()
+    // internally, so do NOT call close() explicitly here — doing so would race
+    // with LwIP's FD reuse for the next connection.
     if (client->esp_client != NULL) {
         esp_http_client_cleanup(client->esp_client);
     }

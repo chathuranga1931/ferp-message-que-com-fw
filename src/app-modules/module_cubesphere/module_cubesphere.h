@@ -34,6 +34,7 @@
 #include "msg_nozzle_state.h"    // MsgNozzleState — pump-start trigger
 #include "msg_fuel_print_status.h"  // MsgFuelPrintStatus — print status trigger
 #include "app_module_ids.h"
+#include "app_rootca.h"
 #include <time.h>
 
 #define MODULE_CUBESPHERE_NAME  "cubesph"
@@ -116,14 +117,8 @@ public:
     static ModuleCubeSphere *instance();
 
     void set_storage(const storage_interface_t *storage) { _storage = storage; }
+    void set_root_ca(char *ca);
 
-    /**
-     * Set the application-wide root CA certificate (from app_rootca.h).
-     * Used as fallback when no per-session root CA is provided via cloud config.
-     * Must be called before app_init() triggers init().
-     * The pointer must remain valid for the lifetime of the module.
-     */
-    void set_root_ca(const char *ca) { _static_root_ca = ca; }
 
 protected:
     void init()                                  override;
@@ -151,9 +146,10 @@ private:
 
     // ── Registration sub-step ─────────────────────────────────────────────────
     typedef enum {
-        REG_STEP_1,  ///< GET /bootstrap — expect 401, capture nonce
-        REG_STEP_2,  ///< GET /bootstrap with SAS-AC1 auth — expect 200
-        REG_STEP_3,  ///< GET /device/config with Basic auth — expect 200
+        REG_STEP_1,       ///< GET /bootstrap — expect 401, capture nonce
+        REG_STEP_WAIT_2,  ///< 1-second cooldown between step1 and step2 (GCLB teardown)
+        REG_STEP_2,       ///< GET /bootstrap with SAS-AC1 auth — expect 200
+        REG_STEP_3,       ///< GET /device/config with Basic auth — expect 200
     } reg_step_t;
 
     // ── Running event type currently being sent ───────────────────────────────
@@ -187,8 +183,8 @@ private:
     char   _wifi_mac[CS_SIZE_MAC]                = {};
     int8_t _wifi_rssi                            = -100;
 
-    const char *_cloud_root_ca  = nullptr;  ///< From cloud config (runtime override)
-    const char *_static_root_ca = nullptr;  ///< From app_rootca.h (set via set_root_ca())
+    // const char *_cloud_root_ca  = nullptr;  ///< From cloud config (runtime override)
+    const char *_static_root_ca = global_root_ca;  ///< From app_rootca.h (set via set_root_ca())
     uint32_t    _uptime_sec     = 0;
 
     // ── System status (from ModuleMsgTranslator) ──────────────────────────────

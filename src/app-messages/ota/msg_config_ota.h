@@ -27,7 +27,6 @@ public:
 
     struct Payload {
         char        server_url [128];   ///< OTA server base URL (from app_config_t.ota_server_url)
-        const char *root_ca;            ///< Pointer to PEM root-CA string (static lifetime, app_rootca.h)
         uint32_t    check_interval_s;   ///< Polling interval (seconds, clamped to 30–300 by consumer)
         uint8_t     _pad[4];
     };

@@ -145,13 +145,15 @@ void ModuleCubeSphere::_on_config_ready()
 void ModuleCubeSphere::_on_config_cloud(const hsys_msg_t &msg)
 {
     auto p = MsgConfigCloud::deserialize(msg);
-    _cloud_root_ca = p.root_ca;
+    // _cloud_root_ca = p.root_ca;
     if (p.hb_interval_s > 0) _hb_interval_ms = p.hb_interval_s * 1000UL;
     _hb_enabled         = p.hb_enabled;
     _cloud_config_ready = true;
 
-    LOG_MSG_INFO(CSP_LOG_EN, "cloud config: root_ca=%s hb_enabled=%d interval=%us",
-                 _cloud_root_ca ? "***" : "(null)", (int)p.hb_enabled, (unsigned)p.hb_interval_s);
+    // LOG_MSG_INFO(CSP_LOG_EN, "cloud config: root_ca=%s hb_enabled=%d interval=%us",
+    //              _cloud_root_ca ? "***" : "(null)", (int)p.hb_enabled, (unsigned)p.hb_interval_s);
+    LOG_MSG_INFO(CSP_LOG_EN, "cloud config: hb_enabled=%d interval=%us",
+                 (int)p.hb_enabled, (unsigned)p.hb_interval_s);
 
     // If WiFi already has an IP (GOT_IP arrived before config), start registration now
     if (_wifi_ip[0] != '\0' && _state == STATE_WAIT_FOR_INTERNET) {
@@ -307,8 +309,13 @@ void ModuleCubeSphere::_on_timer_alarm()
     switch (_state) {
         case STATE_REGISTERING:
             if (_http_phase == HTTP_IDLE) {
-                LOG_MSG_INFO(CSP_LOG_EN, "retry timer — re-attempting registration");
-                _start_registration();
+                if (_reg_step == REG_STEP_WAIT_2) {
+                    LOG_MSG_DEBUG(CSP_LOG_EN, "step1→step2 cooldown elapsed — starting step2");
+                    _start_reg_step_2();
+                } else {
+                    LOG_MSG_INFO(CSP_LOG_EN, "retry timer — re-attempting registration");
+                    _start_registration();
+                }
             }
             break;
         case STATE_RUNNING:
@@ -372,9 +379,10 @@ void ModuleCubeSphere::_on_http_start_response(const hsys_msg_t &msg)
     // Session open — burst-send configuration messages then SendRequest
     if (_state == STATE_REGISTERING) {
         switch (_reg_step) {
-            case REG_STEP_1: _burst_get(CS_URL_BOOTSTRAP);                       break;
-            case REG_STEP_2: _burst_get_with_auth(CS_URL_BOOTSTRAP, _auth_hdr);  break;
-            case REG_STEP_3: _burst_get_with_auth(CS_URL_DEV_CONFIG, _auth_hdr); break;
+            case REG_STEP_1:       _burst_get(CS_URL_BOOTSTRAP);                       break;
+            case REG_STEP_2:       _burst_get_with_auth(CS_URL_BOOTSTRAP, _auth_hdr);  break;
+            case REG_STEP_3:       _burst_get_with_auth(CS_URL_DEV_CONFIG, _auth_hdr); break;
+            case REG_STEP_WAIT_2:  /* should not reach here — session open before timer fires */ break;
         }
     } else if (_state == STATE_RUNNING) {
         char auth[512] = {};
@@ -413,9 +421,10 @@ void ModuleCubeSphere::_on_http_result(const hsys_msg_t &msg)
 
     if (_state == STATE_REGISTERING) {
         switch (_reg_step) {
-            case REG_STEP_1: _on_reg_step1_result(msg); break;
-            case REG_STEP_2: _on_reg_step2_result(msg); break;
-            case REG_STEP_3: _on_reg_step3_result(msg); break;
+            case REG_STEP_1:      _on_reg_step1_result(msg); break;
+            case REG_STEP_2:      _on_reg_step2_result(msg); break;
+            case REG_STEP_3:      _on_reg_step3_result(msg); break;
+            case REG_STEP_WAIT_2: /* should not reach here — no HTTP session open in WAIT_2 */ break;
         }
     } else if (_state == STATE_RUNNING) {
         _on_event_result(msg);
@@ -484,8 +493,9 @@ void ModuleCubeSphere::_on_reg_step1_result(const hsys_msg_t &msg)
         _reg_failed();
         return;
     }
-    LOG_MSG_DEBUG(CSP_LOG_EN, "reg step1 OK — nonce obtained, starting step2");
-    _start_reg_step_2();
+    LOG_MSG_INFO(CSP_LOG_EN, "reg step1 OK — nonce captured, waiting 1s before step2");
+    _reg_step = REG_STEP_WAIT_2;
+    _arm_timer(1000);   // give GCLB time to fully tear down the step1 TLS session
 }
 
 void ModuleCubeSphere::_on_reg_step2_result(const hsys_msg_t &msg)
@@ -967,10 +977,28 @@ void ModuleCubeSphere::_send_http_start(pal_http_method_t method,
     }
 }
 
+/**
+ * Set the application-wide root CA certificate (from app_rootca.h).
+ * Used as fallback when no per-session root CA is provided via cloud config.
+ * Must be called before app_init() triggers init().
+ * The pointer must remain valid for the lifetime of the module.
+ */
+void ModuleCubeSphere::set_root_ca(char *ca) { 
+    
+    // LOG_MSG_INFO(CSP_LOG_EN, "root CA set via set_root_ca() — will be used for all HTTP sessions without per-session CA %lld", 
+    //              (unsigned long long)ca);
+    // _static_root_ca = ca; 
+
+    // LOG_MSG_DEBUG(CSP_LOG_EN, "static root CA set (len=%u)", ca ? (unsigned)strlen(ca) : 0u);
+}
+
 void ModuleCubeSphere::_burst_get(const char *url)
 {
-    const char *ca = _cloud_root_ca ? _cloud_root_ca : _static_root_ca;
-    if (!ca) { LOG_MSG_ERROR(CSP_LOG_EN, "_burst_get: no root CA set — TLS will fail"); }
+    char *ca = (char *)global_root_ca;
+    if(!ca)
+    {
+        LOG_MSG_ERROR(CSP_LOG_EN, "_burst_get: no cloud root CA set — TLS will fail %lld - %lld", (unsigned long long)global_root_ca, (unsigned long long)ca);
+    }
     { MsgHttpSetRootCaRequest::Payload rca{}; rca.cert_pem = ca;
       hsys_msg_t *m = MsgHttpSetRootCaRequest::create(id(), rca); if (m) send(m, MODULE_HTTP_ID); }
     { hsys_msg_t *m = MsgHttpSetUrlRequest::create(id(), url); if (m) send(m, MODULE_HTTP_ID); }
@@ -979,8 +1007,12 @@ void ModuleCubeSphere::_burst_get(const char *url)
 
 void ModuleCubeSphere::_burst_get_with_auth(const char *url, const char *auth_value)
 {
-    const char *ca = _cloud_root_ca ? _cloud_root_ca : _static_root_ca;
-    if (!ca) { LOG_MSG_ERROR(CSP_LOG_EN, "_burst_get_with_auth: no root CA set — TLS will fail"); }
+    char *ca = (char *)global_root_ca;
+    if (!ca) 
+    { 
+        LOG_MSG_ERROR(CSP_LOG_EN, "_burst_get_with_auth: no root CA set — TLS will fail"); 
+    }
+
     { MsgHttpSetRootCaRequest::Payload rca{}; rca.cert_pem = ca;
       hsys_msg_t *m = MsgHttpSetRootCaRequest::create(id(), rca); if (m) send(m, MODULE_HTTP_ID); }
     { hsys_msg_t *m = MsgHttpSetUrlRequest::create(id(), url);              if (m) send(m, MODULE_HTTP_ID); }
@@ -991,7 +1023,7 @@ void ModuleCubeSphere::_burst_get_with_auth(const char *url, const char *auth_va
 void ModuleCubeSphere::_burst_post(const char *url, const char *auth_value,
                                     const char *json_body, uint32_t json_len)
 {
-    const char *ca = _cloud_root_ca ? _cloud_root_ca : _static_root_ca;
+    const char *ca = _static_root_ca;
     if (!ca) { LOG_MSG_ERROR(CSP_LOG_EN, "_burst_post: no root CA set — TLS will fail"); }
     { MsgHttpSetRootCaRequest::Payload rca{}; rca.cert_pem = ca;
       hsys_msg_t *m = MsgHttpSetRootCaRequest::create(id(), rca); if (m) send(m, MODULE_HTTP_ID); }
