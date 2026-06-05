@@ -29,7 +29,7 @@
 #define SD_MOUNT_POINT "/sdcard"
 #define __TAG__ "PAL_SD  "
 
-#define SD_DEBUG_LOG_EN      LOG_DIS
+#define SD_DEBUG_LOG_EN      LOG_EN
 
 /*===========================================================================*/
 /*                           STATIC VARIABLES                                */
@@ -303,12 +303,17 @@ int32_t pal_sd_file_read(const char* path, char* buffer, size_t max_size, size_t
     return PAL_OK;
 }
 
-int32_t pal_sd_file_read_line(const char* path, uint32_t line_number, char* buffer, size_t max_size) {
-    if(!is_initialized) {
+int32_t pal_sd_file_read_line(const char* path, uint32_t line_number, char* buffer, size_t max_size) 
+{
+    if(!is_initialized) 
+    {
+        LOG_MSG_ERROR(SD_DEBUG_LOG_EN, "SD card not initialized");
         return PAL_ERROR_INIT;
     }
     
-    if(path == NULL || buffer == NULL) {
+    if(path == NULL || buffer == NULL) 
+    {
+        LOG_MSG_ERROR(SD_DEBUG_LOG_EN, "Invalid parameters");
         return PAL_ERROR_INVALID;
     }
     
@@ -316,31 +321,42 @@ int32_t pal_sd_file_read_line(const char* path, uint32_t line_number, char* buff
     build_full_path(path, full_path, sizeof(full_path));
     
     FILE* file = fopen(full_path, "r");
-    if(file == NULL) {
+    if(file == NULL) 
+    {
+        LOG_MSG_ERROR(SD_DEBUG_LOG_EN, "Failed to open file: %s", full_path);
         return PAL_ERROR_IO;
     }
     
     // Skip lines until target line
     char temp_buffer[256];
-    for(uint32_t i = 0; i < line_number; i++) {
-        if(fgets(temp_buffer, sizeof(temp_buffer), file) == NULL) {
+    for(uint32_t i = 0; i < line_number; i++) 
+    {
+        if(fgets(temp_buffer, sizeof(temp_buffer), file) == NULL) 
+        {
             fclose(file);
+            LOG_MSG_ERROR(SD_DEBUG_LOG_EN, "Line %u not found in file: %s", (unsigned)line_number, full_path);
             return PAL_ERROR_NOT_FOUND;
         }
     }
     
     // Read target line
-    if(fgets(buffer, max_size, file) != NULL) {
+    if(fgets(buffer, max_size, file) != NULL) 
+    {
         // Remove trailing newline
         size_t len = strlen(buffer);
-        if(len > 0 && (buffer[len-1] == '\n' || buffer[len-1] == '\r')) {
+        if(len > 0 && (buffer[len-1] == '\n' || buffer[len-1] == '\r')) 
+        {
             buffer[len-1] = '\0';
-            if(len > 1 && buffer[len-2] == '\r') {
+            if(len > 1 && buffer[len-2] == '\r') 
+            {
                 buffer[len-2] = '\0';
             }
         }
-    } else {
+    } 
+    else 
+    {
         fclose(file);
+        LOG_MSG_ERROR(SD_DEBUG_LOG_EN, "Line %u not found in file: %s", (unsigned)line_number, full_path);
         return PAL_ERROR_NOT_FOUND;
     }
     

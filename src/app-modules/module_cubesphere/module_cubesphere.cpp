@@ -977,6 +977,13 @@ void ModuleCubeSphere::_send_http_start(pal_http_method_t method,
     }
 }
 
+
+void ModuleCubeSphere::set_storage(const storage_interface_t *storage) 
+{ 
+    _storage = storage; 
+    LOG_MSG_DEBUG(CSP_LOG_EN, "storage interface set: _storage=%lld", _storage);
+}
+
 /**
  * Set the application-wide root CA certificate (from app_rootca.h).
  * Used as fallback when no per-session root CA is provided via cloud config.
@@ -989,7 +996,7 @@ void ModuleCubeSphere::set_root_ca(char *ca) {
     //              (unsigned long long)ca);
     // _static_root_ca = ca; 
 
-    // LOG_MSG_DEBUG(CSP_LOG_EN, "static root CA set (len=%u)", ca ? (unsigned)strlen(ca) : 0u);
+    // LOG_MSG_DEBUG(CSP_LOG_EN, "static root CA:\n%s", _static_root_ca ? _static_root_ca : "(null)");
 }
 
 void ModuleCubeSphere::_burst_get(const char *url)
@@ -1155,10 +1162,13 @@ void ModuleCubeSphere::_retx_init()
     cfg.user_data         = this;
     cfg.retry_interval_ms = 60000;
 
-    if (retx_mgr_init(&_retx_mgr, &cfg) == RETX_MGR_OK) {
+    if (retx_mgr_init(&_retx_mgr, &cfg) == RETX_MGR_OK) 
+    {
         _retx_ready = true;
         LOG_MSG_INFO(CSP_LOG_EN, "retx: ready");
-    } else {
+    } 
+    else 
+    {
         LOG_MSG_ERROR(CSP_LOG_EN, "retx: init failed");
     }
 }

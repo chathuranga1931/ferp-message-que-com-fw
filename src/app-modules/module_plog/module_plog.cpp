@@ -117,17 +117,19 @@ void ModulePLog::_on_sd_ready()
             _file_idx   = (uint8_t)idx;
             _line_count = lcount;
             _sd_ready   = true;
-            LOG_MSG_INFO(PLOG_LOG_EN, "resumed at log_%03u.txt line %lu",
+            LOG_MSG_INFO(PLOG_LOG_EN, "last logged at log_%03u.txt line %lu",
                          (unsigned)_file_idx, (unsigned long)_line_count);
+
+            _advance_file();  // start with a fresh file to avoid appending to old content
             return;
         }
     }
 
     // No valid state — start fresh at file 000.
-    _file_idx   = 0;
+    _file_idx   = MODULE_PLOG_MAX_FILES - 1;  // so that advance_file() rolls to 000
     _line_count = 0;
     _sd_ready   = true;
-    _save_state();
+    _advance_file();
     LOG_MSG_INFO(PLOG_LOG_EN, "starting fresh at log_000.txt");
 }
 

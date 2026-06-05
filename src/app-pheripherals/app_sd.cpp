@@ -158,6 +158,7 @@ int32_t app_sd_read_line(const char *path, uint32_t line_number,
 
     int32_t ret = APP_SD_OK;
     if (pal_sd_file_read_line(path, line_number, buffer, max_len) != PAL_OK) {
+        LOG_MSG_ERROR(APP_SD_LOG_EN, "read_line failed: %s (line %u)", path, (unsigned)line_number);
         ret = APP_SD_ERR_IO;
     }
     _unlock();

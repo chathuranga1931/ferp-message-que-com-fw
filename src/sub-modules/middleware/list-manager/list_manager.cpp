@@ -3,8 +3,18 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#define __TAG__  "LIST_MGR"
+#include "list_manager_config.h"
+
+#ifndef LIST_MGR_LOG_DEBUG
+#warning "LIST_MGR_LOG_DEBUG not defined, debug logs will not be printed!"
 #define LIST_MGR_LOG_DEBUG(fmt, ...) 
+#endif
+
+#ifndef LIST_MGR_LOG_ERROR
+#warning "LIST_MGR_LOG_ERROR not defined, errors will not be logged!"
 #define LIST_MGR_LOG_ERROR(fmt, ...) 
+#endif
 
 // Error codes
 #define LIST_MGR_OK                     0

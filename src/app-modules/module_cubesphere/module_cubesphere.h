@@ -116,7 +116,7 @@ public:
 
     static ModuleCubeSphere *instance();
 
-    void set_storage(const storage_interface_t *storage) { _storage = storage; }
+    void set_storage(const storage_interface_t *storage);
     void set_root_ca(char *ca);
 
 

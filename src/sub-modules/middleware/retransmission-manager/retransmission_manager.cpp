@@ -11,6 +11,10 @@
 
 #define __TAG__  "RETX_MGR"
 
+#ifndef RETX_MGR_LOG_EN
+#define RETX_MGR_LOG_EN LOG_EN
+#endif
+
 // ---------------------------------------------------------------------------
 // Serialisation helpers
 // Format written to list_manager: "TYPE|LEN|<payload bytes>"
