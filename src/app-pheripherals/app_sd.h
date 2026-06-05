@@ -28,6 +28,7 @@
 #define APP_SD_ERR_IO           (-4)
 #define APP_SD_ERR_TOO_LARGE    (-5)
 #define APP_SD_ERR_INVALID      (-6)
+#define APP_SD_ERR_TIMEOUT      (-7)
 
 // ---------------------------------------------------------------------------
 // app_sd_info_t
@@ -119,6 +120,20 @@ int32_t app_sd_dir_open(const char *path, pal_sd_dir_handle_t *handle,
 int32_t app_sd_dir_read_next(pal_sd_dir_handle_t handle,
                               pal_sd_dir_entry_t *entry, bool *has_more);
 int32_t app_sd_dir_close(pal_sd_dir_handle_t handle);
+
+/**
+ * @brief  Delete every file and sub-directory on the SD card.
+ *
+ * Walks the entire card from the root, deleting files and empty directories
+ * depth-first.  Stops early and returns APP_SD_ERR_TIMEOUT if the operation
+ * exceeds @p total_timeout_ms milliseconds (wall-clock time since the call).
+ *
+ * @param total_timeout_ms  Maximum allowed duration in milliseconds.
+ *                          Pass 0 to use the default (10 minutes).
+ * @return APP_SD_OK on success, APP_SD_ERR_TIMEOUT if the time limit was
+ *         reached, or another negative error code on failure.
+ */
+int32_t app_sd_cleanup(uint32_t total_timeout_ms);
 
 #ifdef __cplusplus
 }

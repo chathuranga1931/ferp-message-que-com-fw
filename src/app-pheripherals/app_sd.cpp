@@ -12,10 +12,12 @@
 #include "app_sd.h"
 #include "pal_sd.h"
 #include "pal_logger.h"
+#include "pal_time.h"
 #include "hsys_mutex.h"
 
 #include <string.h>
 #include <stddef.h>
+#include <stdlib.h>
 
 #define __TAG__  "APP_SD  "
 
@@ -244,6 +246,121 @@ int32_t app_sd_dir_read_next(pal_sd_dir_handle_t handle,
 int32_t app_sd_dir_close(pal_sd_dir_handle_t handle)
 {
     return pal_sd_dir_close(handle);
+}
+
+// ── Cleanup ───────────────────────────────────────────────────────────────────
+
+#define APP_SD_CLEANUP_DEFAULT_TIMEOUT_MS  (10UL * 60UL * 1000UL)  /* 10 min */
+
+/**
+ * Recursively delete all files and sub-directories under @p path.
+ *
+ * Reads one entry at a time (open → read-first → close → act) to avoid
+ * iterator-invalidation issues on FAT while deleting.  Because the
+ * directory is re-opened from the start after each deletion the approach
+ * is O(n²) in the number of entries, but this is acceptable for an
+ * administrative wipe operation.
+ *
+ * The root path "/" itself is never removed.
+ */
+static int32_t _cleanup_dir_recursive(const char *path, uint64_t deadline_ms)
+{
+    for (;;) {
+        if (pal_time_get_ms() >= deadline_ms) {
+            return APP_SD_ERR_TIMEOUT;
+        }
+
+        /* Open directory and read the very first entry, then close
+         * immediately so the handle is never held across a deletion. */
+        pal_sd_dir_handle_t handle = NULL;
+        if (pal_sd_dir_open(path, &handle) != PAL_OK) {
+            return APP_SD_ERR_IO;
+        }
+
+        pal_sd_dir_entry_t *entry =
+            (pal_sd_dir_entry_t *)malloc(sizeof(pal_sd_dir_entry_t));
+        if (!entry) {
+            pal_sd_dir_close(handle);
+            return APP_SD_ERR_IO;
+        }
+        memset(entry, 0, sizeof(pal_sd_dir_entry_t));
+
+        bool     has_more = false;
+        int32_t  rc       = pal_sd_dir_read_next(handle, entry, &has_more);
+        pal_sd_dir_close(handle);
+
+        if (rc != PAL_OK || !has_more) {
+            /* Directory is now empty (or an error occurred) — done. */
+            free(entry);
+            break;
+        }
+
+        /* Build SD-relative path from parent path + entry name.
+         * entry->full_path already contains the OS mount-point prefix, so
+         * we must NOT use it for further pal_sd_* calls (those prepend the
+         * mount point themselves via build_full_path).  Construct the child
+         * path from the current relative path instead. */
+        char child_path[512];
+        if (path[0] == '/' && path[1] == '\0') {
+            /* root: avoid double slash */
+            snprintf(child_path, sizeof(child_path), "/%s", entry->name);
+        } else {
+            snprintf(child_path, sizeof(child_path), "%s/%s", path, entry->name);
+        }
+
+        if (entry->is_directory) {
+            int32_t sub_rc = _cleanup_dir_recursive(child_path, deadline_ms);
+            if (sub_rc != APP_SD_OK) {
+                free(entry);
+                return sub_rc;
+            }
+            pal_sd_dir_remove(child_path);
+            LOG_MSG_DEBUG(APP_SD_LOG_EN, "cleanup: removed dir: %s", entry->name);
+        } else {
+            pal_sd_file_delete(child_path);
+            LOG_MSG_DEBUG(APP_SD_LOG_EN, "cleanup: deleted file: %s", entry->name);
+        }
+
+        free(entry);
+    }
+
+    return APP_SD_OK;
+}
+
+int32_t app_sd_cleanup(uint32_t total_timeout_ms)
+{
+    if (!s_initialized) return APP_SD_ERR_NOT_INIT;
+
+    uint32_t timeout = (total_timeout_ms > 0)
+                       ? total_timeout_ms
+                       : (uint32_t)APP_SD_CLEANUP_DEFAULT_TIMEOUT_MS;
+
+    LOG_MSG_INFO(APP_SD_LOG_EN, "cleanup: starting full SD wipe (timeout=%lu min)",
+                 (unsigned long)(timeout / 60000UL));
+
+    uint64_t deadline_ms = pal_time_get_ms() + timeout;
+    int32_t  rc          = _cleanup_dir_recursive("/", deadline_ms);
+
+    if (rc == APP_SD_ERR_TIMEOUT) {
+        LOG_MSG_ERROR(APP_SD_LOG_EN, "cleanup: timed out after %lu min",
+                      (unsigned long)(timeout / 60000UL));
+    } else if (rc == APP_SD_OK) {
+        LOG_MSG_INFO(APP_SD_LOG_EN, "cleanup: SD card wiped successfully");
+    } else {
+        LOG_MSG_ERROR(APP_SD_LOG_EN, "cleanup: failed (rc=%ld)", (long)rc);
+    }
+
+    /* Unmount the filesystem before the caller triggers a reboot.
+     * esp_vfs_fat_sdcard_unmount() calls f_unmount() which flushes all
+     * FatFS write-back caches (FAT table updates, directory entries) to
+     * the physical card.  Without this, the FAT is left inconsistent in
+     * RAM and a software reset makes the filesystem unreadable on next
+     * boot. */
+    LOG_MSG_INFO(APP_SD_LOG_EN, "cleanup: unmounting SD to flush FAT cache");
+    pal_sd_deinit();
+    s_initialized = false;
+
+    return rc;
 }
 
 // ── storage_interface_t adapter ───────────────────────────────────────────────

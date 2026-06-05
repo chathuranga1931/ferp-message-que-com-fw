@@ -78,6 +78,7 @@
 #include "msg_get_file_list_spiffs.h"   // MsgGetFileListSpiffs   (0x0209)
 #include "msg_file_list_spiffs.h"       // MsgFileListSpiffs      (0x020A)
 #include "msg_system_reboot.h"          // MsgSystemReboot        (0x020B)
+#include "msg_sd_cleanup.h"              // MsgSdCleanup           (0x020C)
 #include "msg_http_start_request.h"     // MsgHttpStartRequest    (0x0C00)
 #include "msg_http_start_response.h"    // MsgHttpStartResponse   (0x0C01)
 #include "msg_http_set_url_request.h"   // MsgHttpSetUrlRequest   (0x0C02)
@@ -167,6 +168,8 @@
         MsgHttpSendRequest::DESCRIPTOR,                                           \
         MsgHttpResult::DESCRIPTOR,                                                \
         MsgHttpAbortRequest::DESCRIPTOR,                                          \
+        MsgSystemReboot::DESCRIPTOR,                                               \
+        MsgSdCleanup::DESCRIPTOR,                                                 \
         MsgHttpResponseHeader::DESCRIPTOR,                                        \
         MsgHttpSetStreamSink::DESCRIPTOR,                                         \
     };                                                                            \

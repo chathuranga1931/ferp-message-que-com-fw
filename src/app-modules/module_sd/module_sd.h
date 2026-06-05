@@ -35,8 +35,9 @@ public:
 
 protected:
     void pre_init()  override;
+    void init()      override;
     void post_init() override;
-    void on_msg_received(const hsys_msg_t & /*msg*/) override {}
+    void on_msg_received(const hsys_msg_t &msg) override;
 
 private:
     bool         _mounted   = false;

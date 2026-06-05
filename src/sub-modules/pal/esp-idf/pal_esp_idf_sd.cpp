@@ -21,6 +21,8 @@
 #include "driver/spi_common.h"
 #include "sdmmc_cmd.h"
 #include "ff.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 /*===========================================================================*/
 /*                            DEFINITIONS                                    */
@@ -137,21 +139,48 @@ int32_t pal_sd_init(const pal_sd_config_t* config, pal_sd_info_t* info) {
     slot_config.gpio_cs = (gpio_num_t)config->cs_pin;
     slot_config.host_id = (spi_host_device_t)host.slot;
     
-    // Mount filesystem configuration
+    // Mount filesystem — first pass: no auto-format so we can detect corruption.
+    // Retry up to 3 times with a short delay to handle cards that need time to
+    // become ready after a reboot following heavy write activity (cleanup wipe).
     esp_vfs_fat_sdmmc_mount_config_t mount_config = {
         .format_if_mount_failed = false,
         .max_files = 5,
         .allocation_unit_size = 16 * 1024
     };
-    
-    // Mount filesystem
-    ret = esp_vfs_fat_sdspi_mount(SD_MOUNT_POINT, &host, &slot_config, &mount_config, &sd_card);
-    if (ret != ESP_OK) {
+
+    static const int  SD_MOUNT_RETRIES     = 3;
+    static const int  SD_MOUNT_RETRY_MS    = 200;
+
+    for (int attempt = 1; attempt <= SD_MOUNT_RETRIES; attempt++) {
+        ret = esp_vfs_fat_sdspi_mount(SD_MOUNT_POINT, &host, &slot_config, &mount_config, &sd_card);
+        if (ret == ESP_OK) break;
+
         if (ret == ESP_FAIL) {
-            LOG_MSG_ERROR(SD_DEBUG_LOG_EN, "Failed to mount filesystem");
-        } else {
-            LOG_MSG_ERROR(SD_DEBUG_LOG_EN, "Failed to initialize SD card: %s", esp_err_to_name(ret));
+            /* Filesystem is corrupt (e.g. FAT cache not flushed before a
+             * previous reboot).  Re-try once with format_if_mount_failed=true
+             * so the VFS layer reformats and creates a fresh FAT volume. */
+            LOG_MSG_ERROR(SD_DEBUG_LOG_EN,
+                          "Filesystem corrupt — reformatting SD card and remounting");
+            mount_config.format_if_mount_failed = true;
+            ret = esp_vfs_fat_sdspi_mount(SD_MOUNT_POINT, &host, &slot_config,
+                                          &mount_config, &sd_card);
+            if (ret == ESP_OK) {
+                LOG_MSG_INFO(SD_DEBUG_LOG_EN, "SD card reformatted and mounted successfully");
+            } else {
+                LOG_MSG_ERROR(SD_DEBUG_LOG_EN, "Reformat failed: %s", esp_err_to_name(ret));
+            }
+            break; /* no point retrying after a format attempt */
         }
+
+        /* Hardware-level error (e.g. ESP_ERR_TIMEOUT): card may still be
+         * powering up after a reboot.  Wait and retry. */
+        LOG_MSG_ERROR(SD_DEBUG_LOG_EN,
+                      "SD init attempt %d/%d failed (%s) — retrying in %d ms",
+                      attempt, SD_MOUNT_RETRIES, esp_err_to_name(ret), SD_MOUNT_RETRY_MS);
+        vTaskDelay(pdMS_TO_TICKS(SD_MOUNT_RETRY_MS));
+    }
+
+    if (ret != ESP_OK) {
         spi_bus_free((spi_host_device_t)host.slot);
         return PAL_ERROR_INIT;
     }

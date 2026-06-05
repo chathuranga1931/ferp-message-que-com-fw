@@ -3,10 +3,15 @@
 // ModuleSD — mounts SD card via app_sd, then broadcasts:
 //   MsgSdReady   — signal to other modules that the card is usable
 //   MsgSdStatus  — detailed card info (type, total size, free space)
+//
+// Also subscribes to MsgSdCleanup: on receipt, wipes the entire SD card
+// (all files and directories) then triggers a system reboot.
 
 #include "module_sd.h"
 #include "msg_sd_ready.h"
 #include "msg_sd_status.h"
+#include "msg_sd_cleanup.h"
+#include "msg_system_reboot.h"
 #include "pal_logger.h"
 #include "pal_sd.h"
 #include "app_hw_config.h"
@@ -23,6 +28,12 @@ static ModuleSD s_instance;
 ModuleSD *ModuleSD::instance() { return &s_instance; }
 
 // ── Lifecycle ─────────────────────────────────────────────────────────────────
+
+void ModuleSD::init()
+{
+    subscribe(MsgSdCleanup::ID);
+    LOG_MSG_INFO(MOD_SD_LOG_EN, "init — subscribed to MsgSdCleanup");
+}
 
 void ModuleSD::pre_init()
 {
@@ -91,4 +102,26 @@ void ModuleSD::post_init()
     } else {
         LOG_MSG_ERROR(MOD_SD_LOG_EN, "failed to create MsgSdStatus");
     }
+}
+
+// ── Message handler ───────────────────────────────────────────────────────────
+
+void ModuleSD::on_msg_received(const hsys_msg_t &msg)
+{
+    if (msg.msg_id != MsgSdCleanup::ID) return;
+
+    LOG_MSG_INFO(MOD_SD_LOG_EN, "MsgSdCleanup received — starting full SD wipe");
+
+    // Blocking call: deletes every file and directory on the SD card.
+    // Times out after 10 minutes.  Either way the device reboots afterward.
+    int32_t rc = app_sd_cleanup(0 /* use default 10-min timeout */);
+
+    if (rc == APP_SD_OK) {
+        LOG_MSG_INFO(MOD_SD_LOG_EN, "SD wipe complete — rebooting");
+    } else {
+        LOG_MSG_ERROR(MOD_SD_LOG_EN, "SD wipe ended with rc=%ld — rebooting anyway", (long)rc);
+    }
+
+    hsys_msg_t *reboot_msg = MsgSystemReboot::create(id());
+    if (reboot_msg) publish(reboot_msg);
 }
