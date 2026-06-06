@@ -916,6 +916,10 @@ class ConfigWorker:
     def enqueue(self, task: tuple):
         self._q.put(task)
 
+    def transport(self):
+        """Return the currently active transport (or None)."""
+        return self._transport
+
     def stop(self):
         self._running = False
         self._q.put(None)
@@ -1515,9 +1519,24 @@ class FerpDeviceTool(tk.Tk):
         mac   = d.get("mac", "")
         group = d.get("group", "default")
         dev_id = uuid if uuid else mac
+
+        new_cmd  = ""
+        new_resp = ""
         if dev_id:
-            self._mqtt_cmd_topic.set(f"{self._mqtt_cmd_prefix}/{group}/{dev_id}/cmd")
-            self._mqtt_resp_topic.set(f"{self._mqtt_resp_prefix}/{group}/{dev_id}/resp")
+            new_cmd  = f"{self._mqtt_cmd_prefix}/{group}/{dev_id}/cmd"
+            new_resp = f"{self._mqtt_resp_prefix}/{group}/{dev_id}/resp"
+            self._mqtt_cmd_topic.set(new_cmd)
+            self._mqtt_resp_topic.set(new_resp)
+
+        # If already connected, retarget the live MQTT clients to the new device.
+        # The broker connection stays open — only the topics change.
+        if self._connected and dev_id:
+            new_base = new_cmd.rsplit("/cmd", 1)[0] if new_cmd.endswith("/cmd") else new_cmd
+            self._mqtt_raw.update_device(new_base)
+            transport = self._worker.transport()
+            if transport is not None and hasattr(transport, "update_topics"):
+                transport.update_topics(new_cmd, new_resp)
+
         for key, _, field in self._DEV_INFO_KEYS:
             var = self._devinfo_vars.get(key)
             if var is not None:

@@ -20,6 +20,34 @@
       "mac": "f8b3b73988c8",
       "uuid": "",
       "group": "default"
+    },
+    {
+      "label": "FERP-61",
+      "ip": "",
+      "mac": "f8b3b739978c",
+      "uuid": "",
+      "group": "default"
+    },
+    {
+      "label": "FERP-63",
+      "ip": "",
+      "mac": "f8b3b7398b74",
+      "uuid": "",
+      "group": "default"
+    },
+    {
+      "label": "FERP-64",
+      "ip": "",
+      "mac": "f8b3b739aa10",
+      "uuid": "",
+      "group": "default"
+    },
+    {
+      "label": "FERP-69",
+      "ip": "",
+      "mac": "f8b3b73b0af8",
+      "uuid": "",
+      "group": "default"
     }
   ],
   "ota_targets": {

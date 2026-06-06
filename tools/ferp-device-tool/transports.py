@@ -226,6 +226,15 @@ class MQTTTransport:
         self._client.disconnect()
         self._connected = False
 
+    def update_topics(self, cmd_topic: str, resp_topic: str) -> None:
+        """Switch to a different device's topics without reconnecting to the broker."""
+        if self._connected:
+            self._client.unsubscribe(self.resp_topic)
+            self._client.subscribe(resp_topic)
+            self._log(f"MQTT device switched → cmd={cmd_topic}  resp={resp_topic}", "info")
+        self.cmd_topic  = cmd_topic
+        self.resp_topic = resp_topic
+
     def _drain(self):
         while not self._queue.empty():
             self._queue.get_nowait()
@@ -390,6 +399,20 @@ class MqttRawClient:
             self._client = None
         self._connected = False
         self._on_status(False)
+
+    def update_device(self, new_base: str) -> None:
+        """Switch to a different device topic base without reconnecting to the broker."""
+        if not self._client or not self._connected:
+            self._base = new_base
+            return
+        # Unsubscribe old topics
+        self._client.unsubscribe(_resp_topic(self._base))
+        self._client.unsubscribe(_evt_topic(self._base))
+        self._base = new_base
+        # Subscribe new topics
+        self._client.subscribe(_resp_topic(self._base), qos=1)
+        self._client.subscribe(_evt_topic(self._base), qos=0)
+        self._on_log(f"[info]  Device switched — now listening on {self._base}", "info")
 
     def send(self, msg_name: str, data: dict) -> None:
         if not self._client or not self._connected:

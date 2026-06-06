@@ -93,12 +93,12 @@ void pal_udp_log_init(const char             *server_ip,
     inet_pton(AF_INET, server_ip ? server_ip : "0.0.0.0", &s_dest.sin_addr);
 
     // Build prefix string: "AABBCCDDEEFF : " (matches old app_com.cpp format)
-    // if (mac_no_colon && mac_no_colon[0] != '\0') {
-    //     snprintf(s_prefix, sizeof(s_prefix), "%s : ", mac_no_colon);
-    // } else {
-    //     s_prefix[0] = '\0';
-    // }
-    snprintf(s_prefix, sizeof(s_prefix), "112233445566 : ");
+    if (mac_no_colon && mac_no_colon[0] != '\0') {
+        snprintf(s_prefix, sizeof(s_prefix), "%s : ", mac_no_colon);
+    } else {
+        s_prefix[0] = '\0';
+    }
+    // snprintf(s_prefix, sizeof(s_prefix), "112233445566 : ");
     
     s_wake_fn    = wake_fn;
     s_initialized = true;
