@@ -217,10 +217,36 @@ elif $RELEASE; then
     python3 "$SCRIPT_DIR/tools/ota-bundle-tools/OtaBundleCreate-MainESP32.py" \
         "$RELEASE_DIR/ferp-com-v${ODD_VER}.bin" "$ODD_VER" "$RELEASE_DIR"
 
+    # ── Build 3: combined 4MB factory image ──────────────────────────────────
+    # Merges bootloader + partition table + ota_data + app + SPIFFS into one
+    # flat 4MB image that can be flashed directly to address 0x0.
+    # Useful for factory programming / full device restore.
+    echo ""
+    echo "--- Creating 4MB factory image ($ODD_VER) ---"
+    BUILD_DIR="$PROJECT_DIR/build"
+    FACTORY_BIN="$RELEASE_DIR/ferp-esp32-factory-v${ODD_VER}.bin"
+    python3 "$IDF_PATH/components/esptool_py/esptool/esptool.py" --chip esp32 merge_bin \
+        --flash_mode  dio \
+        --flash_freq  40m \
+        --flash_size  4MB \
+        --fill-flash-size 4MB \
+        -o "$FACTORY_BIN" \
+        0x1000    "$BUILD_DIR/bootloader/bootloader.bin" \
+        0x8000    "$BUILD_DIR/partition_table/partition-table.bin" \
+        0xe000    "$BUILD_DIR/ota_data_initial.bin" \
+        0x10000   "$BUILD_DIR/ferp-com.bin" \
+        0x370000  "$BUILD_DIR/spiffs.bin"
+    if [[ $? -eq 0 ]]; then
+        echo "Saved: $FACTORY_BIN"
+    else
+        echo "WARNING: Failed to create factory image — check esptool.py is in PATH"
+    fi
+
     echo ""
     echo "=== Release complete: $ODD_VER ==="
     echo "  $RELEASE_DIR/ferp-com-v${EVEN_VER}.bin  ← flash this to test OTA upgrade"
     echo "  $RELEASE_DIR/ferp-com-v${ODD_VER}.bin   ← production binary"
+    echo "  $RELEASE_DIR/ferp-esp32-factory-v${ODD_VER}.bin ← 4MB factory image (flash to 0x0)"
     echo ""
     echo "  version.h left at: $ODD_VER"
 fi
