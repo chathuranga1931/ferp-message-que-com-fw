@@ -104,6 +104,7 @@
 #include "msg_sd_ready.h"
 #include "msg_sd_status.h"
 #include "msg_sd_cleanup.h"
+#include "msg_system_reboot.h"
 #include "msg_spiffs_ready.h"
 #include "msg_wifi_event.h"
 #include "msg_cubesphere_status.h"
@@ -401,6 +402,7 @@ static const app_msg_codec_entry_t k_codec_table[] = {
     { "MsgSdReady",              MSG_ID_SD_READY,              MsgSdReady::from_json,              MsgSdReady::to_json             },
     { "MsgSdStatus",             MSG_ID_SD_STATUS,             MsgSdStatus::from_json,             MsgSdStatus::to_json            },
     { "MsgSdCleanup",            MSG_ID_SD_CLEANUP,            MsgSdCleanup::from_json,            MsgSdCleanup::to_json           },
+    { "MsgSystemReboot",          MSG_ID_SYSTEM_REBOOT,         MsgSystemReboot::from_json,         MsgSystemReboot::to_json        },
 
     // ── Connectivity ─────────────────────────────────────────────────────────
     { "MsgWifiEvent",            MSG_ID_WIFI_EVENT,            MsgWifiEvent::from_json,            MsgWifiEvent::to_json           },
@@ -495,6 +497,8 @@ static const app_msg_mqtt_route_t k_mqtt_route_table[] = {
     { MSG_ID_GET_FILE_LIST_SPIFFS,  (hsys_module_id_t)0,   false },
     // ── SD cleanup → ModuleSD (blocking wipe + reboot) ────────────────────────
     { MSG_ID_SD_CLEANUP,            MODULE_SD_ID,          false },
+    // ── System reboot → ModuleSysmon ─────────────────────────────────────────
+    { MSG_ID_SYSTEM_REBOOT,         MODULE_SYSMON_ID,      false },
 };
 
 // ============================================================================

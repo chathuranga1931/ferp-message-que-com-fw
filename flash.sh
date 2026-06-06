@@ -242,6 +242,15 @@ elif $RELEASE; then
         echo "WARNING: Failed to create factory image — check esptool.py is in PATH"
     fi
 
+    # ── Tag the release in git ────────────────────────────────────────────────
+    echo "--- Tagging release v${ODD_VER} ---"
+    git -C "$SCRIPT_DIR" tag "v${ODD_VER}"
+    if [[ $? -eq 0 ]]; then
+        echo "Tagged: v${ODD_VER}"
+    else
+        echo "WARNING: git tag failed (tag may already exist)"
+    fi
+
     echo ""
     echo "=== Release complete: $ODD_VER ==="
     echo "  $RELEASE_DIR/ferp-com-v${EVEN_VER}.bin  ← flash this to test OTA upgrade"
@@ -249,5 +258,6 @@ elif $RELEASE; then
     echo "  $RELEASE_DIR/ferp-esp32-factory-v${ODD_VER}.bin ← 4MB factory image (flash to 0x0)"
     echo ""
     echo "  version.h left at: $ODD_VER"
+    echo "  git tag:           v${ODD_VER}"
 fi
 
