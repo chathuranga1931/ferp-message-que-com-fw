@@ -169,19 +169,19 @@ bool censtar6_process_data(app_display_data_t * display_data){
 
         uint64_t unit_pricex100 = display_data->unit_pricex100;
         uint64_t total_price_expectedx100 = (unit_pricex100*display_data->volume_lx1000)/1000;
-        uint64_t gapx100 = total_price_expectedx100 - display_data->total_pricex100;
+        // Use signed arithmetic: integer division can make expected slightly less
+        // than actual total, causing uint64_t underflow and a spurious huge gap.
+        // The 100-unit tolerance (1.00 LKR) absorbs both x10-format truncation
+        // noise (≤ 9 units) and normal integer-division rounding.
+        int64_t gapx100 = (int64_t)total_price_expectedx100 - (int64_t)display_data->total_pricex100;
 
-        // Censtar 6-digit frames are transmitted in x10 format (1 decimal place).
-        // fuel_types_from_frame multiplies by 10 to produce the internal x100
-        // representation, which introduces a truncation error of up to 9 in x100
-        // units (i.e. up to $0.09).  Accept gaps ≤ 9 as valid without correction.
-        if((ABS(gapx100) > 9) && display_data->total_pricex100 == 0 && display_data->volume_lx1000 > 0){
+        if((ABS(gapx100) > 100) && display_data->total_pricex100 == 0 && display_data->volume_lx1000 > 0){
             display_data->total_pricex100 = corrected_total_price(true, total_price_expectedx100);
         }    
-        else if(ABS(gapx100) > 9){
+        else if(ABS(gapx100) > 100){
             if(total_price_expectedx100 >= 10000000){
                 display_data->total_pricex100 = display_data->total_pricex100 + (((uint32_t)(total_price_expectedx100))/10000000)*1000000;
-                gapx100 = total_price_expectedx100 - display_data->total_pricex100;
+                gapx100 = (int64_t)total_price_expectedx100 - (int64_t)display_data->total_pricex100;
                 if(ABS(gapx100) > 100){
                     error_code_for_debugging = 8;
                     break;
@@ -189,7 +189,7 @@ bool censtar6_process_data(app_display_data_t * display_data){
             }
             else if(total_price_expectedx100 >= 1000000){
                 display_data->total_pricex100 = display_data->total_pricex100 + (((uint32_t)(total_price_expectedx100))/1000000)*1000000;
-                gapx100 = total_price_expectedx100 - display_data->total_pricex100;
+                gapx100 = (int64_t)total_price_expectedx100 - (int64_t)display_data->total_pricex100;
                 if(ABS(gapx100) > 100){
                     error_code_for_debugging = 4;
                     break;
