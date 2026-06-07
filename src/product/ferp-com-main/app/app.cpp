@@ -764,7 +764,7 @@ static const hsys_task_desc_t k_task_table[] = {
     { "indicator_task",   2*1024,  4,  0,   { MODULE_SYSMON_ID,      MODULE_LEDS_ID,           MODULE_BUZZER_ID,                             0 } },
     { "btn_task",         3*1024,  5,  0,   { MODULE_PRINT_BTN_ID,   MODULE_DEFAULT_BTN_ID,  MODULE_PRINTING_ID,                                                   0 } },
     { "fuel_task",        4*1024,  5,  0,   { MODULE_FUEL_ID,                                                                                0 } },
-    { "network_task" ,   10*1024,  5,  0,   { MODULE_WIFI_ID,        MODULE_INTERNET_ID,       MODULE_MQTT_ID,                    
+    { "network_task" ,   10*1024,  5, 32,   { MODULE_WIFI_ID,        MODULE_INTERNET_ID,       MODULE_MQTT_ID,
                                               MODULE_CLOUD_ID,       MODULE_WEB_CLIENT_OTA_ID, MODULE_WEB_SERVER_ID,  MODULE_OTA_ID,
                                               MODULE_UDP_LOG_ID,     0 } },
     { "http_task",       10*1024,  5,  0,   { MODULE_HTTP_ID,                                                                                0 } },

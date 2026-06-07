@@ -188,6 +188,8 @@ private:
 
     // ── System status (from ModuleMsgTranslator) ──────────────────────────────
     bool     _system_is_idle         = true;    ///< Updated by MSG_ID_SYSTEM_STATUS
+    uint16_t _http_start_ticks        = 0;       ///< Ticks spent in HTTP_STARTING; watchdog fires at 8 s
+    uint16_t _http_exec_ticks         = 0;       ///< Ticks spent in HTTP_EXECUTING; watchdog fires at 45 s
     uint32_t _retx_check_countdown   = 10;      ///< Ticks remaining until first retransmit check (10 s after RUNNING; resets to 60 s)
     bool     _retx_in_progress       = false;   ///< True while an EVT_PUMPED_RETX HTTP send is live
     bool     _retx_last_send_failed  = false;   ///< Set when last retransmit attempt failed; cleared at next check
@@ -285,6 +287,7 @@ private:
     // ── HTTP session helpers ──────────────────────────────────────────────────
     void _send_http_start(pal_http_method_t method, uint32_t timeout_ms,
                           const char *collect_key = nullptr);
+    void _recover_http_start_miss();
     void _burst_get(const char *url);
     void _burst_get_with_auth(const char *url, const char *auth_value);
     void _burst_post(const char *url, const char *auth_value,

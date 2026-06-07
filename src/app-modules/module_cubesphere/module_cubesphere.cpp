@@ -226,11 +226,18 @@ void ModuleCubeSphere::_on_fuel_pumped(const hsys_msg_t &msg)
         return;
     }
 
-    if (p.nozzle_idx >= CS_NO_NOZZLES || _cs_nozzles[p.nozzle_idx].uuid[0] == '\0') {
-        LOG_MSG_ERROR(CSP_LOG_EN, "invalid nozzle_idx %u or unconfigured nozzle", p.nozzle_idx);
+    if (p.nozzle_idx >= CS_NO_NOZZLES) {
+        LOG_MSG_ERROR(CSP_LOG_EN, "invalid nozzle_idx %u (max=%u) — discarding", p.nozzle_idx, (unsigned)CS_NO_NOZZLES);
         _pumped_failure++;
         _publish_status(CUBESPHERE_STATUS_PUMPED_FAILED, p.nozzle_idx);
-        _retx_store_pumped(p);
+        return;
+    }
+    if (_cs_nozzles[p.nozzle_idx].uuid[0] == '\0') {
+        // Nozzle index is in range but not yet provisioned in CubeSphere.
+        // Retx would immediately discard it too (same check), so skip the SD write.
+        LOG_MSG_WARNING(CSP_LOG_EN, "nozzle_idx %u not provisioned in cloud — discarding pump event", p.nozzle_idx);
+        _pumped_failure++;
+        _publish_status(CUBESPHERE_STATUS_PUMPED_FAILED, p.nozzle_idx);
         return;
     }
 
@@ -275,6 +282,12 @@ void ModuleCubeSphere::_on_nozzle_state(const hsys_msg_t &msg)
     auto p = MsgNozzleState::deserialize(msg);
     if (p.state != NOZZLE_PUMPING) return;   // only pump-start is cloud-reported
     if (p.nozzle_idx >= CS_NO_NOZZLES) return;
+
+    if (_cs_nozzles[p.nozzle_idx].uuid[0] == '\0') {
+        LOG_MSG_DEBUG(CSP_LOG_EN, "nozzle[%u] PUMPING — not provisioned in cloud, skipping pump-start",
+                      (unsigned)p.nozzle_idx);
+        return;
+    }
 
     if (_state != STATE_RUNNING) {
         LOG_MSG_DEBUG(CSP_LOG_EN, "nozzle[%u] PUMPING — not RUNNING, skipping pump-start",
@@ -343,6 +356,46 @@ void ModuleCubeSphere::_on_tick()
 {
     _uptime_sec++;
 
+    // Watchdog: if HTTP_STARTING persists for >8 s, http_task has already reset its
+    // session but both StartResponse and SessionExpired were dropped (inbox overflow).
+    // Force-recover so the event pipeline is not permanently stuck.
+    if (_http_phase == HTTP_STARTING) {
+        if (++_http_start_ticks >= 8) {
+            LOG_MSG_WARNING(CSP_LOG_EN,
+                            "HTTP_STARTING watchdog: stuck for 8s (evt=%d) — forcing recovery",
+                            (int)_cur_evt);
+            _recover_http_start_miss();
+        }
+    } else {
+        _http_start_ticks = 0;
+    }
+
+    // Watchdog: if HTTP_EXECUTING persists for >45 s the HTTP result was dropped
+    // (network_task inbox was full when http_task sent its reply; http_task has
+    // already reset to IDLE, but we never received the message).  Retry the
+    // current operation so registration / event sending is not permanently stuck.
+    if (_http_phase == HTTP_EXECUTING) {
+        if (++_http_exec_ticks >= 45) {
+            LOG_MSG_WARNING(CSP_LOG_EN,
+                            "HTTP_EXECUTING watchdog: stuck for 45s (evt=%d state=%d) — result dropped, recovering",
+                            (int)_cur_evt, (int)_state);
+            _http_exec_ticks = 0;
+            _http_phase = HTTP_IDLE;
+            if (_state == STATE_REGISTERING) {
+                switch (_reg_step) {
+                    case REG_STEP_1:      _start_reg_step_1(); break;
+                    case REG_STEP_WAIT_2:
+                    case REG_STEP_2:      _start_reg_step_2(); break;
+                    case REG_STEP_3:      _start_reg_step_3(); break;
+                }
+            } else if (_state == STATE_RUNNING) {
+                _recover_http_start_miss();
+            }
+        }
+    } else {
+        _http_exec_ticks = 0;
+    }
+
     // Retransmit check every 60 seconds when running
     if (_state == STATE_RUNNING && _retx_ready) {
         if (_retx_check_countdown > 0) {
@@ -379,6 +432,7 @@ void ModuleCubeSphere::_on_http_start_response(const hsys_msg_t &msg)
 {
     if (_http_phase != HTTP_STARTING) return;
 
+    _http_start_ticks = 0;   // clear watchdog — start-response arrived in time
     auto p = MsgHttpStartResponse::deserialize(msg);
 
     if (p.result == HTTP_SESSION_BUSY) {
@@ -402,6 +456,7 @@ void ModuleCubeSphere::_on_http_start_response(const hsys_msg_t &msg)
         _burst_post(CS_URL_EVENTS, auth, _event_json, (uint32_t)strlen(_event_json));
     }
 
+    _http_exec_ticks = 0;   // start exec-watchdog from zero
     _http_phase = HTTP_EXECUTING;
 }
 
@@ -426,30 +481,69 @@ void ModuleCubeSphere::_on_http_response_header(const hsys_msg_t &msg)
     LOG_MSG_DEBUG(CSP_LOG_EN, "captured nonce (len=%u)", (unsigned)(ne - ns));
 }
 
+void ModuleCubeSphere::_recover_http_start_miss()
+{
+    _http_phase       = HTTP_IDLE;
+    _http_start_ticks = 0;
+
+    switch (_cur_evt) {
+        case EVT_STARTUP:       _pending_startup       = true; break;
+        case EVT_RECONNECT:     _pending_reconnect     = true; break;
+        case EVT_STATUS_UPDATE: _pending_status_update = true; break;
+        case EVT_PUMP_START:
+            // Restore the pending flag so the pump-start is retried.
+            // Only restore if the nozzle is still provisioned — _on_nozzle_state now
+            // guards this at ingress, so a miss on an unconfigured nozzle can't happen,
+            // but be defensive in case the config changes between sessions.
+            if (_pump_start_nozzle_idx < CS_NO_NOZZLES &&
+                _cs_nozzles[_pump_start_nozzle_idx].uuid[0] != '\0') {
+                _pending_pump_start[_pump_start_nozzle_idx] = true;
+            }
+            break;
+        case EVT_PRINT_OK:
+            _pending_print_ok = true;
+            break;
+        case EVT_PUMPED: {
+            // Entry was already dequeued from _pump_q into _last_pumped_* — re-enqueue it.
+            PumpedQEntry e;
+            e.nozzle_idx      = _last_pumped_nozzle_idx;
+            e.vol_lx1000      = _last_pumped_vol_lx1000;
+            e.unit_pricex100  = _last_pumped_unit_px100;
+            e.total_pricex100 = _last_pumped_total_px100;
+            e.ts_epoch        = _last_pumped_ts_epoch;
+            e.ne_id           = _last_pumped_ne_id;
+            e.event_id        = _last_pumped_event_id;
+            if (!hsys_queue_send(&_pump_q, &e, 0))
+                LOG_MSG_ERROR(CSP_LOG_EN, "start-miss recovery: failed to re-queue pumped event — data lost");
+            break;
+        }
+        case EVT_PUMPED_RETX:
+            // Release the in-progress lock so the retx cycle can retry this entry.
+            // The list item is NOT acked — it stays in place for the next retx attempt.
+            _retx_in_progress = false;
+            break;
+        default: break;  // EVT_HEARTBEAT: best-effort, drop silently
+    }
+
+    _cur_evt = EVT_NONE;
+    _arm_timer(2000);
+}
+
 void ModuleCubeSphere::_on_http_result(const hsys_msg_t &msg)
 {
-    // Guard: if result arrives while we are still in HTTP_STARTING (start-response
-    // was never received — e.g. message pool momentarily full), the phase would
-    // otherwise get permanently stuck.  Recover by restoring the pending flag so
-    // the event is retried after a short back-off.
+    // Guard: if result arrives while still in HTTP_STARTING, the start-response
+    // was never received (network_task inbox was full).  Recover via the shared helper.
     if (_http_phase == HTTP_STARTING) {
         auto f = MsgHttpResult::get_fields(msg);
         LOG_MSG_WARNING(CSP_LOG_EN,
-                        "HTTP result (result=%d) in HTTP_STARTING phase — start-response missed, restoring event and retrying in 2s",
+                        "HTTP result (result=%d) in HTTP_STARTING phase — start-response missed, retrying in 2s",
                         (int)f.result);
-        _http_phase = HTTP_IDLE;
-        switch (_cur_evt) {
-            case EVT_STARTUP:       _pending_startup       = true; break;
-            case EVT_RECONNECT:     _pending_reconnect     = true; break;
-            case EVT_STATUS_UPDATE: _pending_status_update = true; break;
-            default: break;  // other events: drop; pump data is in retx / queue
-        }
-        _cur_evt = EVT_NONE;
-        _arm_timer(2000);
+        _recover_http_start_miss();
         return;
     }
 
     if (_http_phase != HTTP_EXECUTING) return;
+    _http_exec_ticks = 0;
     _http_phase = HTTP_IDLE;
 
     if (_state == STATE_REGISTERING) {
@@ -1325,8 +1419,13 @@ bool ModuleCubeSphere::_retx_try_send_one()
         if (neid_str) ne_id = (uint64_t)strtoull(neid_str, nullptr, 10);
     }
 
-    if (nozzle_idx >= CS_NO_NOZZLES || _cs_nozzles[nozzle_idx].uuid[0] == '\0') {
-        LOG_MSG_ERROR(CSP_LOG_EN, "retx: invalid nozzle_idx %u — skipping", nozzle_idx);
+    if (nozzle_idx >= CS_NO_NOZZLES) {
+        LOG_MSG_ERROR(CSP_LOG_EN, "retx: nozzle_idx %u out of range — discarding", nozzle_idx);
+        list_mgr_ack(&_retx_mgr.list_mgr, &rh);
+        return false;
+    }
+    if (_cs_nozzles[nozzle_idx].uuid[0] == '\0') {
+        LOG_MSG_WARNING(CSP_LOG_EN, "retx: nozzle_idx %u not provisioned — discarding", nozzle_idx);
         list_mgr_ack(&_retx_mgr.list_mgr, &rh);
         return false;
     }
