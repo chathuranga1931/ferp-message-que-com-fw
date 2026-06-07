@@ -431,6 +431,27 @@ void ModuleCubeSphere::_on_http_response_header(const hsys_msg_t &msg)
 
 void ModuleCubeSphere::_on_http_result(const hsys_msg_t &msg)
 {
+    // Guard: if result arrives while we are still in HTTP_STARTING (start-response
+    // was never received — e.g. message pool momentarily full), the phase would
+    // otherwise get permanently stuck.  Recover by restoring the pending flag so
+    // the event is retried after a short back-off.
+    if (_http_phase == HTTP_STARTING) {
+        auto f = MsgHttpResult::get_fields(msg);
+        LOG_MSG_WARNING(CSP_LOG_EN,
+                        "HTTP result (result=%d) in HTTP_STARTING phase — start-response missed, restoring event and retrying in 2s",
+                        (int)f.result);
+        _http_phase = HTTP_IDLE;
+        switch (_cur_evt) {
+            case EVT_STARTUP:       _pending_startup       = true; break;
+            case EVT_RECONNECT:     _pending_reconnect     = true; break;
+            case EVT_STATUS_UPDATE: _pending_status_update = true; break;
+            default: break;  // other events: drop; pump data is in retx / queue
+        }
+        _cur_evt = EVT_NONE;
+        _arm_timer(2000);
+        return;
+    }
+
     if (_http_phase != HTTP_EXECUTING) return;
     _http_phase = HTTP_IDLE;
 
@@ -925,6 +946,32 @@ void ModuleCubeSphere::_on_event_result(const hsys_msg_t &msg)
                 _publish_status(CUBESPHERE_STATUS_HB_FAILED);
             }
             break;
+        case EVT_STARTUP:
+            if (ok) {
+                LOG_MSG_INFO(CSP_LOG_EN, "startup event OK");
+            } else {
+                LOG_MSG_WARNING(CSP_LOG_EN, "startup event failed result=%d status=%d — will retry in 10s",
+                                (int)f.result, (int)f.status_code);
+                LOG_MSG_DEBUG(CSP_LOG_EN, "startup response body: %.*s",
+                              (int)f.body_len, f.body ? (const char *)f.body : "(null)");
+                _pending_startup = true;
+                _cur_evt = EVT_NONE;
+                _arm_timer(10000);
+                return;
+            }
+            break;
+        case EVT_RECONNECT:
+            if (ok) {
+                LOG_MSG_INFO(CSP_LOG_EN, "reconnect event OK");
+            } else {
+                LOG_MSG_WARNING(CSP_LOG_EN, "reconnect event failed result=%d status=%d — will retry in 10s",
+                                (int)f.result, (int)f.status_code);
+                _pending_reconnect = true;
+                _cur_evt = EVT_NONE;
+                _arm_timer(10000);
+                return;
+            }
+            break;
         case EVT_PUMPED:
             if (ok) {
                 _pumped_success++;
@@ -1076,7 +1123,7 @@ void ModuleCubeSphere::_burst_get_with_auth(const char *url, const char *auth_va
 void ModuleCubeSphere::_burst_post(const char *url, const char *auth_value,
                                     const char *json_body, uint32_t json_len)
 {
-    const char *ca = _static_root_ca;
+    const char *ca = (const char *)global_root_ca;
     if (!ca) { LOG_MSG_ERROR(CSP_LOG_EN, "_burst_post: no root CA set — TLS will fail"); }
     { MsgHttpSetRootCaRequest::Payload rca{}; rca.cert_pem = ca;
       hsys_msg_t *m = MsgHttpSetRootCaRequest::create(id(), rca); if (m) send(m, MODULE_HTTP_ID); }

@@ -106,4 +106,4 @@
 #define FERP_COM_2602   1
 #define DISTAP_ESP32
 
-
+#define TEST_PUMP_BUILD //disable for releases.   

@@ -98,7 +98,10 @@ void pal_udp_log_init(const char             *server_ip,
     } else {
         s_prefix[0] = '\0';
     }
-    // snprintf(s_prefix, sizeof(s_prefix), "112233445566 : ");
+
+    #if defined(TEST_PUMP_BUILD)
+    snprintf(s_prefix, sizeof(s_prefix), "112233445566 : ");
+    #endif
     
     s_wake_fn    = wake_fn;
     s_initialized = true;

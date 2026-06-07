@@ -26,13 +26,15 @@ int32_t pal_efuse_get_mac(uint8_t* mac, size_t length) {
         return PAL_ERROR;
     }
 
+#if defined(TEST_PUMP_BUILD)
     // //112233445566
-    // mac[0] = 0x11;
-    // mac[1] = 0x22;
-    // mac[2] = 0x33;
-    // mac[3] = 0x44;
-    // mac[4] = 0x55;
-    // mac[5] = 0x66;
+    mac[0] = 0x11;
+    mac[1] = 0x22;
+    mac[2] = 0x33;
+    mac[3] = 0x44;
+    mac[4] = 0x55;
+    mac[5] = 0x66;
+#endif
 
     LOG_MSG_INFO(EFUS_DEBUG_LOG_EN, "MAC Address: %02X:%02X:%02X:%02X:%02X:%02X",
              mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
