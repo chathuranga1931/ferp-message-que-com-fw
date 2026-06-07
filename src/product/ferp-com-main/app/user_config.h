@@ -16,6 +16,11 @@
 #define HSYS_MAX_TASKS      16   ///< wifi_task + sd_task pushed count to 14; 16 gives headroom
 #endif
 
+#ifndef HSYS_MSG_HEADER_POOL_SIZE
+#define HSYS_MSG_HEADER_POOL_SIZE  64  ///< 32 was exhausted: HTTP burst (6) + op-responses (5) +
+                                       ///< concurrent notifications across 8 tasks can peak > 32.
+#endif
+
 #ifndef HSYS_MAX_MODULES
 #define HSYS_MAX_MODULES    32   ///< 24 shared + OtaModule + ModuleSimBridge + ModuleWebServer (sim) + headroom
 #endif

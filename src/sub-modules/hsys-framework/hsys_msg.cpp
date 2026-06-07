@@ -388,7 +388,9 @@ hsys_status_t hsys_msg_send(hsys_msg_t *msg, uint32_t timeout_ms)
     msg->ref_count = 1;
     hsys_critical_exit();
 
-    return hsys_task_mgr_enqueue_ptr(msg, timeout_ms);
+    hsys_status_t st = hsys_task_mgr_enqueue_ptr(msg, timeout_ms);
+    if (st != HSYS_OK) hsys_msg_release(msg);
+    return st;
 }
 
 // ---------------------------------------------------------------------------

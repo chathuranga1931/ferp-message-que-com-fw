@@ -160,7 +160,6 @@ private:
         EVT_HEARTBEAT,
         EVT_PUMPED,
         EVT_PUMPED_RETX,    ///< Retransmit of a previously failed pumped event
-        EVT_TOTALIZED,      ///< app.fuel/totalized — same data as pump-end, different event
         EVT_PUMP_START,     ///< app.fuel/pump-start — nozzle lifted (pumping begins)
         EVT_PRINT_OK,       ///< app.fuel/printok — receipt printed successfully
         EVT_STATUS_UPDATE,
@@ -211,11 +210,9 @@ private:
     bool     _hb_enabled        = true;
 
     // ── Local pump-end event queue ────────────────────────────────────────────
-    // Each fuel transaction enqueues two entries: EVT_PUMPED then EVT_TOTALIZED.
-    // 4 slots = 2 entries × 2 concurrent transactions; hsys_queue copies by value.
-    static constexpr uint8_t k_pump_q_size = 4;
+    // One EVT_PUMPED entry per fuel transaction. hsys_queue copies by value.
+    static constexpr uint8_t k_pump_q_size = 8;
     struct PumpedQEntry {
-        bool     is_totalized    = false;
         uint8_t  nozzle_idx      = 0;
         uint32_t vol_lx1000      = 0;
         uint32_t unit_pricex100  = 0;

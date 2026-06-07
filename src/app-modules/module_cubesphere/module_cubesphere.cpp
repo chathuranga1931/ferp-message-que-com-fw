@@ -234,9 +234,7 @@ void ModuleCubeSphere::_on_fuel_pumped(const hsys_msg_t &msg)
         return;
     }
 
-    // Two entries per transaction: EVT_PUMPED then EVT_TOTALIZED.
-    // Reject both together if there is not enough room to avoid orphaned entries.
-    if (hsys_queue_size(&_pump_q) + 2U > k_pump_q_size) {
+    if (hsys_queue_size(&_pump_q) + 1U > k_pump_q_size) {
         LOG_MSG_WARNING(CSP_LOG_EN,
                         "pump queue full (nozzle=%u, q=%u) — storing for retx",
                         (unsigned)p.nozzle_idx, (unsigned)hsys_queue_size(&_pump_q));
@@ -249,7 +247,6 @@ void ModuleCubeSphere::_on_fuel_pumped(const hsys_msg_t &msg)
     uint32_t event_id = _pumped_success + _pumped_failure + 1;
 
     PumpedQEntry e;
-    e.is_totalized    = false;
     e.nozzle_idx      = p.nozzle_idx;
     e.vol_lx1000      = p.vol_lx1000;
     e.unit_pricex100  = p.unit_pricex100;
@@ -268,7 +265,7 @@ void ModuleCubeSphere::_on_fuel_pumped(const hsys_msg_t &msg)
         return;
     }
 
-    LOG_MSG_DEBUG(CSP_LOG_EN, "pumped + totalized queued (nozzle=%u id=%u q=%u)",
+    LOG_MSG_DEBUG(CSP_LOG_EN, "pumped queued (nozzle=%u id=%u q=%u)",
                   (unsigned)p.nozzle_idx, (unsigned)event_id, (unsigned)hsys_queue_size(&_pump_q));
     _start_next_event();
 }
@@ -705,10 +702,9 @@ void ModuleCubeSphere::_start_next_event()
         _last_pumped_ts_epoch    = e.ts_epoch;
         _last_pumped_ne_id       = e.ne_id;
         _last_pumped_event_id    = e.event_id;
-        _cur_evt = e.is_totalized ? EVT_TOTALIZED : EVT_PUMPED;
+        _cur_evt = EVT_PUMPED;
 
-        LOG_MSG_DEBUG(CSP_LOG_EN, "pending %s event for nozzle %u (vol=%u lx1000, unit_px=%u x100, total_px=%u x100)",
-                    e.is_totalized ? "totalized" : "pumped",
+        LOG_MSG_DEBUG(CSP_LOG_EN, "pending pumped event for nozzle %u (vol=%u lx1000, unit_px=%u x100, total_px=%u x100)",
                     (unsigned)e.nozzle_idx, (unsigned)e.vol_lx1000,
                     (unsigned)e.unit_pricex100, (unsigned)e.total_pricex100);
     } 
@@ -815,24 +811,6 @@ bool ModuleCubeSphere::_build_event_json(evt_type_t evt)
             e0["event"]     = "app.fuel/pump-start";
             JsonObject body = e0["body"].to<JsonObject>();
             body["Temp"]    = "Empty";
-            break;
-        }
-        case EVT_TOTALIZED: {
-            // app.fuel/totalized — same data as pump-end, different event type
-            if (_last_pumped_nozzle_idx >= CS_NO_NOZZLES ||
-                _cs_nozzles[_last_pumped_nozzle_idx].uuid[0] == '\0') return false;
-            char tot_ts[64] = {};
-            _cs_format_iso8601(_last_pumped_ts_epoch + (int)(3600 * 5.5), "+05:30",
-                               tot_ts, sizeof(tot_ts));
-            JsonObject e0   = events.add<JsonObject>();
-            e0["device"]    = _cs_nozzles[_last_pumped_nozzle_idx].uuid;
-            e0["time"]      = tot_ts;
-            e0["event"]     = "app.fuel/totalized";
-            JsonObject body = e0["body"].to<JsonObject>();
-            body["L"] = _last_pumped_vol_lx1000  * 0.001;
-            body["T"] = _cs_nozzles[_last_pumped_nozzle_idx].fuel_type;
-            body["P"] = _last_pumped_total_px100 * 0.01;
-            body["U"] = _last_pumped_unit_px100  * 0.01;
             break;
         }
         case EVT_PRINT_OK: {
@@ -1018,15 +996,6 @@ void ModuleCubeSphere::_on_event_result(const hsys_msg_t &msg)
                              (unsigned)_pump_start_nozzle_idx);
             } else {
                 LOG_MSG_WARNING(CSP_LOG_EN, "pump-start failed result=%d status=%d",
-                                (int)f.result, (int)f.status_code);
-            }
-            break;
-        case EVT_TOTALIZED:
-            if (ok) {
-                LOG_MSG_INFO(CSP_LOG_EN, "totalized OK (nozzle=%u)",
-                             (unsigned)_last_pumped_nozzle_idx);
-            } else {
-                LOG_MSG_WARNING(CSP_LOG_EN, "totalized failed result=%d status=%d",
                                 (int)f.result, (int)f.status_code);
             }
             break;
