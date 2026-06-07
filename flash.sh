@@ -161,32 +161,36 @@ elif $RELEASE; then
         exit 1
     fi
 
-    # Always choose an odd production release build number.
-    # If current build is even, next odd is +1.
-    # If current build is odd, next odd is +2.
+    # version.h is always left at an ODD build number after a release.
+    # If it is even (unexpected — e.g. interrupted release), skip +3 to the
+    # next odd to avoid colliding with any builds that may already exist.
+    # If it is already odd, the next production build is current + 2.
+    #
+    # Convention: ODD = production release, EVEN = ODD + 1 (OTA-test binary).
+    # The even binary is one version higher so OTA accepts the upgrade when
+    # testing the update path before deploying production to all devices.
     if (( V4 % 2 == 0 )); then
-        ODD_BUILD=$((V4 + 1))
+        ODD_BUILD=$((V4 + 3))
     else
         ODD_BUILD=$((V4 + 2))
     fi
-    EVEN_BUILD=$((ODD_BUILD - 1))
+    EVEN_BUILD=$((ODD_BUILD + 1))
 
-    # Even = OTA-test binary (same code, different version string)
-    EVEN_VER="$V1.$V2.$V3.$EVEN_BUILD"
-    # Odd  = production release version
     ODD_VER="$V1.$V2.$V3.$ODD_BUILD"
+    EVEN_VER="$V1.$V2.$V3.$EVEN_BUILD"
 
     RELEASE_DIR="$RELEASES_DIR/$ODD_VER"
     mkdir -p "$RELEASE_DIR"
 
     echo ""
     echo "=== Release plan ==="
-    echo "  Even (OTA-test):   $EVEN_VER"
     echo "  Odd  (production): $ODD_VER"
+    echo "  Even (OTA-test):   $EVEN_VER  ← one version higher, for OTA upgrade testing"
     echo "  Output dir:        $RELEASE_DIR"
     echo ""
 
-    # ── Build 1: even version ────────────────────────────────────────────────
+    # ── Build 1: even version (OTA-test, odd+1) ──────────────────────────────
+    # Built first so the second build leaves version.h at ODD_VER naturally.
     echo "--- Setting FW_VERSION to $EVEN_VER ---"
     sed -i '' "s/#define FW_VERSION[[:space:]]*\"[^\"]*\"/#define FW_VERSION          \"$EVEN_VER\"/" "$VERSION_FILE"
 
@@ -201,7 +205,7 @@ elif $RELEASE; then
     python3 "$SCRIPT_DIR/tools/ota-bundle-tools/OtaBundleCreate-MainESP32.py" \
         "$RELEASE_DIR/ferp-com-v${EVEN_VER}.bin" "$EVEN_VER" "$RELEASE_DIR"
 
-    # ── Build 2: odd version ─────────────────────────────────────────────────
+    # ── Build 2: odd version (production) ────────────────────────────────────
     echo ""
     echo "--- Setting FW_VERSION to $ODD_VER ---"
     sed -i '' "s/#define FW_VERSION[[:space:]]*\"[^\"]*\"/#define FW_VERSION          \"$ODD_VER\"/" "$VERSION_FILE"
@@ -242,7 +246,17 @@ elif $RELEASE; then
         echo "WARNING: Failed to create factory image — check esptool.py is in PATH"
     fi
 
-    # ── Tag the release in git ────────────────────────────────────────────────
+    # ── Commit version.h at ODD_VER, then tag ────────────────────────────────
+    # version.h is already at ODD_VER (the second build left it there).
+    # Only the odd (production) version is committed and tagged.
+    echo ""
+    echo "--- Committing version.h at $ODD_VER ---"
+    git -C "$SCRIPT_DIR" add "$VERSION_FILE"
+    git -C "$SCRIPT_DIR" commit -m "version bumped"
+    if [[ $? -ne 0 ]]; then
+        echo "WARNING: git commit failed (nothing staged or repository issue)"
+    fi
+
     echo "--- Tagging release v${ODD_VER} ---"
     git -C "$SCRIPT_DIR" tag "v${ODD_VER}"
     if [[ $? -eq 0 ]]; then
@@ -253,8 +267,8 @@ elif $RELEASE; then
 
     echo ""
     echo "=== Release complete: $ODD_VER ==="
-    echo "  $RELEASE_DIR/ferp-com-v${EVEN_VER}.bin  ← flash this to test OTA upgrade"
     echo "  $RELEASE_DIR/ferp-com-v${ODD_VER}.bin   ← production binary"
+    echo "  $RELEASE_DIR/ferp-com-v${EVEN_VER}.bin  ← OTA-test binary (flash odd first, then OTA to even)"
     echo "  $RELEASE_DIR/ferp-esp32-factory-v${ODD_VER}.bin ← 4MB factory image (flash to 0x0)"
     echo ""
     echo "  version.h left at: $ODD_VER"
