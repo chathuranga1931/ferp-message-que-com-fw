@@ -468,6 +468,12 @@ void ModuleFuel::_process_queues()
                 continue;
             }
 
+            if(display_data[idx].volume_lx1000 == 0 && display_data[idx].unit_pricex100 == 0 && display_data[idx].total_pricex100 == 0)
+            {
+                // If all values are zero, it's likely a "nozzle down" frame with no valid data. Skip processing to avoid false events.
+                continue;
+            }
+
             bool is_valid = pump_drivers[dtype].process_data(&display_data[idx]);
             if (!is_valid) 
             {

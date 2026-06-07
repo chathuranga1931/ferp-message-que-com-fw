@@ -22,28 +22,28 @@
       "group": "default"
     },
     {
-      "label": "FERP-61",
+      "label": "FERP-61-YAKKALA-P01-CEN7-CS",
       "ip": "",
       "mac": "f8b3b739978c",
       "uuid": "",
       "group": "default"
     },
     {
-      "label": "FERP-63",
+      "label": "FERP-63-YAKKALA-D01-HY",
       "ip": "",
       "mac": "f8b3b7398b74",
       "uuid": "",
       "group": "default"
     },
     {
-      "label": "FERP-64",
+      "label": "FERP-64-YAKKALA-P03-HY-ADAPTER",
       "ip": "",
       "mac": "f8b3b739aa10",
       "uuid": "",
       "group": "default"
     },
     {
-      "label": "FERP-69",
+      "label": "FERP-69-YAKKALA-D02-CEN7-CS",
       "ip": "",
       "mac": "f8b3b73b0af8",
       "uuid": "",
