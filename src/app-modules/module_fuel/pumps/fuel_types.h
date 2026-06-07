@@ -28,6 +28,7 @@ typedef struct {
     bool          start_stop;       // true = nozzle UP / pumping active
     bool          select_p;
     bool          select_l;
+    bool          select_ll;
 } app_display_data_t;
 
 // ---------------------------------------------------------------------------
@@ -69,5 +70,6 @@ static inline void fuel_types_from_frame(
     out->start_stop     = nozzle_up;
     out->select_p       = (bool)frame->flags.bits.select_p;
     out->select_l       = (bool)frame->flags.bits.select_l;
+    out->select_ll      = (bool)frame->flags.bits.select_ll;
     out->time_updated   = 0;
 }

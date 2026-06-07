@@ -38,7 +38,7 @@ void ModuleDefaultBtn::init()
         LOG_MSG_ERROR(DEFBTN_LOG, "hsys_button_init failed");
     }
 
-    // Configure GPIO 36 as input — any-edge interrupt → _gpio_isr
+    // Configure GPIO 36 as input — any-edge interrupt -> _gpio_isr
     pal_gpio_config_t cfg = {
         .dir        = PAL_GPIO_DIR_INPUT,
         .pull       = PAL_GPIO_PULL_NONE,  // GPIO36 is input-only, no internal pull

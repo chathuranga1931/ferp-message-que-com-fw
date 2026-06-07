@@ -205,7 +205,7 @@ int32_t pal_wifi_stop(void)
 
 int32_t pal_wifi_sta_connect(void)
 {
-    LOG_MSG_INFO(WIFI_LOG, "sta_connect → spawning sim thread");
+    LOG_MSG_INFO(WIFI_LOG, "sta_connect -> spawning sim thread");
     pthread_t tid;
     pthread_create(&tid, nullptr, _connect_thread, nullptr);
     pthread_detach(tid);

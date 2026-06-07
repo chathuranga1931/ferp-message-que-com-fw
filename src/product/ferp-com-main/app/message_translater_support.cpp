@@ -97,7 +97,7 @@ hsys_msg_t *xlat_nozzle_state_to_system_status(hsys_module_id_t   in_src,
     auto p = MsgNozzleState::deserialize(*in_msg);
     s_is_fueling_ongoing = (p.state == NOZZLE_PUMPING);
 
-    LOG_MSG_INFO(XLOG_EN, "nozzle[%u] state=%d → fueling_ongoing=%d",
+    LOG_MSG_INFO(XLOG_EN, "nozzle[%u] state=%d -> fueling_ongoing=%d",
                  (unsigned)p.nozzle_idx, (int)p.state, (int)s_is_fueling_ongoing);
 
     return _publish_status_if_changed(out_msg_id, out_dest);

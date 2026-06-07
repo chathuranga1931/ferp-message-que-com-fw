@@ -85,7 +85,7 @@ bool pal_network_ping(const char *host, uint32_t timeout_ms)
 
     close(sock);
 
-    LOG_MSG_INFO(NETW_LOG, "ping %s → %s", host, reachable ? "OK" : "FAIL");
+    LOG_MSG_INFO(NETW_LOG, "ping %s -> %s", host, reachable ? "OK" : "FAIL");
     return reachable;
 }
 

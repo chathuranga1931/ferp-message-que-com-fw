@@ -3,8 +3,8 @@
 // Queue-based frame processing using sanki_6_digit_1 state machine.
 //
 // Frame path:
-//   TCP/ISR thread → _distap_frame_cb() → hsys_queue_send(_frame_queue) → wake()
-//   Module task    → on_wake() → _process_queues()
+//   TCP/ISR thread -> _distap_frame_cb() -> hsys_queue_send(_frame_queue) -> wake()
+//   Module task    -> on_wake() → _process_queues()
 //                 → sanki6_process_data/validate/state_machine()
 //                 → publish MsgFuelPumped / MsgNozzleState
 
@@ -392,7 +392,8 @@ void ModuleFuel::_process_queues()
                 display_data[idx].volume_lx1000 = (uint64_t)item[idx].data.volume_lx1000;
                 display_data[idx].unit_pricex100 = (uint64_t)item[idx].data.unit_pricex100;
                 display_data[idx].fuel_type = item[idx].dtype;
-                display_data[idx].start_stop = item[idx].data.start_stop;  // Ensure latest nozzle state from frame            
+                display_data[idx].start_stop = item[idx].data.start_stop;  // Ensure latest nozzle state from frame       
+                display_data[idx].select_ll = item[idx].data.select_ll;     
             }
 
             display_type_t dtype = (display_type_t)display_data[idx].fuel_type;
@@ -474,12 +475,21 @@ void ModuleFuel::_process_queues()
                 continue;
             }
 
+            // disable handling totalizer for now. TODO
+            bool is_totalizer = display_data[idx].select_ll;
+            if(is_totalizer)
+            {
+                // MLOG("Totalizer frame detected for nozzle[%u], skipping event generation", (unsigned)idx);
+                continue;
+            }
+
             bool is_valid = pump_drivers[dtype].process_data(&display_data[idx]);
             if (!is_valid) 
             {
                 MLOG("nozzle[%u] process_data rejected frame", (unsigned)idx);
                 continue;
             }
+
 
             pump_drivers[dtype].data_validate(&display_data[idx], idx);                
 

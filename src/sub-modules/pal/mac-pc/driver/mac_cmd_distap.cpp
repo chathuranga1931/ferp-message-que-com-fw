@@ -19,7 +19,7 @@
 esp_err_t distap_get_fw_version(char *ver)
 {
     if (ver) strncpy(ver, "SIM_1.0.0", 32);
-    MLOG("distap_get_fw_version → \"SIM_1.0.0\"");
+    MLOG("distap_get_fw_version -> \"SIM_1.0.0\"");
     return ESP_OK;
 }
 

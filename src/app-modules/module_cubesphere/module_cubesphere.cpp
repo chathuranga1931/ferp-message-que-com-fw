@@ -258,9 +258,15 @@ void ModuleCubeSphere::_on_fuel_pumped(const hsys_msg_t &msg)
     e.event_id        = event_id;
     e.ne_id           = p.ne_id;
 
-    hsys_queue_send(&_pump_q, &e, 0);
-    e.is_totalized = true;
-    hsys_queue_send(&_pump_q, &e, 0);  // totalized entry uses identical data, different event type
+    if(!hsys_queue_send(&_pump_q, &e, 0))
+    {
+        LOG_MSG_ERROR(CSP_LOG_EN, "failed to queue pumped event (nozzle=%u id=%u q=%u)",
+                      (unsigned)p.nozzle_idx, (unsigned)event_id, (unsigned)hsys_queue_size(&_pump_q));
+        _pumped_failure++;
+        _publish_status(CUBESPHERE_STATUS_PUMPED_FAILED, p.nozzle_idx);
+        _retx_store_pumped(p);
+        return;
+    }
 
     LOG_MSG_DEBUG(CSP_LOG_EN, "pumped + totalized queued (nozzle=%u id=%u q=%u)",
                   (unsigned)p.nozzle_idx, (unsigned)event_id, (unsigned)hsys_queue_size(&_pump_q));
@@ -281,6 +287,8 @@ void ModuleCubeSphere::_on_nozzle_state(const hsys_msg_t &msg)
 
     _pump_start_nozzle_idx          = p.nozzle_idx;
     _pending_pump_start[p.nozzle_idx] = true;
+    LOG_MSG_DEBUG(CSP_LOG_EN, "nozzle[%u] PUMPING — pending pump-start event",
+                  (unsigned)p.nozzle_idx);
     _start_next_event();
 }
 
@@ -301,6 +309,8 @@ void ModuleCubeSphere::_on_fuel_print_ok(const hsys_msg_t &msg)
     _print_ok_timestamp_epoch     = p.timestamp_epoch;
     _print_ok_ne_id               = p.ne_id;
     _pending_print_ok             = true;
+    LOG_MSG_DEBUG(CSP_LOG_EN, "print-ok received for nozzle %u (status=%d), pending event",
+                  (unsigned)p.nozzle_idx, (int)p.status);
     _start_next_event();
 }
 
@@ -308,11 +318,15 @@ void ModuleCubeSphere::_on_timer_alarm()
 {
     switch (_state) {
         case STATE_REGISTERING:
-            if (_http_phase == HTTP_IDLE) {
-                if (_reg_step == REG_STEP_WAIT_2) {
-                    LOG_MSG_DEBUG(CSP_LOG_EN, "step1→step2 cooldown elapsed — starting step2");
+            if (_http_phase == HTTP_IDLE) 
+            {
+                if (_reg_step == REG_STEP_WAIT_2) 
+                {
+                    LOG_MSG_DEBUG(CSP_LOG_EN, "step1->step2 cooldown elapsed — starting step2");
                     _start_reg_step_2();
-                } else {
+                } 
+                else 
+                {
                     LOG_MSG_INFO(CSP_LOG_EN, "retry timer — re-attempting registration");
                     _start_registration();
                 }
@@ -320,6 +334,7 @@ void ModuleCubeSphere::_on_timer_alarm()
             break;
         case STATE_RUNNING:
             _pending_heartbeat = true;
+            LOG_MSG_DEBUG(CSP_LOG_EN, "heartbeat timer alarm — pending heartbeat event");
             _start_next_event();
             _retx_process_one();
             break;
@@ -349,7 +364,7 @@ void ModuleCubeSphere::_on_system_status(const hsys_msg_t &msg)
     bool was_idle    = _system_is_idle;
     _system_is_idle = (p.status == SYSTEM_STATUS_IDLE);
 
-    LOG_MSG_INFO(CSP_LOG_EN, "system_status → %s",
+    LOG_MSG_INFO(CSP_LOG_EN, "system_status -> %s",
                  _system_is_idle ? "IDLE" : "BUSY");
 
     // When system becomes idle, try to send a queued retransmit immediately
@@ -624,18 +639,29 @@ void ModuleCubeSphere::_start_next_event()
 {
     if (_state != STATE_RUNNING || _http_phase != HTTP_IDLE) return;
 
-    if (_pending_startup) {
+    if (_pending_startup) 
+    {
         _pending_startup = false;
         _cur_evt = EVT_STARTUP;
-    } else if (_pending_reconnect) {
+        LOG_MSG_DEBUG(CSP_LOG_EN, "pending startup event");
+    } 
+    else if (_pending_reconnect) 
+    {
         _pending_reconnect = false;
         _cur_evt = EVT_RECONNECT;
-    } else if (_pending_status_update) {
+        LOG_MSG_DEBUG(CSP_LOG_EN, "pending reconnect event");
+    } 
+    else if (_pending_status_update) 
+    {
         _pending_status_update = false;
         _cur_evt = EVT_STATUS_UPDATE;
-    } else if (_pending_pump_start[0] || _pending_pump_start[1]) {
+        LOG_MSG_DEBUG(CSP_LOG_EN, "pending status update event");
+    } 
+    else if (_pending_pump_start[0] || _pending_pump_start[1]) 
+    {
         // Find first pending pump-start nozzle
-        for (int i = 0; i < CS_NO_NOZZLES; i++) {
+        for (int i = 0; i < CS_NO_NOZZLES; i++) 
+        {
             if (_pending_pump_start[i]) {
                 _pending_pump_start[i] = false;
                 _pump_start_nozzle_idx = (uint8_t)i;
@@ -643,7 +669,10 @@ void ModuleCubeSphere::_start_next_event()
             }
         }
         _cur_evt = EVT_PUMP_START;
-    } else if (!hsys_queue_is_empty(&_pump_q)) {
+        LOG_MSG_DEBUG(CSP_LOG_EN, "pending pump-start event for nozzle %u", (unsigned)_pump_start_nozzle_idx);
+    } 
+    else if (!hsys_queue_is_empty(&_pump_q)) 
+    {
         // Dequeue the next pump-end entry and load its data into the _last_pumped_*
         // fields used by _build_event_json().
         PumpedQEntry e;
@@ -656,18 +685,33 @@ void ModuleCubeSphere::_start_next_event()
         _last_pumped_ne_id       = e.ne_id;
         _last_pumped_event_id    = e.event_id;
         _cur_evt = e.is_totalized ? EVT_TOTALIZED : EVT_PUMPED;
-    } else if (_pending_print_ok) {
+
+        LOG_MSG_DEBUG(CSP_LOG_EN, "pending %s event for nozzle %u (vol=%u lx1000, unit_px=%u x100, total_px=%u x100)",
+                    e.is_totalized ? "totalized" : "pumped",
+                    (unsigned)e.nozzle_idx, (unsigned)e.vol_lx1000,
+                    (unsigned)e.unit_pricex100, (unsigned)e.total_pricex100);
+    } 
+    else if (_pending_print_ok) 
+    {
         _pending_print_ok = false;
         _cur_evt = EVT_PRINT_OK;
-    } else if (_pending_heartbeat && _hb_enabled) {
+        LOG_MSG_DEBUG(CSP_LOG_EN, "pending print-ok event for nozzle %u (status=%d)",
+                      (unsigned)_print_ok_nozzle_idx, (int)_print_ok_status);
+    } 
+    else if (_pending_heartbeat && _hb_enabled) 
+    {
         _pending_heartbeat = false;
         _cur_evt = EVT_HEARTBEAT;
-    } else {
+        LOG_MSG_DEBUG(CSP_LOG_EN, "pending heartbeat event");
+    } 
+    else 
+    {
         if (_hb_enabled) _arm_timer(_hb_interval_ms);
         return;
     }
 
-    if (!_build_event_json(_cur_evt)) {
+    if (!_build_event_json(_cur_evt)) 
+    {
         LOG_MSG_ERROR(CSP_LOG_EN, "failed to build JSON for event %d", (int)_cur_evt);
         _cur_evt = EVT_NONE;
         _start_next_event();
@@ -867,7 +911,8 @@ void ModuleCubeSphere::_on_event_result(const hsys_msg_t &msg)
         }
     }
 
-    switch (_cur_evt) {
+    switch (_cur_evt) 
+    {
         case EVT_HEARTBEAT:
             if (ok) {
                 _publish_status(CUBESPHERE_STATUS_HB_SENT);
@@ -952,6 +997,7 @@ void ModuleCubeSphere::_on_event_result(const hsys_msg_t &msg)
     }
 
     _cur_evt = EVT_NONE;
+    LOG_MSG_DEBUG(CSP_LOG_EN, "event result processing complete, checking for next event"); 
     _start_next_event();
 }
 
@@ -1051,6 +1097,7 @@ void ModuleCubeSphere::_arm_timer(uint32_t duration_ms)
     p.is_repetitive    = false;
     p.forced           = true;
     auto *msg = create_typed<MsgTimerStart>(p);
+    LOG_MSG_DEBUG(CSP_LOG_EN, "arming timer for %u ms", (unsigned)duration_ms);
     if (msg) publish(msg);
 }
 
@@ -1096,6 +1143,8 @@ void ModuleCubeSphere::_publish_status(cubesphere_status_event_t ev,
     p.nozzle_idx = nozzle_idx;
     if (uuid) strncpy(p.device_uuid, uuid, sizeof(p.device_uuid) - 1);
     auto *msg = create_typed<MsgCubesphereStatus>(p);
+    LOG_MSG_DEBUG(CSP_LOG_EN, "publishing status event %d (nozzle_idx=%u uuid=%s)",
+                  (int)ev, (unsigned)nozzle_idx, uuid ? uuid : "(null)");
     if (msg) publish(msg);
 }
 
