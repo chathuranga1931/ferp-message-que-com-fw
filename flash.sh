@@ -143,8 +143,27 @@ elif $CONSOLE; then
 
 elif $RELEASE; then
     VERSION_FILE="$SCRIPT_DIR/src/product/ferp-com-main/app/version.h"
+    USER_CONFIG_FILE="$SCRIPT_DIR/src/product/ferp-com-main/app/user_config.h"
     BUILD_BIN="$PROJECT_DIR/build/ferp-com.bin"
     RELEASES_DIR="$SCRIPT_DIR/releases"
+
+    # ── Disable TEST_PUMP_BUILD for the release builds ───────────────────────
+    # The define must not be present in production/OTA-test firmware.
+    # We comment it out here and restore it unconditionally when this block exits
+    # (even on build failure) so the developer's workspace is never left dirty.
+    _test_pump_was_active=false
+    if grep -q '^#define TEST_PUMP_BUILD' "$USER_CONFIG_FILE"; then
+        _test_pump_was_active=true
+        sed -i '' 's/^#define TEST_PUMP_BUILD/\/\/#define TEST_PUMP_BUILD/' "$USER_CONFIG_FILE"
+        echo "NOTE: TEST_PUMP_BUILD disabled for release builds (will be restored on exit)"
+    fi
+    _restore_test_pump() {
+        if $_test_pump_was_active; then
+            sed -i '' 's/^\/\/#define TEST_PUMP_BUILD/#define TEST_PUMP_BUILD/' "$USER_CONFIG_FILE"
+            echo "NOTE: TEST_PUMP_BUILD restored in user_config.h"
+        fi
+    }
+    trap _restore_test_pump EXIT
 
     # ── Read current version ─────────────────────────────────────────────────
     CURRENT_VER=$(grep '#define FW_VERSION' "$VERSION_FILE" | sed 's/.*"\(.*\)".*/\1/')
