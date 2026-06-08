@@ -5,32 +5,24 @@
 // Overview
 // ────────
 // ModuleHttp runs in its own dedicated task (http_task, 10 KB stack).
-// Any module that needs HTTP/HTTPS access opens a session via messages
-// instead of calling pal_http_client_*() directly.
+// Any module that needs HTTP/HTTPS access sends a single MsgHttpRequest
+// DIRECT to this module, then waits for MsgHttpResult.
 //
 // State machine
 // ─────────────
-//   IDLE          → MsgHttpStartRequest(any)    → SESSION_OPEN
-//   SESSION_OPEN  → MsgHttpSendRequest(owner)   → EXECUTING  (task blocks here)
-//   SESSION_OPEN  → MsgHttpAbortRequest(owner)  → IDLE
-//   SESSION_OPEN  → idle timer expiry           → IDLE (sends SESSION_EXPIRED)
-//   EXECUTING     → PAL call returns            → IDLE (sends ResponseHeaders + Result)
+//   IDLE      → MsgHttpRequest(any)  → EXECUTING  (task blocks during HTTP call)
+//   EXECUTING → PAL call returns     → IDLE        (sends ResponseHeaders + Result)
 //
-// Idle timer
-// ──────────
-// Default MODULE_HTTP_IDLE_TIMEOUT_MS ms (3 s).  Resets on every message from
-// the session owner.  Cancelled when MsgHttpSendRequest or MsgHttpAbortRequest
-// arrives.  Override the default at compile time:
-//   target_compile_definitions(... PRIVATE MODULE_HTTP_IDLE_TIMEOUT_MS=5000)
+// If MsgHttpRequest arrives while EXECUTING, ModuleHttp immediately replies
+// with MsgHttpResult(HTTP_RESULT_BUSY) and stays in EXECUTING.
 
 #pragma once
 
 #include "hsys_module.h"
-#include "hsys_soft_timer.h"
 #include "app_module_ids.h"
 #include "http_types.h"
 #include "pal_http_client.h"
-#include "msg_http_start_request.h"
+#include "msg_http_request.h"
 #include "FileSystemDriver.h"   /* ota_fs_driver_t */
 #include "crc32.h"              /* crc32_update() */
 #include <stdint.h>
@@ -40,6 +32,9 @@
 // ---------------------------------------------------------------------------
 
 #define MODULE_HTTP_NAME  "mod_http"  // exactly 8 chars
+
+// MsgHttpRequest carries at most one collect_key; keep array sized to match.
+#define MSG_HTTP_MAX_COLLECT_KEYS  1U
 
 // ---------------------------------------------------------------------------
 // ModuleHttp
@@ -53,14 +48,12 @@ public:
     static ModuleHttp *instance();
 
 protected:
-    void pre_init()  override;
     void init()      override;
     void on_msg_received(const hsys_msg_t &msg) override;
-    void on_wake()   override;
 
 private:
     // ── State ────────────────────────────────────────────────────────────────
-    enum State { IDLE, SESSION_OPEN, EXECUTING };
+    enum State { IDLE, EXECUTING };
 
     State            _state    = IDLE;
     hsys_module_id_t _owner_id = HSYS_MODULE_ID_INVALID;
@@ -76,46 +69,27 @@ private:
     uint8_t           _body_buf[MODULE_HTTP_MAX_REQUEST_BODY] = {};
     uint32_t          _body_len    = 0U;
 
-    // Response header collection (set by client via MsgHttpStartRequest.collect_keys)
+    // Response header collection
     char    _collect_keys[MSG_HTTP_MAX_COLLECT_KEYS][MODULE_HTTP_MAX_HEADER_KEY] = {};
     uint8_t _collect_count = 0U;
 
-    // Streaming binary sink (optional — set via MsgHttpSetStreamSink before SendRequest)
+    // Streaming binary sink (optional — set via MsgHttpRequest stream_sink field)
     const ota_fs_driver_t *_stream_drv      = nullptr;
     void                  *_stream_ctx      = nullptr;
     uint32_t               _stream_crc32_expected = 0U;
     bool                   _has_stream_sink = false;
 
-    // ── Idle timer ───────────────────────────────────────────────────────────
-    hsys_timer_handle_t _idle_timer    = nullptr;
-    volatile bool       _idle_expired  = false;
-
-    static void _idle_timer_cb(void *timer_handle);
-    void        _on_idle_timer_fired();
-    void        _reset_idle_timer();
-    void        _cancel_idle_timer();
-
-    // ── Message handlers ─────────────────────────────────────────────────────
-    void _handle_start_request(const hsys_msg_t &msg);
-    void _handle_set_url(const hsys_msg_t &msg);
-    void _handle_set_root_ca(const hsys_msg_t &msg);
-    void _handle_header(const hsys_msg_t &msg);
-    void _handle_body(const hsys_msg_t &msg);
-    void _handle_set_stream_sink(const hsys_msg_t &msg);
-    void _handle_send(const hsys_msg_t &msg);
-    void _handle_abort(const hsys_msg_t &msg);
+    // ── Message handler ──────────────────────────────────────────────────────
+    void _handle_http_request(const hsys_msg_t &msg);
 
     // ── Execution (runs synchronously, task blocks) ───────────────────────────
     void _execute();
 
     // ── Send helpers ─────────────────────────────────────────────────────────
-    void _send_start_response(hsys_module_id_t dest, http_session_result_t result);
-    void _send_op_response(hsys_msg_id_t resp_id, hsys_module_id_t dest, http_op_result_t result);
     void _send_result(http_result_t result, int32_t status_code,
                       const void *body, uint32_t body_len);
     void _send_response_header(const char *key, const char *value);
 
     // ── Utility ──────────────────────────────────────────────────────────────
-    bool _is_owner(const hsys_msg_t &msg) const;
     void _reset_session();
 };

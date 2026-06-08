@@ -4,15 +4,14 @@
 //
 // State machine
 // ─────────────
-//   WAIT_CONFIG  → MsgConfigReady                     → IDLE
-//   IDLE         → button press (delay=0)             → HTTP
-//   IDLE         → button press (delay>0)             → IDLE (timer armed)
-//   IDLE         → MsgTimerAlarm                      → HTTP (if delay elapsed)
-//   HTTP         → MsgHttpStartResponse(OK)           → HTTP (normal, wait for result)
-//   HTTP         → MsgHttpStartResponse(BUSY)         → IDLE (requeue + 1 s retry timer)
-//   HTTP         → MsgHttpResult (success)            → IDLE (→ _try_schedule once more)
-//   HTTP         → MsgHttpResult (fail, retry)        → HTTP
-//   HTTP         → MsgHttpResult (fail, done)         → IDLE (→ _try_schedule once more)
+//   WAIT_CONFIG  → MsgConfigReady                   → IDLE
+//   IDLE         → button press (delay=0)           → HTTP
+//   IDLE         → button press (delay>0)           → IDLE (timer armed)
+//   IDLE         → MsgTimerAlarm                    → HTTP (if delay elapsed)
+//   HTTP         → MsgHttpResult (BUSY)             → IDLE (requeue + 1 s retry timer)
+//   HTTP         → MsgHttpResult (success)          → IDLE (→ _try_schedule once more)
+//   HTTP         → MsgHttpResult (fail, retry)      → HTTP
+//   HTTP         → MsgHttpResult (fail, done)       → IDLE (→ _try_schedule once more)
 
 #include "module_printing.h"
 
@@ -24,13 +23,8 @@
 #include "msg_timer_alarm.h"
 #include "msg_fuel_print_status.h"
 
-// HTTP session messages (DIRECT to/from ModuleHttp)
-#include "msg_http_start_request.h"
-#include "msg_http_start_response.h"
-#include "msg_http_set_url_request.h"
-#include "msg_http_header_request.h"
-#include "msg_http_body_request.h"
-#include "msg_http_send_request.h"
+// HTTP messages (DIRECT to/from ModuleHttp)
+#include "msg_http_request.h"
 #include "msg_http_result.h"
 
 #include "app.h"              // app_config_get()
@@ -42,6 +36,18 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdint.h>
+#include <time.h>
+
+// IST = UTC + 5 h 30 m
+static const int32_t k_ist_offset_sec = 5 * 3600 + 30 * 60;
+
+static void _fmt_ist(uint32_t epoch_utc, char *buf, size_t buf_len)
+{
+    time_t ts = (time_t)epoch_utc + k_ist_offset_sec;
+    struct tm t;
+    gmtime_r(&ts, &t);
+    strftime(buf, buf_len, "%Y-%m-%dT%H:%M:%S+05:30", &t);
+}
 
 #define __TAG__      "PRINTING"
 #define PRINT_LOG_EN  true
@@ -68,7 +74,7 @@ void ModulePrinting::init()
     subscribe(MsgTotalizerData::ID);
     subscribe(MsgPrinterBtn::ID);
     subscribe(MsgTimerAlarm::ID);
-    // MsgHttpResult is DIRECT — automatically delivered by HSYS
+    subscribe(MsgHttpResult::ID);
 
     MLOG("init");
 }
@@ -97,10 +103,6 @@ void ModulePrinting::on_msg_received(const hsys_msg_t &msg)
 
         case MsgTimerAlarm::ID:
             _on_timer_alarm();
-            break;
-
-        case MsgHttpStartResponse::ID:
-            _on_http_start_response(msg);
             break;
 
         case MsgHttpResult::ID:
@@ -249,48 +251,6 @@ void ModulePrinting::_on_timer_alarm()
     }
 }
 
-// ── HTTP start response (session busy guard) ──────────────────────────────────
-
-void ModulePrinting::_on_http_start_response(const hsys_msg_t &msg)
-{
-    if (_state != HTTP || !_active.valid) return;
-
-    auto p = MsgHttpStartResponse::deserialize(msg);
-    if (p.result != HTTP_SESSION_BUSY) return;   // SESSION_OK → normal, wait for MsgHttpResult
-
-    MLOGE("nozzle[%u] HTTP session busy — requeue + retry in 1 s",
-          (unsigned)_active.nozzle_idx);
-
-    // Put the active job back into the pending slot so it gets retried
-    uint8_t nidx = _active.nozzle_idx;
-    if (nidx < FUEL_MAX_NOZZLES && !_pending[nidx].valid) {
-        _pending[nidx].valid            = true;
-        _pending[nidx].btn_type         = _active.is_totalizer ? BTN_LONG_PRESS : BTN_SHORT_PRESS;
-        _pending[nidx].recv_ms          = pal_time_get_ms();
-        _pending[nidx].vol_lx1000       = _active.vol_lx1000;
-        _pending[nidx].unit_pricex100   = _active.unit_pricex100;
-        _pending[nidx].total_pricex100  = _active.total_pricex100;
-        _pending[nidx].ne_id            = _active.ne_id;
-        _pending[nidx].time_stamp       = _active.time_stamp;
-        _pending[nidx].copy_number      = _active.copy_number;
-        memcpy(_pending[nidx].totalizer_str, _active.totalizer_str,
-               sizeof(_pending[nidx].totalizer_str));
-    }
-    _active.valid = false;
-    _state        = IDLE;
-
-    // Arm a 1-second retry timer to avoid hammering HTTP while still busy
-    MsgTimerStart::Payload tp{};
-    tp.source_module_id = id();
-    tp.start_offset_ms  = 0;
-    tp.duration_ms      = 1000;
-    tp.is_repetitive    = false;
-    tp.forced           = true;
-    tp.user_tag         = 0;
-    hsys_msg_t *tmsg = MsgTimerStart::create(id(), tp);
-    if (tmsg) publish(tmsg);
-}
-
 // ── HTTP result ───────────────────────────────────────────────────────────────
 
 void ModulePrinting::_on_http_result(const hsys_msg_t &msg)
@@ -298,6 +258,36 @@ void ModulePrinting::_on_http_result(const hsys_msg_t &msg)
     if (!_active.valid) return;
 
     auto f = MsgHttpResult::get_fields(msg);
+
+    // http_task was busy — requeue and retry in 1s
+    if (f.result == HTTP_RESULT_BUSY) {
+        MLOGE("nozzle[%u] HTTP busy — requeue + retry in 1s", (unsigned)_active.nozzle_idx);
+        uint8_t nidx = _active.nozzle_idx;
+        if (nidx < FUEL_MAX_NOZZLES && !_pending[nidx].valid) {
+            _pending[nidx].valid           = true;
+            _pending[nidx].btn_type        = _active.is_totalizer ? BTN_LONG_PRESS : BTN_SHORT_PRESS;
+            _pending[nidx].recv_ms         = pal_time_get_ms();
+            _pending[nidx].vol_lx1000      = _active.vol_lx1000;
+            _pending[nidx].unit_pricex100  = _active.unit_pricex100;
+            _pending[nidx].total_pricex100 = _active.total_pricex100;
+            _pending[nidx].ne_id           = _active.ne_id;
+            _pending[nidx].time_stamp      = _active.time_stamp;
+            _pending[nidx].copy_number     = _active.copy_number;
+            memcpy(_pending[nidx].totalizer_str, _active.totalizer_str,
+                   sizeof(_pending[nidx].totalizer_str));
+        }
+        _active.valid = false;
+        _state        = IDLE;
+        MsgTimerStart::Payload tp{};
+        tp.source_module_id = id();
+        tp.duration_ms      = 1000;
+        tp.is_repetitive    = false;
+        tp.forced           = true;
+        hsys_msg_t *tmsg = MsgTimerStart::create(id(), tp);
+        if (tmsg) publish(tmsg);
+        return;
+    }
+
     bool success = (f.result == HTTP_RESULT_SUCCESS &&
                     (f.status_code == 200 || f.status_code == 201));
 
@@ -431,54 +421,46 @@ void ModulePrinting::_start_http_print(uint8_t nozzle_idx, const PendingPrint &p
 
 void ModulePrinting::_send_http_request()
 {
-    // 1. Open session
-    {
-        MsgHttpStartRequest::Payload sp{};
-        sp.method     = PAL_HTTP_METHOD_POST;
-        sp.timeout_ms = 8000;
-        hsys_msg_t *m = MsgHttpStartRequest::create(id(), sp);
-        if (m) send(m, MODULE_HTTP_ID);
+    // Build URL
+    char url[sizeof(_cfg.printer_url) + 12];
+    if (_active.is_totalizer) {
+        snprintf(url, sizeof(url), "%s-totalizer", _cfg.printer_url);
+    } else {
+        strncpy(url, _cfg.printer_url, sizeof(url) - 1);
+        url[sizeof(url) - 1] = '\0';
     }
 
-    // 2. URL
-    {
-        char url[sizeof(_cfg.printer_url) + 12];
-        if (_active.is_totalizer) {
-            snprintf(url, sizeof(url), "%s-totalizer", _cfg.printer_url);
-        } else {
-            strncpy(url, _cfg.printer_url, sizeof(url) - 1);
-            url[sizeof(url) - 1] = '\0';
-        }
-        hsys_msg_t *m = MsgHttpSetUrlRequest::create(id(), url);
-        if (m) send(m, MODULE_HTTP_ID);
-    }
+    // Build body
+    char body[512];
+    _build_body(body, sizeof(body));
+    uint32_t body_len = (uint32_t)strnlen(body, sizeof(body));
+    MLOG("JSON body: %s", body);
 
-    // 3. Content-Type header
-    {
-        hsys_msg_t *m = MsgHttpHeaderRequest::create(id(), "Content-Type", "application/json");
-        if (m) send(m, MODULE_HTTP_ID);
-    }
+    // Pack Content-Type header: "Content-Type\0application/json\0"
+    static const char k_ct_hdr[] = "Content-Type\0application/json\0";
+    const uint16_t    k_ct_len   = (uint16_t)(sizeof(k_ct_hdr) - 1U);  // exclude final NUL
 
-    // 4. Body
-    {
-        char body[512];
-        _build_body(body, sizeof(body));
-        uint32_t len = (uint32_t)strnlen(body, sizeof(body));
-        MLOG("JSON body: %s", body);
-        hsys_msg_t *m = MsgHttpBodyRequest::create(id(), body, len);
-        if (m) send(m, MODULE_HTTP_ID);
-    }
+    hsys_msg_t *m = MsgHttpRequest::create(
+        id(), PAL_HTTP_METHOD_POST, 8000,
+        nullptr, url,
+        k_ct_hdr, k_ct_len,
+        body, (uint16_t)body_len,
+        nullptr);
 
-    // 5. Fire
-    {
-        hsys_msg_t *m = MsgHttpSendRequest::create(id());
-        if (m) send(m, MODULE_HTTP_ID);
+    if (m) {
+        send(m, MODULE_HTTP_ID);
+        MLOG("nozzle[%u] HTTP %s sent (retry=%d)",
+             (unsigned)_active.nozzle_idx,
+             _active.is_totalizer ? "totalizer" : "receipt",
+             (int)_active.retry_count);
+    } else {
+        MLOGE("nozzle[%u] MsgHttpRequest create failed — aborting print",
+              (unsigned)_active.nozzle_idx);
+        _publish_print_status(PRINT_STATUS_FAILED);
+        _active.valid = false;
+        _state        = IDLE;
+        _try_schedule();
     }
-
-    MLOG("nozzle[%u] HTTP %s sent (retry=%d)",
-         (unsigned)_active.nozzle_idx,
-         _active.is_totalizer ? "totalizer" : "receipt",
-         (int)_active.retry_count);
 }
 
 void ModulePrinting::_build_body(char *buf, uint32_t buf_len) const
@@ -487,10 +469,13 @@ void ModulePrinting::_build_body(char *buf, uint32_t buf_len) const
                             ? _cfg.nozzle_ids[_active.nozzle_idx]
                             : "?";
 
+    char time_str[32];
+    _fmt_ist(_active.time_stamp, time_str, sizeof(time_str));
+
     if (_active.is_totalizer) {
         // ── Totalizer body ────────────────────────────────────────────────────
         StaticJsonDocument<256> doc;
-        doc["time"]       = _active.time_stamp;
+        doc["time"]       = time_str;
         doc["nozzel_id"]  = nozzle_id;
         doc["print_note"] = "Totalizer";
         JsonObject meas   = doc.createNestedObject("measurements");
@@ -514,8 +499,8 @@ void ModulePrinting::_build_body(char *buf, uint32_t buf_len) const
         float unit_p    = (float)_active.unit_pricex100  / 100.0f;
 
         StaticJsonDocument<512> doc;
-        doc["time"]        = _active.time_stamp;
-        doc["print_time"]  = _active.time_stamp;
+        doc["time"]        = time_str;
+        doc["print_time"]  = time_str;
         doc["nozzel_id"]   = nozzle_id;
         doc["print_note"]  = note;
 

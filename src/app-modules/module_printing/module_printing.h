@@ -133,7 +133,6 @@ private:
     void _on_totalizer_data(const hsys_msg_t &msg);
     void _on_printer_btn(const hsys_msg_t &msg);
     void _on_timer_alarm();
-    void _on_http_start_response(const hsys_msg_t &msg);
     void _on_http_result(const hsys_msg_t &msg);
 
     // ── Scheduling helpers ───────────────────────────────────────────────────
@@ -152,7 +151,7 @@ private:
     /// Capture pending[i] into _active and fire the first HTTP send.
     void _start_http_print(uint8_t nozzle_idx, const PendingPrint &pend);
 
-    /// (Re-)send the HTTP request using data already in _active.
+    /// Build and send a single MsgHttpRequest using data already in _active.
     void _send_http_request();
 
     /// Build the JSON body into buf for the current _active print.

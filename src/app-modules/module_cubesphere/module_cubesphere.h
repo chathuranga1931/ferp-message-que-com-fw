@@ -18,15 +18,14 @@
 //
 // HTTP session phases (used in both REGISTERING and RUNNING):
 //   HTTP_IDLE       — no session active
-//   HTTP_STARTING   — MsgHttpStartRequest sent, awaiting StartResponse
-//   HTTP_EXECUTING  — all config + SendRequest burst-sent, awaiting Result
+//   HTTP_EXECUTING  — MsgHttpRequest sent, awaiting MsgHttpResult
 
 #pragma once
 
 #include "hsys_module.h"
 #include "msg_cubesphere_status.h"
 #include "msg_config_wifi.h"
-#include "msg_http_start_request.h"
+#include "msg_http_request.h"
 #include "retransmission_manager.h"
 #include "list_manager.h"
 #include "hsys_queue.h"
@@ -40,7 +39,7 @@
 #define MODULE_CUBESPHERE_NAME  "cubesph"
 
 #define MODULE_CUBESPHERE_DEFAULT_HB_INTERVAL_MS  (60000UL)
-#define MODULE_CUBESPHERE_RETRY_INTERVAL_MS        (60000UL)
+#define MODULE_CUBESPHERE_RETRY_INTERVAL_MS       (300000UL)   ///< 5 minutes
 
 // Internal size constants
 #define CS_SIZE_UUID            50
@@ -140,8 +139,7 @@ private:
     // ── HTTP session phase (active in REGISTERING and RUNNING) ────────────────
     typedef enum {
         HTTP_IDLE,      ///< No HTTP session
-        HTTP_STARTING,  ///< StartRequest sent, awaiting StartResponse
-        HTTP_EXECUTING, ///< SendRequest sent (burst), awaiting Result
+        HTTP_EXECUTING, ///< MsgHttpRequest sent, awaiting MsgHttpResult
     } http_phase_t;
 
     // ── Registration sub-step ─────────────────────────────────────────────────
@@ -188,7 +186,6 @@ private:
 
     // ── System status (from ModuleMsgTranslator) ──────────────────────────────
     bool     _system_is_idle         = true;    ///< Updated by MSG_ID_SYSTEM_STATUS
-    uint16_t _http_start_ticks        = 0;       ///< Ticks spent in HTTP_STARTING; watchdog fires at 8 s
     uint16_t _http_exec_ticks         = 0;       ///< Ticks spent in HTTP_EXECUTING; watchdog fires at 45 s
     uint32_t _retx_check_countdown   = 10;      ///< Ticks remaining until first retransmit check (10 s after RUNNING; resets to 60 s)
     bool     _retx_in_progress       = false;   ///< True while an EVT_PUMPED_RETX HTTP send is live
@@ -206,7 +203,6 @@ private:
     bool _pending_heartbeat     = false;
     bool _pending_status_update = false;
     bool _pending_pump_start[CS_NO_NOZZLES] = {}; ///< nozzle went to PUMPING
-    bool _pending_print_ok      = false;
 
     uint32_t _hb_interval_ms   = MODULE_CUBESPHERE_DEFAULT_HB_INTERVAL_MS;
     bool     _hb_enabled        = true;
@@ -225,10 +221,25 @@ private:
     };
     hsys_queue_handle_t _pump_q = {};  ///< FIFO of PumpedQEntry, depth k_pump_q_size
 
-    // ── Cached data for follow-up events ─────────────────────────────────────
+    // ── Print-ok event queue ──────────────────────────────────────────────────
+    // Depth-3 FIFO — mirrors the old firmware's single-slot but handles rapid prints.
+    static constexpr uint8_t k_print_ok_q_size = 3;
+    struct PrintOkQEntry {
+        uint8_t  nozzle_idx          = 0;
+        uint32_t dispenser_event_id  = 0;   ///< lower-32-bits of ne_id (ABS_ID)
+        uint64_t ne_id               = 0;
+    };
+    hsys_queue_handle_t _print_ok_q = {};  ///< FIFO of PrintOkQEntry, depth k_print_ok_q_size
+
+    // ── Cached data for the active print-ok send ─────────────────────────────
+    uint8_t  _print_ok_nozzle_idx        = 0;
+    uint32_t _print_ok_dispenser_event_id = 0;
+    uint64_t _print_ok_ne_id             = 0;
+
+    // ── Cached data for other follow-up events ────────────────────────────────
     // Pump-start: nozzle index that just went PUMPING
     uint8_t  _pump_start_nozzle_idx = 0;
-    // Totalized and print-ok share the last completed pump-end transaction.
+    // Pump-end: loaded from _pump_q before HTTP send
     uint8_t  _last_pumped_nozzle_idx   = 0;
     uint32_t _last_pumped_vol_lx1000   = 0;
     uint32_t _last_pumped_unit_px100   = 0;
@@ -236,11 +247,6 @@ private:
     time_t   _last_pumped_ts_epoch     = 0;
     uint64_t _last_pumped_ne_id        = 0;
     uint32_t _last_pumped_event_id     = 0;
-    uint32_t       _print_ok_dispenser_event_id = 0;
-    int64_t        _print_ok_timestamp_epoch    = 0;
-    uint8_t        _print_ok_nozzle_idx         = 0;
-    print_status_t _print_ok_status             = PRINT_STATUS_OK;
-    uint64_t       _print_ok_ne_id              = 0;  ///< NE_ID from MsgFuelPrintStatus
 
     // ── CubeSphere cloud credentials ──────────────────────────────────────────
     static const char   _cs_key[];
@@ -265,7 +271,6 @@ private:
     void _on_system_status(const hsys_msg_t &msg);
 
     // ── HTTP response handlers (DIRECT from ModuleHttp) ───────────────────────
-    void _on_http_start_response(const hsys_msg_t &msg);
     void _on_http_response_header(const hsys_msg_t &msg);
     void _on_http_result(const hsys_msg_t &msg);
 
@@ -285,13 +290,11 @@ private:
     void _on_event_result(const hsys_msg_t &msg);
 
     // ── HTTP session helpers ──────────────────────────────────────────────────
-    void _send_http_start(pal_http_method_t method, uint32_t timeout_ms,
-                          const char *collect_key = nullptr);
-    void _recover_http_start_miss();
-    void _burst_get(const char *url);
-    void _burst_get_with_auth(const char *url, const char *auth_value);
-    void _burst_post(const char *url, const char *auth_value,
-                     const char *json_body, uint32_t json_len);
+    void _begin_http_request(pal_http_method_t method, uint32_t timeout_ms,
+                             const char *url, const char *auth_value,
+                             const char *body, uint32_t body_len,
+                             const char *collect_key);
+    void _recover_exec_miss();
 
     // ── Timer helper ─────────────────────────────────────────────────────────
     void _arm_timer(uint32_t duration_ms);

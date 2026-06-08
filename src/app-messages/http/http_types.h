@@ -85,6 +85,7 @@ typedef enum {
     HTTP_RESULT_BODY_TOO_LARGE  = 4,  ///< Response body exceeded MODULE_HTTP_MAX_RESPONSE_BODY
     HTTP_RESULT_SESSION_EXPIRED = 5,  ///< Idle timer fired before MsgHttpSendRequest
     HTTP_RESULT_ERROR           = 6,  ///< Unclassified PAL error
+    HTTP_RESULT_BUSY            = 7,  ///< http_task EXECUTING; MsgHttpRequest rejected immediately
 } http_result_t;
 
 #endif // HTTP_TYPES_H

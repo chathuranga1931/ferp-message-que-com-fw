@@ -142,20 +142,8 @@ idf_component_register(
         "${D_MSGS}/ota/msg_ota_event.cpp"
         "${D_MSGS}/ota/msg_ota_progress.cpp"
         # HTTP session messages
-        "${D_MSGS}/http/msg_http_start_request.cpp"
-        "${D_MSGS}/http/msg_http_start_response.cpp"
-        "${D_MSGS}/http/msg_http_set_url_request.cpp"
-        "${D_MSGS}/http/msg_http_set_url_response.cpp"
-        "${D_MSGS}/http/msg_http_set_root_ca_request.cpp"
-        "${D_MSGS}/http/msg_http_set_root_ca_response.cpp"
-        "${D_MSGS}/http/msg_http_set_stream_sink.cpp"
-        "${D_MSGS}/http/msg_http_header_request.cpp"
-        "${D_MSGS}/http/msg_http_header_response.cpp"
-        "${D_MSGS}/http/msg_http_body_request.cpp"
-        "${D_MSGS}/http/msg_http_body_response.cpp"
-        "${D_MSGS}/http/msg_http_send_request.cpp"
+        "${D_MSGS}/http/msg_http_request.cpp"
         "${D_MSGS}/http/msg_http_result.cpp"
-        "${D_MSGS}/http/msg_http_abort_request.cpp"
         "${D_MSGS}/http/msg_http_response_header.cpp"
 
         # ── App peripherals ───────────────────────────────────────────────

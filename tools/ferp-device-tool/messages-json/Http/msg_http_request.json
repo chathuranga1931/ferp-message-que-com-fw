@@ -1,0 +1,47 @@
+{
+  "msg_id": "0x005F",
+  "direction": "cmd",
+  "fields": [
+    {
+      "name": "method",
+      "label": "HTTP Method",
+      "type": "enum",
+      "options": [
+        {"label": "GET",    "value": 0},
+        {"label": "POST",   "value": 1},
+        {"label": "PUT",    "value": 2},
+        {"label": "DELETE", "value": 3}
+      ]
+    },
+    {
+      "name": "timeout_ms",
+      "label": "Timeout (ms)",
+      "type": "uint32",
+      "default": "30000"
+    },
+    {
+      "name": "url",
+      "label": "URL",
+      "type": "string",
+      "placeholder": "https://..."
+    },
+    {
+      "name": "auth_header",
+      "label": "Authorization Header",
+      "type": "string",
+      "placeholder": "Basic ..."
+    },
+    {
+      "name": "body",
+      "label": "Request Body (JSON)",
+      "type": "string",
+      "placeholder": "{}"
+    },
+    {
+      "name": "collect_key",
+      "label": "Response Header to Capture",
+      "type": "string",
+      "placeholder": "www-authenticate"
+    }
+  ]
+}

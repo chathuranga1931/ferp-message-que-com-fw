@@ -20,16 +20,9 @@
 #include "msg_ota_complete_notify.h"
 #include "msg_ota_progress.h"
 
-// HTTP session messages
-#include "msg_http_start_request.h"
-#include "msg_http_start_response.h"
-#include "msg_http_set_url_request.h"
-#include "msg_http_set_root_ca_request.h"
-#include "msg_http_header_request.h"
-#include "msg_http_body_request.h"
-#include "msg_http_send_request.h"
+// HTTP messages
+#include "msg_http_request.h"
 #include "msg_http_result.h"
-#include "msg_http_set_stream_sink.h"
 
 #include "pal_logger.h"
 #include <ArduinoJson.h>
@@ -70,7 +63,6 @@ void ModuleWebClientOta::init()
     subscribe(MsgTick1000ms::ID);
     subscribe(MsgOtaStartResponse::ID);
     subscribe(MsgOtaDriverResponse::ID);
-    subscribe(MsgHttpStartResponse::ID);
     subscribe(MsgHttpResult::ID);
 
     LOG_MSG_INFO(LOG_EN, "init  targets=%u  interval=%u..%us (default=%us)",
@@ -98,25 +90,11 @@ bool ModuleWebClientOta::_build_cfg(uint8_t slot, hsys_ota_cfg_t *out) const
 
 // ── HTTP session helpers ──────────────────────────────────────────────────────
 
-void ModuleWebClientOta::_send_http_start(pal_http_method_t method, uint32_t timeout_ms)
-{
-    MsgHttpStartRequest::Payload p{};
-    p.method     = method;
-    p.timeout_ms = timeout_ms;
-    hsys_msg_t *m = MsgHttpStartRequest::create(id(), p);
-    if (m) {
-        send(m, MODULE_HTTP_ID);
-        _http_phase = HTTP_STARTING;
-    } else {
-        LOG_MSG_ERROR(LOG_EN, "_send_http_start: pool full");
-    }
-}
-
-void ModuleWebClientOta::_burst_check_post(uint8_t slot)
+void ModuleWebClientOta::_send_check_request(uint8_t slot)
 {
     hsys_ota_cfg_t cfg;
     if (!_build_cfg(slot, &cfg)) {
-        LOG_MSG_ERROR(LOG_EN, "_burst_check_post: cfg not ready");
+        LOG_MSG_ERROR(LOG_EN, "_send_check_request: cfg not ready");
         _state      = STATE_IDLE;
         _http_phase = HTTP_IDLE;
         return;
@@ -130,28 +108,38 @@ void ModuleWebClientOta::_burst_check_post(uint8_t slot)
              "{\"device_id\":\"%s\",\"current_version\":\"%s\",\"firmware_type\":\"%s\"}",
              cfg.device_id, cfg.current_version, cfg.firmware_type);
 
-    { MsgHttpSetRootCaRequest::Payload rca{}; rca.cert_pem = cfg.cert_pem;
-      hsys_msg_t *m = MsgHttpSetRootCaRequest::create(id(), rca); if (m) send(m, MODULE_HTTP_ID); }
-    { hsys_msg_t *m = MsgHttpSetUrlRequest::create(id(), url); if (m) send(m, MODULE_HTTP_ID); }
-    { hsys_msg_t *m = MsgHttpHeaderRequest::create(id(), "Content-Type", "application/json");
-      if (m) send(m, MODULE_HTTP_ID); }
-    { hsys_msg_t *m = MsgHttpBodyRequest::create(id(), body, (uint32_t)strlen(body));
-      if (m) send(m, MODULE_HTTP_ID); }
-    { hsys_msg_t *m = MsgHttpSendRequest::create(id()); if (m) send(m, MODULE_HTTP_ID); }
+    // Pack Content-Type header
+    static const char k_ct_hdr[] = "Content-Type\0application/json\0";
+    const uint16_t    k_ct_len   = (uint16_t)(sizeof(k_ct_hdr) - 1U);
 
+    hsys_msg_t *m = MsgHttpRequest::create(
+        id(), PAL_HTTP_METHOD_POST, 30000,
+        cfg.cert_pem, url,
+        k_ct_hdr, k_ct_len,
+        body, (uint16_t)strlen(body),
+        nullptr);
+
+    if (!m) {
+        LOG_MSG_ERROR(LOG_EN, "_send_check_request: create failed");
+        _state      = STATE_IDLE;
+        _http_phase = HTTP_IDLE;
+        return;
+    }
+
+    send(m, MODULE_HTTP_ID);
     _http_phase = HTTP_EXECUTING;
 
     LOG_MSG_INFO(LOG_EN, "check slot=%u  fw=%s  cur=%s",
                  (unsigned)slot, cfg.firmware_type, cfg.current_version);
 }
 
-void ModuleWebClientOta::_burst_download_get(uint8_t slot,
-                                               const ota_fs_driver_t *drv, void *ctx,
-                                               uint32_t expected_crc32)
+void ModuleWebClientOta::_send_download_request(uint8_t slot,
+                                                  const ota_fs_driver_t *drv, void *ctx,
+                                                  uint32_t expected_crc32)
 {
     hsys_ota_cfg_t cfg;
     if (!_build_cfg(slot, &cfg)) {
-        LOG_MSG_ERROR(LOG_EN, "_burst_download_get: cfg not ready");
+        LOG_MSG_ERROR(LOG_EN, "_send_download_request: cfg not ready");
         _state      = STATE_IDLE;
         _http_phase = HTTP_IDLE;
         return;
@@ -162,14 +150,29 @@ void ModuleWebClientOta::_burst_download_get(uint8_t slot,
              "%s/api/v1/firmware/download?firmware_type=%s&version=%s&device_id=%s",
              cfg.server_url, cfg.firmware_type, _pending_version, cfg.device_id);
 
-    { MsgHttpSetRootCaRequest::Payload rca{}; rca.cert_pem = cfg.cert_pem;
-      hsys_msg_t *m = MsgHttpSetRootCaRequest::create(id(), rca); if (m) send(m, MODULE_HTTP_ID); }
-    { MsgHttpSetStreamSink::Payload ss{}; ss.fs_drv = drv; ss.fs_ctx = ctx;
-      ss.expected_crc32 = expected_crc32;
-      hsys_msg_t *m = MsgHttpSetStreamSink::create(id(), ss); if (m) send(m, MODULE_HTTP_ID); }
-    { hsys_msg_t *m = MsgHttpSetUrlRequest::create(id(), url); if (m) send(m, MODULE_HTTP_ID); }
-    { hsys_msg_t *m = MsgHttpSendRequest::create(id()); if (m) send(m, MODULE_HTTP_ID); }
+    hsys_msg_t *m = MsgHttpRequest::create(
+        id(), PAL_HTTP_METHOD_GET, 120000,
+        cfg.cert_pem, url,
+        nullptr, 0U,
+        nullptr, 0U,
+        nullptr,
+        (void *)drv, ctx, expected_crc32);
 
+    if (!m) {
+        LOG_MSG_ERROR(LOG_EN, "_send_download_request: create failed");
+        if (drv) drv->ferase(ctx);
+        MsgOtaCompleteNotify::Payload n{};
+        n.success    = false;
+        n.last_error = OTA_FS_ERR_WRITE_FAIL;
+        hsys_msg_t *nm = MsgOtaCompleteNotify::create(id(), n);
+        if (nm) send(nm, MODULE_OTA_ID);
+        _next_slot = (uint8_t)((_next_slot + 1) % _target_count);
+        _state     = STATE_IDLE;
+        _http_phase = HTTP_IDLE;
+        return;
+    }
+
+    send(m, MODULE_HTTP_ID);
     _http_phase = HTTP_EXECUTING;
 
     LOG_MSG_INFO(LOG_EN, "download slot=%u  fw=%s  ver=%s  crc=0x%08lX",
@@ -177,44 +180,18 @@ void ModuleWebClientOta::_burst_download_get(uint8_t slot,
                  (unsigned long)expected_crc32);
 }
 
-// ── HTTP response handlers ────────────────────────────────────────────────────
-
-void ModuleWebClientOta::_on_http_start_response(const hsys_msg_t &msg)
-{
-    if (_http_phase != HTTP_STARTING) return;
-
-    auto p = MsgHttpStartResponse::deserialize(msg);
-
-    if (p.result == HTTP_SESSION_BUSY) {
-        LOG_MSG_WARNING(LOG_EN, "HTTP session busy — will retry next interval");
-        _http_phase = HTTP_IDLE;
-        if (_state == STATE_HTTP_CHECK) {
-            _state = STATE_IDLE;  // re-trigger on next tick
-        } else if (_state == STATE_HTTP_DOWNLOAD) {
-            if (_dl_drv) _dl_drv->ferase(_dl_ctx);
-            MsgOtaCompleteNotify::Payload n{};
-            n.success    = false;
-            n.last_error = OTA_FS_ERR_WRITE_FAIL;
-            hsys_msg_t *nm = MsgOtaCompleteNotify::create(id(), n);
-            if (nm) send(nm, MODULE_OTA_ID);
-            _next_slot = (uint8_t)((_next_slot + 1) % _target_count);
-            _state     = STATE_IDLE;
-        }
-        return;
-    }
-
-    if (_state == STATE_HTTP_CHECK) {
-        _burst_check_post(_active_slot);
-    } else if (_state == STATE_HTTP_DOWNLOAD) {
-        _burst_download_get(_active_slot, _dl_drv, _dl_ctx, _pending_crc32);
-    }
-}
-
 void ModuleWebClientOta::_on_check_result(const hsys_msg_t &msg)
 {
+    auto f = MsgHttpResult::get_fields(msg);
+
     _http_phase = HTTP_IDLE;
 
-    auto f = MsgHttpResult::get_fields(msg);
+    if (f.result == HTTP_RESULT_BUSY) {
+        LOG_MSG_WARNING(LOG_EN, "check: HTTP busy — retry next interval  slot=%u",
+                        (unsigned)_active_slot);
+        _state = STATE_IDLE;
+        return;
+    }
 
     if (f.result != HTTP_RESULT_SUCCESS || f.status_code != 200 ||
         !f.body || f.body_len == 0) {
@@ -273,9 +250,26 @@ void ModuleWebClientOta::_on_check_result(const hsys_msg_t &msg)
 
 void ModuleWebClientOta::_on_download_result(const hsys_msg_t &msg)
 {
+    auto f    = MsgHttpResult::get_fields(msg);
     _http_phase = HTTP_IDLE;
 
-    auto f    = MsgHttpResult::get_fields(msg);
+    if (f.result == HTTP_RESULT_BUSY) {
+        LOG_MSG_WARNING(LOG_EN, "download: HTTP busy — aborting download  slot=%u",
+                        (unsigned)_active_slot);
+        // Treat busy as a download failure
+        if (_dl_drv) _dl_drv->ferase(_dl_ctx);
+        MsgOtaCompleteNotify::Payload n{};
+        n.success    = false;
+        n.last_error = OTA_FS_ERR_WRITE_FAIL;
+        hsys_msg_t *nm = MsgOtaCompleteNotify::create(id(), n);
+        if (nm) send(nm, MODULE_OTA_ID);
+        _dl_drv    = nullptr;
+        _dl_ctx    = nullptr;
+        _next_slot = (uint8_t)((_next_slot + 1) % _target_count);
+        _state     = STATE_IDLE;
+        return;
+    }
+
     bool ok   = (f.result == HTTP_RESULT_SUCCESS);
 
     MsgOtaCompleteNotify::Payload notify{};
@@ -382,14 +376,9 @@ void ModuleWebClientOta::on_msg_received(const hsys_msg_t &msg)
         _tick_count  = 0;
         _active_slot = _next_slot;
         _state       = STATE_HTTP_CHECK;
-        _send_http_start(PAL_HTTP_METHOD_POST, 30000);
+        _send_check_request(_active_slot);
         break;
     }
-
-    /* ── HTTP start response ─────────────────────────────────────────── */
-    case MsgHttpStartResponse::ID:
-        _on_http_start_response(msg);
-        break;
 
     /* ── HTTP result ─────────────────────────────────────────────────── */
     case MsgHttpResult::ID:
@@ -435,7 +424,7 @@ void ModuleWebClientOta::on_msg_received(const hsys_msg_t &msg)
                      (unsigned)_active_slot, _pending_version);
 
         _state = STATE_HTTP_DOWNLOAD;
-        _send_http_start(PAL_HTTP_METHOD_GET, 120000);
+        _send_download_request(_active_slot, _dl_drv, _dl_ctx, _pending_crc32);
         break;
     }
 

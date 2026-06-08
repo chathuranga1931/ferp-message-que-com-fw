@@ -82,21 +82,9 @@ typedef enum : uint16_t
     // ------------------------------------------------------------------
     // HTTP client session  (0x0050 – 0x005F)
     // ------------------------------------------------------------------
-    MSG_ID_HTTP_START_REQUEST      = 0x0050,   ///< client → ModuleHttp: open session (DIRECT)
-    MSG_ID_HTTP_START_RESPONSE     = 0x0051,   ///< ModuleHttp → client: session result (DIRECT)
-    MSG_ID_HTTP_SET_URL_REQUEST    = 0x0052,   ///< client → ModuleHttp: set request URL (DIRECT)
-    MSG_ID_HTTP_SET_URL_RESPONSE   = 0x0053,   ///< ModuleHttp → client: URL accepted (DIRECT)
-    MSG_ID_HTTP_SET_ROOT_CA_REQ    = 0x0054,   ///< client → ModuleHttp: set CA cert (DIRECT)
-    MSG_ID_HTTP_SET_ROOT_CA_RESP   = 0x0055,   ///< ModuleHttp → client: CA accepted (DIRECT)
-    MSG_ID_HTTP_HEADER_REQUEST     = 0x0056,   ///< client → ModuleHttp: add request header (DIRECT)
-    MSG_ID_HTTP_HEADER_RESPONSE    = 0x0057,   ///< ModuleHttp → client: header accepted (DIRECT)
-    MSG_ID_HTTP_BODY_REQUEST       = 0x0058,   ///< client → ModuleHttp: set request body (DIRECT)
-    MSG_ID_HTTP_BODY_RESPONSE      = 0x0059,   ///< ModuleHttp → client: body accepted (DIRECT)
-    MSG_ID_HTTP_SEND_REQUEST       = 0x005A,   ///< client → ModuleHttp: execute HTTP call (DIRECT)
     MSG_ID_HTTP_RESULT             = 0x005B,   ///< ModuleHttp → client: HTTP result + body (DIRECT)
-    MSG_ID_HTTP_ABORT_REQUEST      = 0x005C,   ///< client → ModuleHttp: abort session (DIRECT)
     MSG_ID_HTTP_RESPONSE_HEADER    = 0x005D,   ///< ModuleHttp → client: one response header (DIRECT)
-    MSG_ID_HTTP_SET_STREAM_SINK    = 0x005E,   ///< client → ModuleHttp: set streaming binary write sink (DIRECT)
+    MSG_ID_HTTP_REQUEST            = 0x005F,   ///< client → ModuleHttp: unified acquire+configure+execute (DIRECT)
 
     // ------------------------------------------------------------------
     // Timer  (0x0100 – 0x010F)

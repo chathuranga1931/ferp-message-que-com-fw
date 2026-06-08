@@ -21,14 +21,8 @@
 #include "msg_system_status.h"
 #include "list_manager.h"
 
-// HTTP session messages (DIRECT to/from ModuleHttp)
-#include "msg_http_start_request.h"
-#include "msg_http_start_response.h"
-#include "msg_http_set_url_request.h"
-#include "msg_http_set_root_ca_request.h"
-#include "msg_http_header_request.h"
-#include "msg_http_body_request.h"
-#include "msg_http_send_request.h"
+// HTTP messages (DIRECT to/from ModuleHttp)
+#include "msg_http_request.h"
 #include "msg_http_result.h"
 #include "msg_http_response_header.h"
 #include "msg_dev_info_write.h"
@@ -81,16 +75,11 @@ void ModuleCubeSphere::init()
     subscribe(MSG_ID_SYSTEM_STATUS);
 
     // DIRECT responses from ModuleHttp
-    subscribe(MSG_ID_HTTP_START_RESPONSE);
     subscribe(MSG_ID_HTTP_RESPONSE_HEADER);
     subscribe(MSG_ID_HTTP_RESULT);
-    // Op-response messages — subscribe so the framework routes them here (errors logged only)
-    subscribe(MSG_ID_HTTP_SET_URL_RESPONSE);
-    subscribe(MSG_ID_HTTP_SET_ROOT_CA_RESP);
-    subscribe(MSG_ID_HTTP_HEADER_RESPONSE);
-    subscribe(MSG_ID_HTTP_BODY_RESPONSE);
 
-    hsys_queue_init(&_pump_q, k_pump_q_size, sizeof(PumpedQEntry));
+    hsys_queue_init(&_pump_q,        k_pump_q_size,        sizeof(PumpedQEntry));
+    hsys_queue_init(&_print_ok_q,   k_print_ok_q_size,   sizeof(PrintOkQEntry));
 
     LOG_MSG_INFO(CSP_LOG_EN, "init — state=WAIT_FOR_INTERNET");
 }
@@ -108,21 +97,14 @@ void ModuleCubeSphere::on_msg_received(const hsys_msg_t &msg)
         case MsgInternetStatus::ID:        _on_internet_status(msg);     break;
         case MsgFuelPumped::ID:            _on_fuel_pumped(msg);         break;
         case MsgNozzleState::ID:           _on_nozzle_state(msg);        break;
-        case MsgFuelPrintStatus::ID:           _on_fuel_print_ok(msg);       break;
+        case MsgFuelPrintStatus::ID:       _on_fuel_print_ok(msg);       break;
         case MsgSdReady::ID:               _on_sd_ready();               break;
         case MsgTimerAlarm::ID:            _on_timer_alarm();            break;
         case MSG_ID_TICK_1000MS:           _on_tick();                   break;
         case MSG_ID_SYSTEM_STATUS:         _on_system_status(msg);       break;
         // HTTP session responses (DIRECT from ModuleHttp)
-        case MSG_ID_HTTP_START_RESPONSE:   _on_http_start_response(msg); break;
         case MSG_ID_HTTP_RESPONSE_HEADER:  _on_http_response_header(msg);break;
         case MSG_ID_HTTP_RESULT:           _on_http_result(msg);         break;
-        // Op-responses — no state change needed; silently ignored
-        case MSG_ID_HTTP_SET_URL_RESPONSE:
-        case MSG_ID_HTTP_SET_ROOT_CA_RESP:
-        case MSG_ID_HTTP_HEADER_RESPONSE:
-        case MSG_ID_HTTP_BODY_RESPONSE:
-            break;
         default: break;
     }
 }
@@ -219,6 +201,10 @@ void ModuleCubeSphere::_on_fuel_pumped(const hsys_msg_t &msg)
     auto p = MsgFuelPumped::deserialize(msg);
 
     if (_state != STATE_RUNNING) {
+        if (p.nozzle_idx >= CS_NO_NOZZLES) {
+            LOG_MSG_ERROR(CSP_LOG_EN, "invalid nozzle_idx %u pre-registration — discarding", p.nozzle_idx);
+            return;
+        }
         LOG_MSG_WARNING(CSP_LOG_EN, "fuel pumped but not RUNNING — storing for retx");
         _pumped_failure++;
         _publish_status(CUBESPHERE_STATUS_PUMPED_FAILED, p.nozzle_idx);
@@ -308,19 +294,30 @@ void ModuleCubeSphere::_on_fuel_print_ok(const hsys_msg_t &msg)
     if (p.nozzle_idx >= CS_NO_NOZZLES) return;
 
     if (_state != STATE_RUNNING) {
-        LOG_MSG_DEBUG(CSP_LOG_EN, "print-ok for nozzle[%u] — not RUNNING, discarding",
-                      (unsigned)p.nozzle_idx);
+        LOG_MSG_WARNING(CSP_LOG_EN, "print-ok nozzle[%u] — not RUNNING (state=%d), discarding",
+                        (unsigned)p.nozzle_idx, (int)_state);
         return;
     }
 
-    _print_ok_nozzle_idx          = p.nozzle_idx;
-    _print_ok_status              = p.status;
-    _print_ok_dispenser_event_id  = p.dispenser_event_id;
-    _print_ok_timestamp_epoch     = p.timestamp_epoch;
-    _print_ok_ne_id               = p.ne_id;
-    _pending_print_ok             = true;
-    LOG_MSG_DEBUG(CSP_LOG_EN, "print-ok received for nozzle %u (status=%d), pending event",
-                  (unsigned)p.nozzle_idx, (int)p.status);
+    if (p.status != PRINT_STATUS_OK) {
+        LOG_MSG_INFO(CSP_LOG_EN, "print-ok nozzle[%u] status=%d (not OK) — no cloud event",
+                     (unsigned)p.nozzle_idx, (int)p.status);
+        return;
+    }
+
+    PrintOkQEntry e;
+    e.nozzle_idx         = p.nozzle_idx;
+    e.dispenser_event_id = p.dispenser_event_id;
+    e.ne_id              = p.ne_id;
+
+    if (!hsys_queue_send(&_print_ok_q, &e, 0)) {
+        LOG_MSG_WARNING(CSP_LOG_EN, "print-ok queue full (depth=%u), dropping nozzle[%u]",
+                        (unsigned)hsys_queue_size(&_print_ok_q), (unsigned)p.nozzle_idx);
+        return;
+    }
+
+    LOG_MSG_INFO(CSP_LOG_EN, "print-ok queued for nozzle %u (queue depth=%u)",
+                 (unsigned)p.nozzle_idx, (unsigned)hsys_queue_size(&_print_ok_q));
     _start_next_event();
 }
 
@@ -346,7 +343,6 @@ void ModuleCubeSphere::_on_timer_alarm()
             _pending_heartbeat = true;
             LOG_MSG_DEBUG(CSP_LOG_EN, "heartbeat timer alarm — pending heartbeat event");
             _start_next_event();
-            _retx_process_one();
             break;
         default: break;
     }
@@ -355,20 +351,6 @@ void ModuleCubeSphere::_on_timer_alarm()
 void ModuleCubeSphere::_on_tick()
 {
     _uptime_sec++;
-
-    // Watchdog: if HTTP_STARTING persists for >8 s, http_task has already reset its
-    // session but both StartResponse and SessionExpired were dropped (inbox overflow).
-    // Force-recover so the event pipeline is not permanently stuck.
-    if (_http_phase == HTTP_STARTING) {
-        if (++_http_start_ticks >= 8) {
-            LOG_MSG_WARNING(CSP_LOG_EN,
-                            "HTTP_STARTING watchdog: stuck for 8s (evt=%d) — forcing recovery",
-                            (int)_cur_evt);
-            _recover_http_start_miss();
-        }
-    } else {
-        _http_start_ticks = 0;
-    }
 
     // Watchdog: if HTTP_EXECUTING persists for >45 s the HTTP result was dropped
     // (network_task inbox was full when http_task sent its reply; http_task has
@@ -389,7 +371,7 @@ void ModuleCubeSphere::_on_tick()
                     case REG_STEP_3:      _start_reg_step_3(); break;
                 }
             } else if (_state == STATE_RUNNING) {
-                _recover_http_start_miss();
+                _recover_exec_miss();
             }
         }
     } else {
@@ -428,38 +410,6 @@ void ModuleCubeSphere::_on_system_status(const hsys_msg_t &msg)
 
 // ── HTTP response handlers ────────────────────────────────────────────────────
 
-void ModuleCubeSphere::_on_http_start_response(const hsys_msg_t &msg)
-{
-    if (_http_phase != HTTP_STARTING) return;
-
-    _http_start_ticks = 0;   // clear watchdog — start-response arrived in time
-    auto p = MsgHttpStartResponse::deserialize(msg);
-
-    if (p.result == HTTP_SESSION_BUSY) {
-        LOG_MSG_WARNING(CSP_LOG_EN, "HTTP session busy — retry in 5s");
-        _http_phase = HTTP_IDLE;
-        _arm_timer(5000);
-        return;
-    }
-
-    // Session open — burst-send configuration messages then SendRequest
-    if (_state == STATE_REGISTERING) {
-        switch (_reg_step) {
-            case REG_STEP_1:       _burst_get(CS_URL_BOOTSTRAP);                       break;
-            case REG_STEP_2:       _burst_get_with_auth(CS_URL_BOOTSTRAP, _auth_hdr);  break;
-            case REG_STEP_3:       _burst_get_with_auth(CS_URL_DEV_CONFIG, _auth_hdr); break;
-            case REG_STEP_WAIT_2:  /* should not reach here — session open before timer fires */ break;
-        }
-    } else if (_state == STATE_RUNNING) {
-        char auth[512] = {};
-        snprintf(auth, sizeof(auth), "Basic %s", _cs_net_cfg.basic_authentication_base64);
-        _burst_post(CS_URL_EVENTS, auth, _event_json, (uint32_t)strlen(_event_json));
-    }
-
-    _http_exec_ticks = 0;   // start exec-watchdog from zero
-    _http_phase = HTTP_EXECUTING;
-}
-
 void ModuleCubeSphere::_on_http_response_header(const hsys_msg_t &msg)
 {
     // Only relevant during STEP_1 — capture nonce from www-authenticate
@@ -481,11 +431,8 @@ void ModuleCubeSphere::_on_http_response_header(const hsys_msg_t &msg)
     LOG_MSG_DEBUG(CSP_LOG_EN, "captured nonce (len=%u)", (unsigned)(ne - ns));
 }
 
-void ModuleCubeSphere::_recover_http_start_miss()
+void ModuleCubeSphere::_recover_exec_miss()
 {
-    _http_phase       = HTTP_IDLE;
-    _http_start_ticks = 0;
-
     switch (_cur_evt) {
         case EVT_STARTUP:       _pending_startup       = true; break;
         case EVT_RECONNECT:     _pending_reconnect     = true; break;
@@ -500,9 +447,14 @@ void ModuleCubeSphere::_recover_http_start_miss()
                 _pending_pump_start[_pump_start_nozzle_idx] = true;
             }
             break;
-        case EVT_PRINT_OK:
-            _pending_print_ok = true;
+        case EVT_PRINT_OK: {
+            PrintOkQEntry e;
+            e.nozzle_idx         = _print_ok_nozzle_idx;
+            e.dispenser_event_id = _print_ok_dispenser_event_id;
+            e.ne_id              = _print_ok_ne_id;
+            hsys_queue_send(&_print_ok_q, &e, 0);
             break;
+        }
         case EVT_PUMPED: {
             // Entry was already dequeued from _pump_q into _last_pumped_* — re-enqueue it.
             PumpedQEntry e;
@@ -531,18 +483,23 @@ void ModuleCubeSphere::_recover_http_start_miss()
 
 void ModuleCubeSphere::_on_http_result(const hsys_msg_t &msg)
 {
-    // Guard: if result arrives while still in HTTP_STARTING, the start-response
-    // was never received (network_task inbox was full).  Recover via the shared helper.
-    if (_http_phase == HTTP_STARTING) {
-        auto f = MsgHttpResult::get_fields(msg);
+    if (_http_phase != HTTP_EXECUTING) return;
+
+    auto fcheck = MsgHttpResult::get_fields(msg);
+    if (fcheck.result == HTTP_RESULT_BUSY) {
         LOG_MSG_WARNING(CSP_LOG_EN,
-                        "HTTP result (result=%d) in HTTP_STARTING phase — start-response missed, retrying in 2s",
-                        (int)f.result);
-        _recover_http_start_miss();
+                        "HTTP_RESULT_BUSY (evt=%d state=%d) — http_task EXECUTING, retry in 2s",
+                        (int)_cur_evt, (int)_state);
+        _http_exec_ticks = 0;
+        _http_phase = HTTP_IDLE;
+        if (_state == STATE_RUNNING) {
+            _recover_exec_miss();  // re-queues current event and arms 2s timer
+        } else {
+            _arm_timer(2000);      // registration will restart from current step on alarm
+        }
         return;
     }
 
-    if (_http_phase != HTTP_EXECUTING) return;
     _http_exec_ticks = 0;
     _http_phase = HTTP_IDLE;
 
@@ -572,7 +529,8 @@ void ModuleCubeSphere::_start_registration()
 void ModuleCubeSphere::_start_reg_step_1()
 {
     LOG_MSG_INFO(CSP_LOG_EN, "reg step1 — GET /bootstrap (expecting 401 + nonce)");
-    _send_http_start(PAL_HTTP_METHOD_GET, 30000, "www-authenticate");
+    _begin_http_request(PAL_HTTP_METHOD_GET, 30000,
+                        CS_URL_BOOTSTRAP, nullptr, nullptr, 0, "www-authenticate");
 }
 
 void ModuleCubeSphere::_start_reg_step_2()
@@ -593,7 +551,8 @@ void ModuleCubeSphere::_start_reg_step_2()
 
     LOG_MSG_INFO(CSP_LOG_EN, "reg step2 — GET /bootstrap with SAS-AC1 auth");
     _reg_step = REG_STEP_2;
-    _send_http_start(PAL_HTTP_METHOD_GET, 30000, nullptr);
+    _begin_http_request(PAL_HTTP_METHOD_GET, 30000,
+                        CS_URL_BOOTSTRAP, _auth_hdr, nullptr, 0, nullptr);
 }
 
 void ModuleCubeSphere::_start_reg_step_3()
@@ -602,7 +561,8 @@ void ModuleCubeSphere::_start_reg_step_3()
              "Basic %s", _cs_net_cfg.basic_authentication_base64);
     LOG_MSG_INFO(CSP_LOG_EN, "reg step3 — GET /device/config with Basic auth");
     _reg_step = REG_STEP_3;
-    _send_http_start(PAL_HTTP_METHOD_GET, 30000, nullptr);
+    _begin_http_request(PAL_HTTP_METHOD_GET, 30000,
+                        CS_URL_DEV_CONFIG, _auth_hdr, nullptr, 0, nullptr);
 }
 
 void ModuleCubeSphere::_on_reg_step1_result(const hsys_msg_t &msg)
@@ -802,13 +762,16 @@ void ModuleCubeSphere::_start_next_event()
                     (unsigned)e.nozzle_idx, (unsigned)e.vol_lx1000,
                     (unsigned)e.unit_pricex100, (unsigned)e.total_pricex100);
     } 
-    else if (_pending_print_ok) 
+    else if (!hsys_queue_is_empty(&_print_ok_q))
     {
-        _pending_print_ok = false;
+        PrintOkQEntry e;
+        hsys_queue_receive(&_print_ok_q, &e, 0);
+        _print_ok_nozzle_idx         = e.nozzle_idx;
+        _print_ok_dispenser_event_id = e.dispenser_event_id;
+        _print_ok_ne_id              = e.ne_id;
         _cur_evt = EVT_PRINT_OK;
-        LOG_MSG_DEBUG(CSP_LOG_EN, "pending print-ok event for nozzle %u (status=%d)",
-                      (unsigned)_print_ok_nozzle_idx, (int)_print_ok_status);
-    } 
+        LOG_MSG_DEBUG(CSP_LOG_EN, "pending print-ok event for nozzle %u", (unsigned)e.nozzle_idx);
+    }
     else if (_pending_heartbeat && _hb_enabled) 
     {
         _pending_heartbeat = false;
@@ -829,8 +792,14 @@ void ModuleCubeSphere::_start_next_event()
         return;
     }
 
-    LOG_MSG_INFO(CSP_LOG_EN, "starting HTTP POST for event %d", (int)_cur_evt);
-    _send_http_start(PAL_HTTP_METHOD_POST, 10000, nullptr);
+    {
+        char auth[512] = {};
+        snprintf(auth, sizeof(auth), "Basic %s", _cs_net_cfg.basic_authentication_base64);
+        LOG_MSG_INFO(CSP_LOG_EN, "starting HTTP POST for event %d", (int)_cur_evt);
+        _begin_http_request(PAL_HTTP_METHOD_POST, 10000,
+                            CS_URL_EVENTS, auth,
+                            _event_json, (uint32_t)strlen(_event_json), nullptr);
+    }
 }
 
 bool ModuleCubeSphere::_build_event_json(evt_type_t evt)
@@ -908,17 +877,17 @@ bool ModuleCubeSphere::_build_event_json(evt_type_t evt)
             break;
         }
         case EVT_PRINT_OK: {
-            // app.fuel/printok or app.fuel/printfailed — based on print status
             if (_print_ok_nozzle_idx >= CS_NO_NOZZLES ||
                 _cs_nozzles[_print_ok_nozzle_idx].uuid[0] == '\0') return false;
+            // Use current wall-clock time (when the print was confirmed), same as old firmware.
+            struct timeval now_tv;
+            gettimeofday(&now_tv, nullptr);
             char pok_ts[64] = {};
-            _cs_format_iso8601((time_t)_print_ok_timestamp_epoch + (int)(3600 * 5.5),
-                               "+05:30", pok_ts, sizeof(pok_ts));
+            _cs_format_iso8601(now_tv.tv_sec + (int)(3600 * 5.5), "+05:30", pok_ts, sizeof(pok_ts));
             JsonObject e0   = events.add<JsonObject>();
             e0["device"]    = _cs_nozzles[_print_ok_nozzle_idx].uuid;
             e0["time"]      = pok_ts;
-            e0["event"]     = (_print_ok_status == PRINT_STATUS_OK)
-                              ? "app.fuel/printok" : "app.fuel/printfailed";
+            e0["event"]     = "app.fuel/printok";
             JsonObject body = e0["body"].to<JsonObject>();
             if (_print_ok_ne_id != 0) {
                 char ne_id_str[24] = {};
@@ -1113,24 +1082,66 @@ void ModuleCubeSphere::_on_event_result(const hsys_msg_t &msg)
 
 // ── HTTP session helpers ──────────────────────────────────────────────────────
 
-void ModuleCubeSphere::_send_http_start(pal_http_method_t method,
-                                         uint32_t timeout_ms,
-                                         const char *collect_key)
+void ModuleCubeSphere::_begin_http_request(pal_http_method_t method,
+                                            uint32_t          timeout_ms,
+                                            const char       *url,
+                                            const char       *auth_value,
+                                            const char       *body,
+                                            uint32_t          body_len,
+                                            const char       *collect_key)
 {
-    MsgHttpStartRequest::Payload p{};
-    p.method     = method;
-    p.timeout_ms = timeout_ms;
-    if (collect_key && collect_key[0] != '\0') {
-        p.collect_count = 1;
-        strncpy(p.collect_keys[0], collect_key, MODULE_HTTP_MAX_HEADER_KEY - 1);
+    // Build packed headers: Authorization + Content-Type (POST only)
+    static char s_hdrs_buf[512];
+    uint16_t    hdrs_len = 0U;
+
+    if (auth_value && auth_value[0] != '\0') {
+        // "Authorization\0<value>\0"
+        size_t klen = strlen("Authorization");
+        size_t vlen = strlen(auth_value);
+        if (hdrs_len + klen + 1U + vlen + 1U <= sizeof(s_hdrs_buf)) {
+            memcpy(s_hdrs_buf + hdrs_len, "Authorization", klen + 1U);
+            hdrs_len += (uint16_t)(klen + 1U);
+            memcpy(s_hdrs_buf + hdrs_len, auth_value, vlen + 1U);
+            hdrs_len += (uint16_t)(vlen + 1U);
+        }
     }
-    hsys_msg_t *m = MsgHttpStartRequest::create(id(), p);
-    if (m) {
-        send(m, MODULE_HTTP_ID);
-        _http_phase = HTTP_STARTING;
-    } else {
-        LOG_MSG_ERROR(CSP_LOG_EN, "_send_http_start: message create failed");
+    if (body && body_len > 0U) {
+        // "Content-Type\0application/json\0"
+        const char *ct_k = "Content-Type";
+        const char *ct_v = "application/json";
+        size_t klen = strlen(ct_k);
+        size_t vlen = strlen(ct_v);
+        if (hdrs_len + klen + 1U + vlen + 1U <= sizeof(s_hdrs_buf)) {
+            memcpy(s_hdrs_buf + hdrs_len, ct_k, klen + 1U);
+            hdrs_len += (uint16_t)(klen + 1U);
+            memcpy(s_hdrs_buf + hdrs_len, ct_v, vlen + 1U);
+            hdrs_len += (uint16_t)(vlen + 1U);
+        }
     }
+
+    if (body_len > MSG_HTTP_REQUEST_MAX_BODY_LEN) {
+        LOG_MSG_WARNING(CSP_LOG_EN, "_begin_http_request: body truncated %lu→%u",
+                        (unsigned long)body_len, (unsigned)MSG_HTTP_REQUEST_MAX_BODY_LEN);
+        body_len = MSG_HTTP_REQUEST_MAX_BODY_LEN;
+    }
+
+    hsys_msg_t *m = MsgHttpRequest::create(
+        id(), method, timeout_ms,
+        global_root_ca, url,
+        hdrs_len > 0U ? s_hdrs_buf : nullptr, hdrs_len,
+        body, (uint16_t)body_len,
+        collect_key);
+
+    if (!m) {
+        LOG_MSG_ERROR(CSP_LOG_EN, "_begin_http_request: create failed — retry in 2s");
+        _http_phase = HTTP_IDLE;
+        _arm_timer(2000);
+        return;
+    }
+
+    send(m, MODULE_HTTP_ID);
+    _http_phase      = HTTP_EXECUTING;
+    _http_exec_ticks = 0;
 }
 
 
@@ -1153,49 +1164,6 @@ void ModuleCubeSphere::set_root_ca(char *ca) {
     // _static_root_ca = ca; 
 
     // LOG_MSG_DEBUG(CSP_LOG_EN, "static root CA:\n%s", _static_root_ca ? _static_root_ca : "(null)");
-}
-
-void ModuleCubeSphere::_burst_get(const char *url)
-{
-    char *ca = (char *)global_root_ca;
-    if(!ca)
-    {
-        LOG_MSG_ERROR(CSP_LOG_EN, "_burst_get: no cloud root CA set — TLS will fail %lld - %lld", (unsigned long long)global_root_ca, (unsigned long long)ca);
-    }
-    { MsgHttpSetRootCaRequest::Payload rca{}; rca.cert_pem = ca;
-      hsys_msg_t *m = MsgHttpSetRootCaRequest::create(id(), rca); if (m) send(m, MODULE_HTTP_ID); }
-    { hsys_msg_t *m = MsgHttpSetUrlRequest::create(id(), url); if (m) send(m, MODULE_HTTP_ID); }
-    { hsys_msg_t *m = MsgHttpSendRequest::create(id());        if (m) send(m, MODULE_HTTP_ID); }
-}
-
-void ModuleCubeSphere::_burst_get_with_auth(const char *url, const char *auth_value)
-{
-    char *ca = (char *)global_root_ca;
-    if (!ca) 
-    { 
-        LOG_MSG_ERROR(CSP_LOG_EN, "_burst_get_with_auth: no root CA set — TLS will fail"); 
-    }
-
-    { MsgHttpSetRootCaRequest::Payload rca{}; rca.cert_pem = ca;
-      hsys_msg_t *m = MsgHttpSetRootCaRequest::create(id(), rca); if (m) send(m, MODULE_HTTP_ID); }
-    { hsys_msg_t *m = MsgHttpSetUrlRequest::create(id(), url);              if (m) send(m, MODULE_HTTP_ID); }
-    { hsys_msg_t *m = MsgHttpHeaderRequest::create(id(), "Authorization", auth_value); if (m) send(m, MODULE_HTTP_ID); }
-    { hsys_msg_t *m = MsgHttpSendRequest::create(id());                     if (m) send(m, MODULE_HTTP_ID); }
-}
-
-void ModuleCubeSphere::_burst_post(const char *url, const char *auth_value,
-                                    const char *json_body, uint32_t json_len)
-{
-    const char *ca = (const char *)global_root_ca;
-    if (!ca) { LOG_MSG_ERROR(CSP_LOG_EN, "_burst_post: no root CA set — TLS will fail"); }
-    { MsgHttpSetRootCaRequest::Payload rca{}; rca.cert_pem = ca;
-      hsys_msg_t *m = MsgHttpSetRootCaRequest::create(id(), rca); if (m) send(m, MODULE_HTTP_ID); }
-    { hsys_msg_t *m = MsgHttpSetUrlRequest::create(id(), url);                             if (m) send(m, MODULE_HTTP_ID); }
-    { hsys_msg_t *m = MsgHttpHeaderRequest::create(id(), "Authorization", auth_value);     if (m) send(m, MODULE_HTTP_ID); }
-    { hsys_msg_t *m = MsgHttpHeaderRequest::create(id(), "Content-Type", "application/json"); if (m) send(m, MODULE_HTTP_ID); }
-    LOG_MSG_DEBUG(CSP_LOG_EN, "JSON body: %.*s", (int)json_len, json_body);
-    { hsys_msg_t *m = MsgHttpBodyRequest::create(id(), json_body, json_len);               if (m) send(m, MODULE_HTTP_ID); }
-    { hsys_msg_t *m = MsgHttpSendRequest::create(id());                                    if (m) send(m, MODULE_HTTP_ID); }
 }
 
 void ModuleCubeSphere::_arm_timer(uint32_t duration_ms)
@@ -1442,7 +1410,13 @@ bool ModuleCubeSphere::_retx_try_send_one()
     _retx_in_progress = true;
     _cur_evt          = EVT_PUMPED_RETX;
 
-    _send_http_start(PAL_HTTP_METHOD_POST, 10000, nullptr);
+    {
+        char auth[512] = {};
+        snprintf(auth, sizeof(auth), "Basic %s", _cs_net_cfg.basic_authentication_base64);
+        _begin_http_request(PAL_HTTP_METHOD_POST, 10000,
+                            CS_URL_EVENTS, auth,
+                            _event_json, (uint32_t)strlen(_event_json), nullptr);
+    }
     LOG_MSG_INFO(CSP_LOG_EN, "retx: sending pumped event for nozzle %u", nozzle_idx);
     return true;
 }

@@ -79,21 +79,9 @@
 #include "msg_file_list_spiffs.h"       // MsgFileListSpiffs      (0x020A)
 #include "msg_system_reboot.h"          // MsgSystemReboot        (0x020B)
 #include "msg_sd_cleanup.h"              // MsgSdCleanup           (0x020C)
-#include "msg_http_start_request.h"     // MsgHttpStartRequest    (0x0C00)
-#include "msg_http_start_response.h"    // MsgHttpStartResponse   (0x0C01)
-#include "msg_http_set_url_request.h"   // MsgHttpSetUrlRequest   (0x0C02)
-#include "msg_http_set_url_response.h"  // MsgHttpSetUrlResponse  (0x0C03)
-#include "msg_http_set_root_ca_request.h"  // MsgHttpSetRootCaRequest  (0x0C04)
-#include "msg_http_set_root_ca_response.h" // MsgHttpSetRootCaResponse (0x0C05)
-#include "msg_http_header_request.h"    // MsgHttpHeaderRequest   (0x0C06)
-#include "msg_http_header_response.h"   // MsgHttpHeaderResponse  (0x0C07)
-#include "msg_http_body_request.h"      // MsgHttpBodyRequest     (0x0C08)
-#include "msg_http_body_response.h"     // MsgHttpBodyResponse    (0x0C09)
-#include "msg_http_send_request.h"      // MsgHttpSendRequest     (0x0C0A)
-#include "msg_http_result.h"            // MsgHttpResult          (0x0C0B)
-#include "msg_http_abort_request.h"     // MsgHttpAbortRequest    (0x0C0C)
-#include "msg_http_response_header.h"   // MsgHttpResponseHeader  (0x0C0D)
-#include "msg_http_set_stream_sink.h"   // MsgHttpSetStreamSink   (0x005E)
+#include "msg_http_request.h"           // MsgHttpRequest         (0x005F)
+#include "msg_http_result.h"            // MsgHttpResult          (0x005B)
+#include "msg_http_response_header.h"   // MsgHttpResponseHeader  (0x005D)
 
 // ---------------------------------------------------------------------------
 // Descriptor table macro
@@ -155,23 +143,11 @@
         MsgGetFileListSpiffs::DESCRIPTOR,                                         \
         MsgFileListSpiffs::DESCRIPTOR,                                            \
         MsgSystemReboot::DESCRIPTOR,                                              \
-        MsgHttpStartRequest::DESCRIPTOR,                                          \
-        MsgHttpStartResponse::DESCRIPTOR,                                         \
-        MsgHttpSetUrlRequest::DESCRIPTOR,                                         \
-        MsgHttpSetUrlResponse::DESCRIPTOR,                                        \
-        MsgHttpSetRootCaRequest::DESCRIPTOR,                                      \
-        MsgHttpSetRootCaResponse::DESCRIPTOR,                                     \
-        MsgHttpHeaderRequest::DESCRIPTOR,                                         \
-        MsgHttpHeaderResponse::DESCRIPTOR,                                        \
-        MsgHttpBodyRequest::DESCRIPTOR,                                           \
-        MsgHttpBodyResponse::DESCRIPTOR,                                          \
-        MsgHttpSendRequest::DESCRIPTOR,                                           \
+        MsgHttpRequest::DESCRIPTOR,                                               \
         MsgHttpResult::DESCRIPTOR,                                                \
-        MsgHttpAbortRequest::DESCRIPTOR,                                          \
         MsgSystemReboot::DESCRIPTOR,                                               \
         MsgSdCleanup::DESCRIPTOR,                                                 \
         MsgHttpResponseHeader::DESCRIPTOR,                                        \
-        MsgHttpSetStreamSink::DESCRIPTOR,                                         \
     };                                                                            \
     static const uint16_t k_msg_table_count =                                     \
         (uint16_t)(sizeof(k_msg_table) / sizeof(k_msg_table[0]))

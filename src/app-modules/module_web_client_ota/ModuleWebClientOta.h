@@ -6,18 +6,17 @@
 // all configured targets.  When an update is detected it participates in the
 // standard HSYS OTA session protocol as a SOURCE:
 //
-//   1. Send MsgHttpStartRequest  → ModuleHttp    (POST /check)
-//   2. On MsgHttpStartResponse   → burst-send URL/CA/header/body + SendRequest
-//   3. On MsgHttpResult          → parse JSON; if update_available:
-//   4. Send MsgOtaStartRequest   → OtaModule
-//   5. On MsgOtaStartResponse    → if ACCEPTED:
-//   6. Send MsgOtaRequestDriver  → OtaModule
-//   7. On MsgOtaDriverResponse   → build download URL, send MsgHttpStartRequest
-//   8. On MsgHttpStartResponse   → burst-send SetRootCa + SetStreamSink + SetUrl + SendRequest
-//   9. On MsgHttpResult          → binary written to fs_driver by ModuleHttp
-//  10. Send MsgOtaCompleteNotify → OtaModule
+//   1. Send MsgHttpRequest (POST /check)        → ModuleHttp
+//   2. On MsgHttpResult                         → parse JSON; if update_available:
+//   3. Send MsgOtaStartRequest                  → OtaModule
+//   4. On MsgOtaStartResponse (ACCEPTED):
+//   5. Send MsgOtaRequestDriver                 → OtaModule
+//   6. On MsgOtaDriverResponse                  → build download URL
+//   7. Send MsgHttpRequest (GET /download, stream_sink) → ModuleHttp
+//   8. On MsgHttpResult                         → binary written to fs_driver by ModuleHttp
+//   9. Send MsgOtaCompleteNotify                → OtaModule
 //
-// Non-blocking: all HTTP calls go through ModuleHttp via messages.
+// Non-blocking: all HTTP calls go through ModuleHttp via a single MsgHttpRequest.
 // This module can share any task with other non-blocking modules.
 
 #pragma once
@@ -93,8 +92,7 @@ private:
     /** HTTP lifecycle phase within a single HTTP session. */
     typedef enum {
         HTTP_IDLE,       ///< No HTTP session in progress
-        HTTP_STARTING,   ///< MsgHttpStartRequest sent; awaiting MsgHttpStartResponse
-        HTTP_EXECUTING,  ///< Session open + burst sent; awaiting MsgHttpResult
+        HTTP_EXECUTING,  ///< MsgHttpRequest sent; awaiting MsgHttpResult
     } http_phase_t;
 
     state_t      _state         = STATE_IDLE;
@@ -130,19 +128,13 @@ private:
     /** Build an hsys_ota_cfg_t for the given target slot using cached config. */
     bool _build_cfg(uint8_t slot, hsys_ota_cfg_t *out) const;
 
-    /** Send MsgHttpStartRequest to ModuleHttp and transition _http_phase. */
-    void _send_http_start(pal_http_method_t method, uint32_t timeout_ms);
+    /** Build and send MsgHttpRequest for version-check POST. */
+    void _send_check_request(uint8_t slot);
 
-    /** Burst-send SetRootCa + Content-Type header + SetUrl(check) + Body + Send. */
-    void _burst_check_post(uint8_t slot);
-
-    /** Burst-send SetRootCa + SetStreamSink + SetUrl(download) + Send. */
-    void _burst_download_get(uint8_t slot,
-                              const ota_fs_driver_t *drv, void *ctx,
-                              uint32_t expected_crc32);
-
-    /** Handle MsgHttpStartResponse (common for both check and download). */
-    void _on_http_start_response(const hsys_msg_t &msg);
+    /** Build and send MsgHttpRequest for firmware download GET with stream sink. */
+    void _send_download_request(uint8_t slot,
+                                 const ota_fs_driver_t *drv, void *ctx,
+                                 uint32_t expected_crc32);
 
     /** Handle MsgHttpResult for the version-check POST. */
     void _on_check_result(const hsys_msg_t &msg);
