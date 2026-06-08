@@ -287,12 +287,13 @@ int32_t pal_sd_file_append(const char* path, const char* data, size_t size) {
     }
     
     size_t written = fwrite(data, 1, size, file);
+    fflush(file);
     fclose(file);
-    
+
     if(written != size) {
         return PAL_ERROR_IO;
     }
-    
+
     return PAL_OK;
 }
 

@@ -27,6 +27,7 @@ static void _serialize_event(const retx_event_t *event,
                               (int)event->type, (unsigned)event->payload_len);
     if (header_len > 0 && (size_t)(header_len + event->payload_len) < max_len) {
         memcpy(out_buf + header_len, event->payload, event->payload_len);
+        out_buf[header_len + event->payload_len] = '\0';
     }
 }
 

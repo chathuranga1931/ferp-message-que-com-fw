@@ -352,8 +352,15 @@ int32_t list_mgr_peek_next(
             // Read line
             int32_t ret = handle->config.storage->read_line(file_path, line_in_file, out_buf, max_len, 5000);
             if (ret != 0) {
-                LIST_MGR_LOG_ERROR("Failed to read line, ret=%d", ret);
-                return LIST_MGR_ERR_STORAGE_FAILED;
+                // File and metadata are out of sync (e.g. FAT write lost on power cycle).
+                // Advance past all remaining lines for this day so we do not retry forever,
+                // then fall through to check older days.
+                LIST_MGR_LOG_ERROR("File/meta inconsistency at day[%u](%s) line %u — skipping day (total=%u)",
+                    (unsigned)i, handle->day_meta[i].date_key,
+                    (unsigned)line_idx, (unsigned)handle->day_meta[i].total_lines);
+                handle->day_meta[i].current_index = handle->day_meta[i].total_lines;
+                _save_metadata(handle);
+                continue;
             }
             
             // Fill read handle

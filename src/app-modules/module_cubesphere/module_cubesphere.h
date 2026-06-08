@@ -318,6 +318,7 @@ private:
     // ── Retransmission ────────────────────────────────────────────────────────
     void _retx_init();
     void _retx_store_pumped(const MsgFuelPumped::Payload &p);
+    void _retx_drain_pump_q();
     void _retx_process_one();
     bool _retx_try_send_one();   ///< Dequeue one event and push it to the HTTP send pipeline. Returns true if a send was started.
 

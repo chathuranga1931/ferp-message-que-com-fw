@@ -227,6 +227,15 @@ void ModuleCubeSphere::_on_fuel_pumped(const hsys_msg_t &msg)
         return;
     }
 
+    if (!_internet_connected) {
+        LOG_MSG_WARNING(CSP_LOG_EN, "fuel pumped but offline — storing for retx (nozzle=%u)",
+                        (unsigned)p.nozzle_idx);
+        _pumped_failure++;
+        _publish_status(CUBESPHERE_STATUS_PUMPED_FAILED, p.nozzle_idx);
+        _retx_store_pumped(p);
+        return;
+    }
+
     if (hsys_queue_size(&_pump_q) + 1U > k_pump_q_size) {
         LOG_MSG_WARNING(CSP_LOG_EN,
                         "pump queue full (nozzle=%u, q=%u) — storing for retx",
@@ -997,6 +1006,7 @@ void ModuleCubeSphere::_on_event_result(const hsys_msg_t &msg)
                               (int)f.body_len, f.body ? (const char *)f.body : "(null)");
                 _pending_startup = true;
                 _cur_evt = EVT_NONE;
+                _retx_drain_pump_q();
                 _arm_timer(10000);
                 return;
             }
@@ -1020,11 +1030,21 @@ void ModuleCubeSphere::_on_event_result(const hsys_msg_t &msg)
                 LOG_MSG_INFO(CSP_LOG_EN, "pumped OK (total=%lu)", (unsigned long)_pumped_success);
             } else {
                 _pumped_failure++;
-                LOG_MSG_WARNING(CSP_LOG_EN, "pumped failed result=%d status=%d",
+                LOG_MSG_WARNING(CSP_LOG_EN, "pumped failed result=%d status=%d — storing for retx",
                                 (int)f.result, (int)f.status_code);
                 LOG_MSG_DEBUG(CSP_LOG_EN, "pumped response body: %.*s",
                               (int)f.body_len, f.body ? (const char *)f.body : "(null)");
                 _publish_status(CUBESPHERE_STATUS_PUMPED_FAILED);
+                {
+                    MsgFuelPumped::Payload rp = {};
+                    rp.nozzle_idx      = _last_pumped_nozzle_idx;
+                    rp.vol_lx1000      = _last_pumped_vol_lx1000;
+                    rp.unit_pricex100  = _last_pumped_unit_px100;
+                    rp.total_pricex100 = _last_pumped_total_px100;
+                    rp.time_stamp      = (uint32_t)_last_pumped_ts_epoch;
+                    rp.ne_id           = _last_pumped_ne_id;
+                    _retx_store_pumped(rp);
+                }
             }
             break;
         case EVT_PUMPED_RETX:
@@ -1322,6 +1342,29 @@ void ModuleCubeSphere::_retx_store_pumped(const MsgFuelPumped::Payload &p)
 
     retx_mgr_add_failed_event(&_retx_mgr, date_key, RETX_EVENT_TYPE_PUMPED,
                                json, strlen(json));
+}
+
+void ModuleCubeSphere::_retx_drain_pump_q()
+{
+    uint32_t count = 0;
+    while (!hsys_queue_is_empty(&_pump_q)) {
+        PumpedQEntry e;
+        hsys_queue_receive(&_pump_q, &e, 0);
+
+        MsgFuelPumped::Payload p = {};
+        p.nozzle_idx      = e.nozzle_idx;
+        p.vol_lx1000      = e.vol_lx1000;
+        p.unit_pricex100  = e.unit_pricex100;
+        p.total_pricex100 = e.total_pricex100;
+        p.time_stamp      = (uint32_t)e.ts_epoch;
+        p.ne_id           = e.ne_id;
+        _retx_store_pumped(p);
+        count++;
+    }
+    if (count > 0) {
+        LOG_MSG_WARNING(CSP_LOG_EN, "drained %u queued pump event(s) to retx SD (offline)",
+                        (unsigned)count);
+    }
 }
 
 void ModuleCubeSphere::_retx_process_one()
