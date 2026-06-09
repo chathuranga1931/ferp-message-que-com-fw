@@ -176,23 +176,15 @@ bool hongyang8_process_data(app_display_data_t * display_data){
         // than actual total, causing uint64_t underflow and a spurious huge gap.
         int64_t gapx100 = (int64_t)total_price_expectedx100 - (int64_t)display_data->total_pricex100;
 
-        if((ABS(gapx100) > 100) && display_data->total_pricex100 == 0 && display_data->volume_lx1000 > 0){
+        if((ABS(gapx100) > 200) && display_data->total_pricex100 == 0 && display_data->volume_lx1000 > 0){
             display_data->total_pricex100 = corrected_total_price(true, total_price_expectedx100);
         }    
-        else if(ABS(gapx100) > 100){
+        else if(ABS(gapx100) > 200){
             if(total_price_expectedx100 >= 10000000){
-                display_data->total_pricex100 = display_data->total_pricex100 + (((uint32_t)(total_price_expectedx100))/10000000)*1000000;
+                display_data->total_pricex100 = display_data->total_pricex100 + (total_price_expectedx100/10000000)*10000000;
                 gapx100 = (int64_t)total_price_expectedx100 - (int64_t)display_data->total_pricex100;
-                if(ABS(gapx100) > 100){
+                if(ABS(gapx100) > 200){
                     error_code_for_debugging = 8;
-                    break;
-                }
-            }
-            else if(total_price_expectedx100 >= 1000000){
-                display_data->total_pricex100 = display_data->total_pricex100 + (((uint32_t)(total_price_expectedx100))/1000000)*1000000;
-                gapx100 = (int64_t)total_price_expectedx100 - (int64_t)display_data->total_pricex100;
-                if(ABS(gapx100) > 100){
-                    error_code_for_debugging = 4;
                     break;
                 }
             }
@@ -200,7 +192,7 @@ bool hongyang8_process_data(app_display_data_t * display_data){
                 error_code_for_debugging = 5;
                 break;
             }
-        } 
+        }
 
         if((display_data->volume_lx1000 == 0) && (display_data->total_pricex100 > 0)){
             error_code_for_debugging = 6;

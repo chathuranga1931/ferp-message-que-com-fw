@@ -340,10 +340,10 @@ const pump_driver_t pump_drivers[DIS_SIZE] = {
         (fp_pump_data_validate *)censtar7_data_validate
     },
     /* DIS_CENSTAR_7_DIGIT_CS [3] */ {
-        (fp_pump_get_event_t *)longfeng8_get_event,
-        (fp_pump_process_data_t *)longfeng8_process_data,
-        (fp_pump_process_state_machine_t *)longfeng8_process_state_machine,
-        (fp_pump_data_validate *)longfeng8_data_validate
+        (fp_pump_get_event_t *)censtar7_get_event,
+        (fp_pump_process_data_t *)censtar7_process_data,
+        (fp_pump_process_state_machine_t *)censtar7_process_state_machine,
+        (fp_pump_data_validate *)censtar7_data_validate
     },
     /* DIS_HONGYANG_8_DIGIT [4] */ {
         (fp_pump_get_event_t *)hongyang8_get_event,
