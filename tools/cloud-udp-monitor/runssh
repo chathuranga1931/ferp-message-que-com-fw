@@ -1,0 +1,138 @@
+#!/bin/zsh
+
+SERVER="144.24.156.245"
+USER="ubuntu"
+KEY="/Volumes/DataMac/Keys/ssh-key-2024-05-24.key"
+
+CMD="$1"
+
+show_usage() {
+    echo "Usage:"
+    echo "  $0 --listsheds <date>"
+    echo "  $0 --listpumps <shed> <date>"
+    echo "  $0 --listfiles <shed> <pump> <date>"
+    echo "  $0 --logging <shed> <pump> <date> <time>"
+    echo "  $0 --download-file <shed> <pump> <date> <time>"
+    echo "  $0 --download-shed-date <shed> <date>"
+    echo "  $0 --download-shed-pump-date <shed> <pump> <date>"
+    echo ""
+    echo "Examples:"
+    echo "  $0 --listsheds 2026-06-09"
+    echo "  $0 --listpumps YAKKALA 2026-06-09"
+    echo "  $0 --listfiles YAKKALA D04 2026-06-09"
+    echo "  $0 --logging YAKKALA D04 2026-06-09 1816"
+    echo "  $0 --download-file YAKKALA D04 2026-06-09 1816"
+    echo "  $0 --download-shed-date YAKKALA 2026-06-09"
+    echo "  $0 --download-shed-pump-date YAKKALA D04 2026-06-09"
+    echo ""
+
+    echo "Available sheds: BANDA ,Invalid format, MAKOLA, NAWINNA, NUELIYA, PINNA, POLGAS, TEST, UNKNOWN, WANDURAMBA, WELI, YAKKALA"
+}
+
+case "$CMD" in
+
+    --listsheds)
+        DATE1="$2"
+
+        if [ -z "$DATE1" ]; then
+            show_usage
+            exit 1
+        fi
+
+        ssh -i "$KEY" "$USER@$SERVER" \
+            "ls logs/$DATE1"
+        ;;
+
+    --listpumps)
+        SHEDNAME="$2"
+        DATE1="$3"
+
+        if [ -z "$SHEDNAME" ] || [ -z "$DATE1" ]; then
+            show_usage
+            exit 1
+        fi
+
+        ssh -i "$KEY" "$USER@$SERVER" \
+            "ls logs/$DATE1/$SHEDNAME"
+        ;;
+
+    --listfiles)
+        SHEDNAME="$2"
+        PUMPNAME="$3"
+        DATE1="$4"
+        DATE2="${DATE1//-/}"
+
+        if [ -z "$SHEDNAME" ] || [ -z "$PUMPNAME" ] || [ -z "$DATE1" ]; then
+            show_usage
+            exit 1
+        fi
+
+        ssh -i "$KEY" "$USER@$SERVER" \
+            "ls logs/$DATE1/$SHEDNAME/${SHEDNAME}-${PUMPNAME}-${DATE2}*"
+        ;;
+
+    --logging)
+        SHEDNAME="$2"
+        PUMPNAME="$3"
+        DATE1="$4"
+        TIME="$5"
+        DATE2="${DATE1//-/}"
+
+        if [ -z "$SHEDNAME" ] || [ -z "$PUMPNAME" ] || [ -z "$DATE1" ] || [ -z "$TIME" ]; then
+            show_usage
+            exit 1
+        fi
+
+        ssh -i "$KEY" "$USER@$SERVER" \
+            "tail -f logs/$DATE1/$SHEDNAME/${SHEDNAME}-${PUMPNAME}-${DATE2}-${TIME}*.txt"
+        ;;
+    
+    --download-file)
+        SHEDNAME="$2"
+        PUMPNAME="$3"
+        DATE1="$4"
+        TIME="$5"
+        DATE2="${DATE1//-/}"
+
+        if [ -z "$SHEDNAME" ] || [ -z "$PUMPNAME" ] || [ -z "$DATE1" ] || [ -z "$TIME" ]; then
+            show_usage
+            exit 1
+        fi
+
+        scp -i "$KEY" "$USER@$SERVER:logs/$DATE1/$SHEDNAME/${SHEDNAME}-${PUMPNAME}-${DATE2}-${TIME}*.txt" .
+        ;;
+    
+    --download-shed-date)
+        SHEDNAME="$2"
+        DATE1="$3"
+        DATE2="${DATE1//-/}"
+
+        if [ -z "$SHEDNAME" ] || [ -z "$DATE1" ]; then
+            show_usage
+            exit 1
+        fi
+
+        mkdir -p "$SHEDNAME/$DATE1"
+        scp -i "$KEY" "$USER@$SERVER:logs/$DATE1/$SHEDNAME/*.txt" "$SHEDNAME/$DATE1/"
+        ;;
+    
+    --download-shed-pump-date)
+        SHEDNAME="$2"
+        PUMPNAME="$3"
+        DATE1="$4"
+        DATE2="${DATE1//-/}"
+
+        if [ -z "$SHEDNAME" ] || [ -z "$PUMPNAME" ] || [ -z "$DATE1" ]; then
+            show_usage
+            exit 1
+        fi
+
+        mkdir -p "$SHEDNAME/$DATE1/$PUMPNAME"
+        scp -i "$KEY" "$USER@$SERVER:logs/$DATE1/$SHEDNAME/${SHEDNAME}-${PUMPNAME}-*.txt" "$SHEDNAME/$DATE1/$PUMPNAME/"
+        ;;
+
+    *)
+        show_usage
+        exit 1
+        ;;
+esac
