@@ -18,8 +18,14 @@
 #                 at the odd version.
 #
 # Variables (edit as needed):
+
+# if virtual is not working, run this once
+# /Users/chathuranga/.espressif/v6.0.1/esp-idf/install.sh esp32
+
 COMPORT="/dev/tty.usbserial-A5069RR4"
-IDF_PATH="/Volumes/Data/esp/.espressif/v5.5.3/esp-idf"
+# /Users/chathuranga/.espressif/tools/activate_idf_v6.0.1.sh'
+# /Users/chathuranga/.espressif/v6.0.1/esp-idf
+IDF_PATH="/Users/chathuranga/.espressif/v6.0.1/esp-idf"
 
 # Project root (relative to this script)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

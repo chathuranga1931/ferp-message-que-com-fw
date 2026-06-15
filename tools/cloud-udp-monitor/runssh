@@ -2,7 +2,7 @@
 
 SERVER="144.24.156.245"
 USER="ubuntu"
-KEY="/Volumes/DataMac/Keys/ssh-key-2024-05-24.key"
+KEY="/Users/chathuranga/DATA/Keys/ssh-key-2024-05-24.key"
 
 CMD="$1"
 
