@@ -106,9 +106,13 @@ void FuelDispTapDriver::start(display_type_t display_type, frame_cb_t on_frame,
 
     distap_set_display_type(display_type);
     
-    // ── Set error mask (accept all errors for now) ────────────────────────────
+    // ── Set error mask ────────────────────────────────────────────────────────
+    // price_gap is excluded: when the 7-digit display rolls over at Rs.99999.99
+    // the gap spikes to ~10,000,000 which the DT board would otherwise suppress.
+    // censtar7_process_data() on this side corrects the rollover instead.
     data_error_t err_mask{};
     err_mask.u8int = 0xFF;
+    err_mask.bits.price_gap = false;
     rc = distap_set_err_mask(err_mask);
     if (rc != ESP_OK) {
         MLOGE("distap_set_err_mask failed (%d)", rc);
