@@ -1,16 +1,49 @@
 #include "pal/pal_i2c.h"
-#include <driver/i2c.h>
+#include "driver/i2c_master.h"
 #include <esp_log.h>
+#include <string.h>
 
 static const char* TAG = "PAL_I2C";
 
-// Convert PAL port to ESP-IDF port
-static i2c_port_t convert_port(pal_i2c_port_t port) {
-    switch(port) {
-        case PAL_I2C_PORT_0: return I2C_NUM_0;
-        case PAL_I2C_PORT_1: return I2C_NUM_1;
-        default: return I2C_NUM_0;
+#define PAL_I2C_MAX_DEVICES 4
+
+static i2c_master_bus_handle_t s_bus[2]        = {NULL, NULL};
+static uint32_t                s_bus_speed[2]  = {100000, 100000};
+
+typedef struct {
+    uint8_t               port_idx;
+    uint8_t               addr;
+    i2c_master_dev_handle_t handle;
+} dev_entry_t;
+
+static dev_entry_t s_devs[PAL_I2C_MAX_DEVICES];
+static int         s_dev_count = 0;
+
+static int port_idx(pal_i2c_port_t port) {
+    return (port == PAL_I2C_PORT_0) ? 0 : 1;
+}
+
+static i2c_master_dev_handle_t get_dev(pal_i2c_port_t port, uint8_t addr) {
+    int idx = port_idx(port);
+    for (int i = 0; i < s_dev_count; i++) {
+        if (s_devs[i].port_idx == idx && s_devs[i].addr == addr)
+            return s_devs[i].handle;
     }
+    if (s_dev_count >= PAL_I2C_MAX_DEVICES || !s_bus[idx]) return NULL;
+
+    i2c_device_config_t dev_cfg = {};
+    dev_cfg.dev_addr_length = I2C_ADDR_BIT_LEN_7;
+    dev_cfg.device_address  = addr;
+    dev_cfg.scl_speed_hz    = s_bus_speed[idx];
+
+    i2c_master_dev_handle_t handle;
+    if (i2c_master_bus_add_device(s_bus[idx], &dev_cfg, &handle) != ESP_OK) return NULL;
+
+    s_devs[s_dev_count].port_idx = (uint8_t)idx;
+    s_devs[s_dev_count].addr     = addr;
+    s_devs[s_dev_count].handle   = handle;
+    s_dev_count++;
+    return handle;
 }
 
 int32_t pal_i2c_init(pal_i2c_port_t port, const pal_i2c_config_t* config) {
@@ -18,115 +51,81 @@ int32_t pal_i2c_init(pal_i2c_port_t port, const pal_i2c_config_t* config) {
         return PAL_ERROR_INVALID;
     }
 
-    i2c_config_t conf = {
-        .mode = (config->mode == PAL_I2C_MODE_MASTER) ? I2C_MODE_MASTER : I2C_MODE_SLAVE,
-        .sda_io_num = config->sda_pin,
-        .scl_io_num = config->scl_pin,
-        .sda_pullup_en = config->sda_pullup_enable ? GPIO_PULLUP_ENABLE : GPIO_PULLUP_DISABLE,
-        .scl_pullup_en = config->scl_pullup_enable ? GPIO_PULLUP_ENABLE : GPIO_PULLUP_DISABLE,
-        .master = {
-            .clk_speed = config->clock_speed,
-        },
-    };
+    int idx = port_idx(port);
+    s_bus_speed[idx] = config->clock_speed > 0 ? config->clock_speed : 100000;
 
-    i2c_port_t i2c_port = convert_port(port);
-    
-    esp_err_t ret = i2c_param_config(i2c_port, &conf);
+    i2c_master_bus_config_t bus_cfg = {};
+    bus_cfg.i2c_port                  = (i2c_port_num_t)idx;
+    bus_cfg.sda_io_num                = (gpio_num_t)config->sda_pin;
+    bus_cfg.scl_io_num                = (gpio_num_t)config->scl_pin;
+    bus_cfg.clk_source                = I2C_CLK_SRC_DEFAULT;
+    bus_cfg.glitch_ignore_cnt         = 7;
+    bus_cfg.flags.enable_internal_pullup =
+        config->sda_pullup_enable || config->scl_pullup_enable;
+
+    esp_err_t ret = i2c_new_master_bus(&bus_cfg, &s_bus[idx]);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "I2C param config failed: %d", ret);
+        ESP_LOGE(TAG, "I2C bus init failed: %d", ret);
         return PAL_ERROR;
     }
 
-    ret = i2c_driver_install(i2c_port, conf.mode, 0, 0, 0);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "I2C driver install failed: %d", ret);
-        return PAL_ERROR;
-    }
-
-    ESP_LOGI(TAG, "I2C port %d initialized (SDA:%d SCL:%d @ %lu Hz)", 
+    ESP_LOGI(TAG, "I2C port %d initialized (SDA:%d SCL:%d @ %lu Hz)",
              port, config->sda_pin, config->scl_pin, config->clock_speed);
-    
     return PAL_OK;
 }
 
 int32_t pal_i2c_deinit(pal_i2c_port_t port) {
-    i2c_port_t i2c_port = convert_port(port);
-    
-    esp_err_t ret = i2c_driver_delete(i2c_port);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "I2C driver delete failed: %d", ret);
-        return PAL_ERROR;
+    int idx = port_idx(port);
+    if (!s_bus[idx]) return PAL_OK;
+
+    i2c_del_master_bus(s_bus[idx]);
+    s_bus[idx] = NULL;
+
+    // Remove cached device entries for this port
+    int w = 0;
+    for (int r = 0; r < s_dev_count; r++) {
+        if (s_devs[r].port_idx != idx)
+            s_devs[w++] = s_devs[r];
     }
-    
+    s_dev_count = w;
     return PAL_OK;
 }
 
 bool pal_i2c_device_probe(pal_i2c_port_t port, uint8_t device_address, uint32_t timeout_ms) {
-    i2c_port_t i2c_port = convert_port(port);
-    
-    i2c_cmd_handle_t cmd = i2c_cmd_link_create();
-    i2c_master_start(cmd);
-    i2c_master_write_byte(cmd, (device_address << 1) | I2C_MASTER_WRITE, true);
-    i2c_master_stop(cmd);
-    
-    esp_err_t ret = i2c_master_cmd_begin(i2c_port, cmd, pdMS_TO_TICKS(timeout_ms));
-    i2c_cmd_link_delete(cmd);
-    
-    return (ret == ESP_OK);
+    int idx = port_idx(port);
+    if (!s_bus[idx]) return false;
+    return i2c_master_probe(s_bus[idx], device_address, (int)timeout_ms) == ESP_OK;
 }
 
-int32_t pal_i2c_write(pal_i2c_port_t port, uint8_t device_address, 
+int32_t pal_i2c_write(pal_i2c_port_t port, uint8_t device_address,
                       const uint8_t* data, size_t length, uint32_t timeout_ms) {
     if (data == NULL || length == 0) {
         return PAL_ERROR_INVALID;
     }
+    i2c_master_dev_handle_t dev = get_dev(port, device_address);
+    if (!dev) return PAL_ERROR;
 
-    i2c_port_t i2c_port = convert_port(port);
-    
-    i2c_cmd_handle_t cmd = i2c_cmd_link_create();
-    i2c_master_start(cmd);
-    i2c_master_write_byte(cmd, (device_address << 1) | I2C_MASTER_WRITE, true);
-    i2c_master_write(cmd, (uint8_t*)data, length, true);
-    i2c_master_stop(cmd);
-    
-    esp_err_t ret = i2c_master_cmd_begin(i2c_port, cmd, pdMS_TO_TICKS(timeout_ms));
-    i2c_cmd_link_delete(cmd);
-    
+    esp_err_t ret = i2c_master_transmit(dev, data, length, (int)timeout_ms);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "I2C write failed: %d", ret);
         return PAL_ERROR;
     }
-    
     return PAL_OK;
 }
 
-int32_t pal_i2c_read(pal_i2c_port_t port, uint8_t device_address, 
+int32_t pal_i2c_read(pal_i2c_port_t port, uint8_t device_address,
                      uint8_t* data, size_t length, uint32_t timeout_ms) {
     if (data == NULL || length == 0) {
         return PAL_ERROR_INVALID;
     }
+    i2c_master_dev_handle_t dev = get_dev(port, device_address);
+    if (!dev) return PAL_ERROR;
 
-    i2c_port_t i2c_port = convert_port(port);
-    
-    i2c_cmd_handle_t cmd = i2c_cmd_link_create();
-    i2c_master_start(cmd);
-    i2c_master_write_byte(cmd, (device_address << 1) | I2C_MASTER_READ, true);
-    
-    if (length > 1) {
-        i2c_master_read(cmd, data, length - 1, I2C_MASTER_ACK);
-    }
-    i2c_master_read_byte(cmd, data + length - 1, I2C_MASTER_NACK);
-    
-    i2c_master_stop(cmd);
-    
-    esp_err_t ret = i2c_master_cmd_begin(i2c_port, cmd, pdMS_TO_TICKS(timeout_ms));
-    i2c_cmd_link_delete(cmd);
-    
+    esp_err_t ret = i2c_master_receive(dev, data, length, (int)timeout_ms);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "I2C read failed: %d", ret);
         return PAL_ERROR;
     }
-    
     return PAL_OK;
 }
 
@@ -137,34 +136,14 @@ int32_t pal_i2c_write_read(pal_i2c_port_t port, uint8_t device_address,
     if (write_data == NULL || write_length == 0 || read_data == NULL || read_length == 0) {
         return PAL_ERROR_INVALID;
     }
+    i2c_master_dev_handle_t dev = get_dev(port, device_address);
+    if (!dev) return PAL_ERROR;
 
-    i2c_port_t i2c_port = convert_port(port);
-    
-    i2c_cmd_handle_t cmd = i2c_cmd_link_create();
-    
-    // Write phase
-    i2c_master_start(cmd);
-    i2c_master_write_byte(cmd, (device_address << 1) | I2C_MASTER_WRITE, true);
-    i2c_master_write(cmd, (uint8_t*)write_data, write_length, true);
-    
-    // Read phase (repeated start)
-    i2c_master_start(cmd);
-    i2c_master_write_byte(cmd, (device_address << 1) | I2C_MASTER_READ, true);
-    
-    if (read_length > 1) {
-        i2c_master_read(cmd, read_data, read_length - 1, I2C_MASTER_ACK);
-    }
-    i2c_master_read_byte(cmd, read_data + read_length - 1, I2C_MASTER_NACK);
-    
-    i2c_master_stop(cmd);
-    
-    esp_err_t ret = i2c_master_cmd_begin(i2c_port, cmd, pdMS_TO_TICKS(timeout_ms));
-    i2c_cmd_link_delete(cmd);
-    
+    esp_err_t ret = i2c_master_transmit_receive(dev, write_data, write_length,
+                                                read_data, read_length, (int)timeout_ms);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "I2C write-read failed: %d", ret);
         return PAL_ERROR;
     }
-    
     return PAL_OK;
 }

@@ -279,7 +279,11 @@ idf_component_register(
 
     PRIV_REQUIRES
         log
-        driver
+        esp_driver_uart
+        esp_driver_gpio
+        esp_driver_i2c
+        esp_driver_spi
+        esp_driver_sdspi
         esp_wifi
         esp_event
         esp_netif
@@ -287,7 +291,7 @@ idf_component_register(
         spiffs
         fatfs
         sdmmc
-        mqtt
+        espressif__mqtt
         esp_http_client
         esp_http_server
         esp-tls
@@ -295,6 +299,7 @@ idf_component_register(
         nvs_flash
         esp_system
         app_update
+        mbedtls
 )
 
 # ── Per-file compile-option overrides ─────────────────────────────────────────
