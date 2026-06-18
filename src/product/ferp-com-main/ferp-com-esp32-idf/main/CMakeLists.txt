@@ -88,6 +88,7 @@ idf_component_register(
         "${D_MSGS}/system/msg_file_list_spiffs.cpp"
         "${D_MSGS}/system/msg_system_reboot.cpp"
         "${D_MSGS}/system/msg_sd_cleanup.cpp"
+        "${D_MSGS}/system/msg_spiffs_cleanup.cpp"
         # Config messages
         "${D_MSGS}/configs/msg_config_ready.cpp"
         "${D_MSGS}/configs/msg_config_set.cpp"
@@ -149,6 +150,7 @@ idf_component_register(
         # ── App peripherals ───────────────────────────────────────────────
         "${D_PHER}/app_spiffs.cpp"
         "${D_PHER}/app_sd.cpp"
+        "${D_PHER}/app_nvs.cpp"
 
         # ── Generic peripheral implementations ────────────────────────────
         "${D_SUB}/peripheral/generic_peripheral/hsys_led.cpp"
@@ -182,6 +184,7 @@ idf_component_register(
         "${D_SUB}/pal/esp-idf/pal_esp_idf_crypto.cpp"
         "${D_SUB}/pal/esp-idf/pal_esp_idf_fw_update.cpp"
         "${D_SUB}/pal/esp-idf/pal_esp_idf_udp_log.cpp"
+        "${D_SUB}/pal/esp-idf/pal_esp_idf_nvs.cpp"
 
         # ── DISTAP device library (protocol only, from ferp_board) ───────
         "${D_SUB}/ferp-device-firmware/ferp_board/main-esp32/lib/device/board.c"

@@ -163,23 +163,6 @@ int32_t pal_spiffs_file_write(const char* path, const uint8_t * data, size_t siz
     LOG_MSG_DEBUG(SPIF_DEBUG_LOG_EN, "write: '%s' size=%zu | spiffs total=%zu used=%zu free=%zu",
                   full_path, size, _total, _used, _total - _used);
 
-    // SPIFFS does not support truncation via fopen("w") on an existing file reliably.
-    // Deleting the file first forces SPIFFS to free its page entries.
-    // Then run GC to physically erase the reclaimed sectors — without this, unlinked
-    // pages remain "logically free" but physically unwritable, causing ENOSPC on fopen.
-    struct stat _st;
-    if(stat(full_path, &_st) == 0) {
-        if(unlink(full_path) != 0) {
-            LOG_MSG_ERROR(SPIF_ERROR_LOG_EN, "unlink failed for '%s': errno=%d (%s)", full_path, errno, strerror(errno));
-            return PAL_ERROR_IO;
-        }
-        // GC enough space for the new file (size + one full erase block as headroom)
-        esp_err_t gc_ret = esp_spiffs_gc(NULL, size + 4096);
-        if(gc_ret != ESP_OK) {
-            LOG_MSG_WARNING(SPIF_WARN_LOG_EN, "esp_spiffs_gc returned: %s (continuing)", esp_err_to_name(gc_ret));
-        }
-    }
-
     FILE* file = fopen(full_path, "w");
     if(file == NULL) {
         LOG_MSG_ERROR(SPIF_ERROR_LOG_EN, "fopen failed for '%s': errno=%d (%s)", full_path, errno, strerror(errno));

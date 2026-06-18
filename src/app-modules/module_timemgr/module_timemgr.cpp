@@ -4,21 +4,19 @@
 //
 // Boot sequence:
 //   1. init() tries the DS1307 RTC immediately.
-//   2. A 20-second one-shot timer guards the SPIFFS-ready wait.
-//   3. On MsgSpiffsReady: load backup, publish status, enter WAIT_INTERNET.
-//   4. On MsgInternetStatus(connected=true): start NTP, enter NTP_SYNC.
-//   5. On timer alarm in NTP_SYNC: poll pal_ntp_timesync_process().
-//   6. On NTP done: set sys time, write RTC + SPIFFS, enter READY.
-//   7. In READY: 5-minute backup timer fires and writes timemgr.bin.
+//   2. init() loads NVS backup (NVS is always ready at boot, no wait needed).
+//   3. On MsgInternetStatus(connected=true): start NTP, enter NTP_SYNC.
+//   4. On timer alarm in NTP_SYNC: poll pal_ntp_timesync_process().
+//   5. On NTP done: set sys time, write RTC + NVS, enter READY.
+//   6. In READY: 5-minute backup timer fires and writes NVS.
 
 #include "module_timemgr.h"
 
 #include "ds1307.hpp"
 #include "pal_ntp.h"
-#include "pal_spiffs.h"
+#include "app_nvs.h"
 #include "pal_logger.h"
 
-#include "msg_spiffs_ready.h"
 #include "msg_internet_status.h"
 #include "msg_timer_start.h"
 #include "msg_timer_stop.h"
@@ -37,10 +35,10 @@
 // Constants
 // ---------------------------------------------------------------------------
 
-static const char   k_backup_file[]         = "timemgr.bin";
-static const time_t k_min_valid_epoch       = 1577836800LL;   /* 2020-01-01 UTC */
+static const char    k_nvs_ns[]             = "timemgr";
+static const char    k_nvs_key[]            = "epoch";
+static const time_t  k_min_valid_epoch      = 1577836800LL;   /* 2020-01-01 UTC */
 static const int64_t k_backup_interval_s    = 300LL;          /* 5 minutes */
-static const uint32_t k_spiffs_timeout_ms   = 20000u;         /* 20 s */
 static const uint32_t k_ntp_poll_ms         = 5000u;          /* 5 s */
 static const uint32_t k_backup_interval_ms  = 300000u;        /* 5 min */
 
@@ -57,19 +55,22 @@ ModuleTimeMgr *ModuleTimeMgr::instance() { return &s_instance; }
 
 void ModuleTimeMgr::init()
 {
-    subscribe(MsgSpiffsReady::ID);
     subscribe(MsgInternetStatus::ID);
     subscribe(MsgTimerAlarm::ID);
     subscribe(MsgTimerStartResponse::ID);
 
-    /* Try the RTC immediately — it doesn't depend on SPIFFS */
+    /* Try the hardware RTC first */
     _try_rtc();
 
-    /* Guard: if SPIFFS never mounts, time out after 20 s */
-    _arm_timer(k_spiffs_timeout_ms, /*repetitive=*/false);
+    /* NVS is always available at boot — no need to wait for any mount event */
+    app_nvs_init();
+    _try_nvs_backup();
 
-    _state = STATE_WAIT_SPIFFS;
-    LOG_MSG_INFO(TIME_LOG, "init: state=WAIT_SPIFFS rtc_source=%d", (int)_best_source);
+    bool valid = (_best_source != TIME_SOURCE_NONE);
+    _publish_status(valid);
+
+    _state = STATE_WAIT_INTERNET;
+    LOG_MSG_INFO(TIME_LOG, "init: source=%d valid=%d", (int)_best_source, (int)valid);
 }
 
 // ---------------------------------------------------------------------------
@@ -79,9 +80,6 @@ void ModuleTimeMgr::init()
 void ModuleTimeMgr::on_msg_received(const hsys_msg_t &msg)
 {
     switch (msg.msg_id) {
-        case MsgSpiffsReady::ID:
-            _on_spiffs_ready(msg);
-            break;
         case MsgInternetStatus::ID:
             _on_internet_status(msg);
             break;
@@ -99,20 +97,6 @@ void ModuleTimeMgr::on_msg_received(const hsys_msg_t &msg)
 // ---------------------------------------------------------------------------
 // Message handlers
 // ---------------------------------------------------------------------------
-
-void ModuleTimeMgr::_on_spiffs_ready(const hsys_msg_t &)
-{
-    if (_state != STATE_WAIT_SPIFFS) return;
-
-    _stop_timer();
-    _try_spiffs_backup();
-
-    bool valid = (_best_source != TIME_SOURCE_NONE);
-    _publish_status(valid);
-
-    _state = STATE_WAIT_INTERNET;
-    LOG_MSG_INFO(TIME_LOG, "SPIFFS ready: source=%d valid=%d", (int)_best_source, (int)valid);
-}
 
 void ModuleTimeMgr::_on_internet_status(const hsys_msg_t &msg)
 {
@@ -139,14 +123,6 @@ void ModuleTimeMgr::_on_timer_alarm(const hsys_msg_t &msg)
 
     switch (_state) {
 
-        case STATE_WAIT_SPIFFS:
-            /* SPIFFS never mounted — work with what we have */
-            _stop_timer();
-            LOG_MSG_WARNING(TIME_LOG, "SPIFFS timeout, using source=%d", (int)_best_source);
-            _publish_status(_best_source != TIME_SOURCE_NONE);
-            _state = STATE_WAIT_INTERNET;
-            break;
-
         case STATE_NTP_SYNC: {
             int rc = pal_ntp_timesync_process();
             if (rc == 0) {
@@ -154,12 +130,11 @@ void ModuleTimeMgr::_on_timer_alarm(const hsys_msg_t &msg)
                 pal_ntp_get_epoch_time(&ntp_time);
                 _on_ntp_done(ntp_time);
             }
-            /* rc > 0 = still in progress; keep the repetitive timer running */
             break;
         }
 
         case STATE_READY:
-            _write_spiffs_backup();
+            _write_nvs_backup();
             break;
 
         default:
@@ -205,25 +180,25 @@ void ModuleTimeMgr::_try_rtc()
     LOG_MSG_INFO(TIME_LOG, "RTC: loaded %ld", (long)rtc_time);
 }
 
-void ModuleTimeMgr::_try_spiffs_backup()
+void ModuleTimeMgr::_try_nvs_backup()
 {
     if (_best_source >= TIME_SOURCE_RTC) {
         /* RTC already set a better source — skip backup */
         return;
     }
 
-    uint8_t buf[sizeof(time_t)];
-    size_t  n = 0;
-
-    if (pal_spiffs_file_read(k_backup_file, buf, sizeof(buf), &n) != PAL_OK
-            || n < sizeof(time_t)) {
-        LOG_MSG_INFO(TIME_LOG, "Backup: no file or short read");
+    int64_t stored = 0;
+    int32_t rc = app_nvs_read_i64(k_nvs_ns, k_nvs_key, &stored);
+    if (rc == APP_NVS_ERR_NOT_FOUND) {
+        LOG_MSG_INFO(TIME_LOG, "Backup: no NVS entry yet");
+        return;
+    }
+    if (rc != APP_NVS_OK) {
+        LOG_MSG_WARNING(TIME_LOG, "Backup: NVS read error (%ld)", (long)rc);
         return;
     }
 
-    time_t t = 0;
-    memcpy(&t, buf, sizeof(t));
-
+    time_t t = (time_t)stored;
     if (t < k_min_valid_epoch) {
         LOG_MSG_WARNING(TIME_LOG, "Backup: invalid epoch %ld", (long)t);
         return;
@@ -231,7 +206,7 @@ void ModuleTimeMgr::_try_spiffs_backup()
 
     _set_sys_time(t);
     _best_source = TIME_SOURCE_BACKUP;
-    LOG_MSG_INFO(TIME_LOG, "Backup: loaded %ld", (long)t);
+    LOG_MSG_INFO(TIME_LOG, "Backup: loaded %ld from NVS", (long)t);
 }
 
 void ModuleTimeMgr::_start_ntp_sync()
@@ -241,7 +216,6 @@ void ModuleTimeMgr::_start_ntp_sync()
     pal_ntp_init_default();
     pal_ntp_start();
 
-    /* Arm a repetitive poll timer; on mac the first call returns done */
     _arm_timer(k_ntp_poll_ms, /*repetitive=*/true);
 
     LOG_MSG_INFO(TIME_LOG, "NTP sync started");
@@ -256,20 +230,18 @@ void ModuleTimeMgr::_on_ntp_done(time_t ntp_time)
 
     _set_sys_time(ntp_time);
 
-    /* Write back to RTC so battery-backed time is accurate */
     if (ds1307_set_time(ntp_time) != ERROR_DS1307_OK) {
         LOG_MSG_WARNING(TIME_LOG, "RTC: set_time failed after NTP sync");
     }
 
     _best_source = TIME_SOURCE_NTP;
 
-    /* Force immediate SPIFFS backup */
+    /* Force immediate NVS backup */
     _last_backup_epoch = 0;
-    _write_spiffs_backup();
+    _write_nvs_backup();
 
     _publish_status(true);
 
-    /* Switch to 5-minute backup timer */
     _stop_timer();
     _arm_timer(k_backup_interval_ms, /*repetitive=*/true);
     _state = STATE_READY;
@@ -290,7 +262,7 @@ void ModuleTimeMgr::_publish_status(bool valid)
     if (msg) publish(msg);
 }
 
-void ModuleTimeMgr::_write_spiffs_backup()
+void ModuleTimeMgr::_write_nvs_backup()
 {
     time_t now = 0;
     time(&now);
@@ -299,11 +271,12 @@ void ModuleTimeMgr::_write_spiffs_backup()
 
     _last_backup_epoch = now;
 
-    if (pal_spiffs_file_write(k_backup_file, (const uint8_t *)&now, sizeof(now)) != PAL_OK) {
-        LOG_MSG_WARNING(TIME_LOG, "Backup: write failed");
+    int32_t rc = app_nvs_write_i64(k_nvs_ns, k_nvs_key, (int64_t)now);
+    if (rc != APP_NVS_OK) {
+        LOG_MSG_WARNING(TIME_LOG, "Backup: NVS write failed (%ld)", (long)rc);
         return;
     }
-    LOG_MSG_INFO(TIME_LOG, "Backup: written epoch=%ld", (long)now);
+    LOG_MSG_INFO(TIME_LOG, "Backup: written epoch=%ld to NVS", (long)now);
 }
 
 void ModuleTimeMgr::_set_sys_time(time_t t)

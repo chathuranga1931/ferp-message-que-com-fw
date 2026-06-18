@@ -39,9 +39,12 @@ protected:
     // Publish MsgSpiffsReady — all other modules have subscribed by now
     void post_init() override;
 
-    // No runtime messages handled by this module
-    void on_msg_received(const hsys_msg_t & /*msg*/) override {}
+    // Handle MsgSpiffsCleanup
+    void on_msg_received(const hsys_msg_t &msg) override;
 
 private:
     bool _mounted = false;
+
+    // Saves config to RAM, formats SPIFFS, writes config back, triggers reboot
+    void _on_spiffs_cleanup();
 };

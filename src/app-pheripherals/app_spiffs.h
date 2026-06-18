@@ -137,6 +137,21 @@ int32_t app_spiffs_append_file(const char *path, const uint8_t *data, size_t siz
 int32_t app_spiffs_get_info(app_spiffs_info_t *info);
 
 /**
+ * @brief  Erase and re-initialise the SPIFFS partition.
+ *
+ * Acquires the SPIFFS mutex, formats the underlying flash partition, then
+ * releases the mutex.  SPIFFS remains mounted and immediately usable for
+ * new writes after this call returns.
+ *
+ * WARNING: ALL existing files (static web assets, sub-device firmware
+ * binaries, and device config) are permanently erased.  The caller is
+ * responsible for restoring any files needed after format.
+ *
+ * @return APP_SPIFFS_OK on success
+ */
+int32_t app_spiffs_format(void);
+
+/**
  * @brief  Callback type for app_spiffs_list_files.
  *
  * Called once per regular file while the SPIFFS mutex is held.

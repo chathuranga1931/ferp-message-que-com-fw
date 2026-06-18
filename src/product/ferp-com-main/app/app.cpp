@@ -104,6 +104,7 @@
 #include "msg_sd_ready.h"
 #include "msg_sd_status.h"
 #include "msg_sd_cleanup.h"
+#include "msg_spiffs_cleanup.h"
 #include "msg_system_reboot.h"
 #include "msg_spiffs_ready.h"
 #include "msg_wifi_event.h"
@@ -402,6 +403,7 @@ static const app_msg_codec_entry_t k_codec_table[] = {
     { "MsgSdReady",              MSG_ID_SD_READY,              MsgSdReady::from_json,              MsgSdReady::to_json             },
     { "MsgSdStatus",             MSG_ID_SD_STATUS,             MsgSdStatus::from_json,             MsgSdStatus::to_json            },
     { "MsgSdCleanup",            MSG_ID_SD_CLEANUP,            MsgSdCleanup::from_json,            MsgSdCleanup::to_json           },
+    { "MsgSpiffsCleanup",        MSG_ID_SPIFFS_CLEANUP,        MsgSpiffsCleanup::from_json,        MsgSpiffsCleanup::to_json       },
     { "MsgSystemReboot",          MSG_ID_SYSTEM_REBOOT,         MsgSystemReboot::from_json,         MsgSystemReboot::to_json        },
 
     // ── Connectivity ─────────────────────────────────────────────────────────

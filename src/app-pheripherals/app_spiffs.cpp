@@ -222,6 +222,29 @@ int32_t app_spiffs_get_info(app_spiffs_info_t *info)
     return APP_SPIFFS_OK;
 }
 
+int32_t app_spiffs_format(void)
+{
+    if (!s_initialized) return APP_SPIFFS_ERR_NOT_INIT;
+
+    // 30-second timeout: let any in-flight I/O finish before we erase
+    int32_t rc = _lock(30000);
+    if (rc != APP_SPIFFS_OK) {
+        LOG_MSG_ERROR(APP_SPIFFS_LOG_EN, "format: mutex acquire timed out");
+        return rc;
+    }
+
+    LOG_MSG_WARNING(APP_SPIFFS_LOG_EN, "format: erasing SPIFFS partition — all files will be lost");
+    int32_t pal = pal_spiffs_format();
+    _unlock();
+
+    if (pal != PAL_OK) {
+        LOG_MSG_ERROR(APP_SPIFFS_LOG_EN, "format: pal_spiffs_format failed (%ld)", (long)pal);
+        return APP_SPIFFS_ERR_IO;
+    }
+    LOG_MSG_INFO(APP_SPIFFS_LOG_EN, "format: SPIFFS partition erased and ready");
+    return APP_SPIFFS_OK;
+}
+
 int32_t app_spiffs_list_files(app_spiffs_file_cb_t cb, void *ctx, uint32_t timeout_ms)
 {
     if (!s_initialized) return APP_SPIFFS_ERR_NOT_INIT;

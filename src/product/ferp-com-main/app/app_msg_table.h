@@ -79,6 +79,7 @@
 #include "msg_file_list_spiffs.h"       // MsgFileListSpiffs      (0x020A)
 #include "msg_system_reboot.h"          // MsgSystemReboot        (0x020B)
 #include "msg_sd_cleanup.h"              // MsgSdCleanup           (0x020C)
+#include "msg_spiffs_cleanup.h"         // MsgSpiffsCleanup       (0x020D)
 #include "msg_http_request.h"           // MsgHttpRequest         (0x005F)
 #include "msg_http_result.h"            // MsgHttpResult          (0x005B)
 #include "msg_http_response_header.h"   // MsgHttpResponseHeader  (0x005D)
@@ -147,6 +148,7 @@
         MsgHttpResult::DESCRIPTOR,                                                \
         MsgSystemReboot::DESCRIPTOR,                                               \
         MsgSdCleanup::DESCRIPTOR,                                                 \
+        MsgSpiffsCleanup::DESCRIPTOR,                                             \
         MsgHttpResponseHeader::DESCRIPTOR,                                        \
     };                                                                            \
     static const uint16_t k_msg_table_count =                                     \

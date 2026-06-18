@@ -110,7 +110,7 @@ if $CLEANALL; then
     idf.py build
 
     echo "=== Flash all (app + SPIFFS) ==="
-    idf.py -p "$COMPORT" -b 1152000 flash
+    idf.py -p "$COMPORT" -b 230400 flash
 
     echo "=== Done (clean + flash all) ==="
 
@@ -120,7 +120,7 @@ elif $FLASHALL; then
     idf.py build
 
     echo "=== Flash all (app + SPIFFS) ==="
-    idf.py -p "$COMPORT" -b 1152000 flash
+    idf.py -p "$COMPORT" -b 230400 flash
 
     echo "=== Done (flash all) ==="
 
@@ -130,7 +130,7 @@ elif $FLASHSPIFFS; then
     idf.py build spiffs
 
     echo "=== Flash SPIFFS partition ==="
-    idf.py -p "$COMPORT" -b 1152000 spiffs
+    idf.py -p "$COMPORT" -b 230400 spiffs
 
     echo "=== Done (flash SPIFFS) ==="
 
@@ -139,13 +139,13 @@ elif $FLASHAPP; then
     idf.py build
 
     echo "=== Flash app partition ==="
-    idf.py -p "$COMPORT" -b 1152000 app-flash
+    idf.py -p "$COMPORT" -b 230400 app-flash
 
     echo "=== Done (flash app) ==="
 
 elif $CONSOLE; then
     echo "=== Serial monitor ($COMPORT) ==="
-    idf.py monitor -p "$COMPORT" -b 115200
+    idf.py monitor -p "$COMPORT" -b 230400
 
 elif $RELEASE; then
     VERSION_FILE="$SCRIPT_DIR/src/product/ferp-com-main/app/version.h"
