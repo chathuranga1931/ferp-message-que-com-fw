@@ -40,7 +40,7 @@
 #define MODULE_CUBESPHERE_NAME  "cubesph"
 
 #define MODULE_CUBESPHERE_DEFAULT_HB_INTERVAL_MS  (60000UL)
-#define MODULE_CUBESPHERE_RETRY_INTERVAL_MS       (300000UL)   ///< 5 minutes
+#define MODULE_CUBESPHERE_RETRY_INTERVAL_MS       (60000UL)    ///< 60 seconds
 
 // Internal size constants
 #define CS_SIZE_UUID            50
