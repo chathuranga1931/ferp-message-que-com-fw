@@ -42,3 +42,8 @@ extern "C" void pal_power_reset(void)
     // the process with the newly-written ota_download.bin if needed.
     std::exit(0);
 }
+
+extern "C" pal_reset_reason_t pal_power_get_reset_reason(void)
+{
+    return PAL_RESET_REASON_SOFTWARE;
+}

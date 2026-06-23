@@ -3,10 +3,12 @@
 # flash.sh — Build and flash helper for ferp-com-esp32-idf
 #
 # Usage:
-#   ./flash.sh [--cleanall | --flashall | --flashspiffs | --flashapp | --console | --release]
+#   ./flash.sh [--cleanall | --buildall | --flashall | --flashspiffs | --flashapp | --console | --release]
 #
 # Flags:
-#   --cleanall    Full clean, build everything, flash everything (app + SPIFFS)
+#   --cleanall    Remove the build directory only (no build, no flash)
+#   --buildall    Build app + SPIFFS image (no clean, no flash)
+#   --buildapp    Build app binary only (no clean, no flash)
 #   --flashall    Build without clean, flash everything (app + SPIFFS)
 #   --flashspiffs Build SPIFFS image only, flash SPIFFS partition only
 #   --flashapp    Build without clean, flash app partition only
@@ -33,6 +35,8 @@ PROJECT_DIR="$SCRIPT_DIR/src/product/ferp-com-main/ferp-com-esp32-idf"
 
 # ── Parse flags ──────────────────────────────────────────────────────────────
 CLEANALL=false
+BUILDALL=false
+BUILDAPP=false
 FLASHALL=false
 FLASHSPIFFS=false
 FLASHAPP=false
@@ -42,6 +46,8 @@ RELEASE=false
 for arg in "$@"; do
     case "$arg" in
         --cleanall)    CLEANALL=true    ;;
+        --buildall)    BUILDALL=true    ;;
+        --buildapp)    BUILDAPP=true    ;;
         --flashall)    FLASHALL=true    ;;
         --flashspiffs) FLASHSPIFFS=true ;;
         --flashapp)    FLASHAPP=true    ;;
@@ -49,16 +55,18 @@ for arg in "$@"; do
         --release)     RELEASE=true     ;;
         *)
             echo "ERROR: Unknown flag: $arg"
-            echo "Usage: $0 [--cleanall | --flashall | --flashspiffs | --flashapp | --console | --release]"
+            echo "Usage: $0 [--cleanall | --buildall | --buildapp | --flashall | --flashspiffs | --flashapp | --console | --release]"
             exit 1
             ;;
     esac
 done
 
-if ! $CLEANALL && ! $FLASHALL && ! $FLASHSPIFFS && ! $FLASHAPP && ! $CONSOLE && ! $RELEASE; then
-    echo "Usage: $0 [--cleanall | --flashall | --flashspiffs | --flashapp | --console | --release]"
+if ! $CLEANALL && ! $BUILDALL && ! $BUILDAPP && ! $FLASHALL && ! $FLASHSPIFFS && ! $FLASHAPP && ! $CONSOLE && ! $RELEASE; then
+    echo "Usage: $0 [--cleanall | --buildall | --buildapp | --flashall | --flashspiffs | --flashapp | --console | --release]"
     echo ""
-    echo "  --cleanall    Clean, build all, flash all (app + SPIFFS)"
+    echo "  --cleanall    Remove build directory only (no build, no flash)"
+    echo "  --buildall    Build app + SPIFFS (no clean, no flash)"
+    echo "  --buildapp    Build app binary only (no clean, no flash)"
     echo "  --flashall    Build all (no clean), flash all (app + SPIFFS)"
     echo "  --flashspiffs Build + flash SPIFFS partition only"
     echo "  --flashapp    Build (no clean) + flash app partition only"
@@ -103,16 +111,20 @@ if $CLEANALL; then
     echo "=== Clean all ==="
     # Use rm -rf directly to avoid idf.py fullclean crashing on stale macOS temp files
     rm -rf "$PROJECT_DIR/build"
-    echo "Build directory removed."
+    echo "=== Done (build directory removed) ==="
 
+elif $BUILDALL; then
     clean_spiffs_data
-    echo "=== Build all ==="
+    echo "=== Build app + SPIFFS ==="
     idf.py build
 
-    echo "=== Flash all (app + SPIFFS) ==="
-    idf.py -p "$COMPORT" -b 230400 flash
+    echo "=== Done (build complete — use --flashall or --flashapp to flash) ==="
 
-    echo "=== Done (clean + flash all) ==="
+elif $BUILDAPP; then
+    echo "=== Build app ==="
+    idf.py app
+
+    echo "=== Done (app build complete — use --flashapp to flash) ==="
 
 elif $FLASHALL; then
     clean_spiffs_data

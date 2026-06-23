@@ -288,6 +288,7 @@ int32_t pal_sd_file_append(const char* path, const char* data, size_t size) {
     
     size_t written = fwrite(data, 1, size, file);
     fflush(file);
+    fsync(fileno(file));   // force FAT dir-entry update to SD hardware; guards against power-loss between fflush and fclose
     fclose(file);
 
     if(written != size) {

@@ -34,6 +34,7 @@
 #include "msg_fuel_print_status.h"  // MsgFuelPrintStatus — print status trigger
 #include "app_module_ids.h"
 #include "app_rootca.h"
+#include "pal_power.h"
 #include <time.h>
 
 #define MODULE_CUBESPHERE_NAME  "cubesph"
@@ -163,10 +164,11 @@ private:
         EVT_STATUS_UPDATE,
     } evt_type_t;
 
-    cs_state_t   _state      = STATE_WAIT_FOR_INTERNET;
-    http_phase_t _http_phase = HTTP_IDLE;
-    reg_step_t   _reg_step   = REG_STEP_1;
-    evt_type_t   _cur_evt    = EVT_NONE;
+    cs_state_t        _state        = STATE_WAIT_FOR_INTERNET;
+    http_phase_t      _http_phase   = HTTP_IDLE;
+    reg_step_t        _reg_step     = REG_STEP_1;
+    evt_type_t        _cur_evt      = EVT_NONE;
+    pal_reset_reason_t _reset_reason = PAL_RESET_REASON_UNKNOWN; ///< Captured at init(); logged at STATE_RUNNING
 
     // ── WiFi / internet context ───────────────────────────────────────────────
     bool    _cloud_config_ready = false;

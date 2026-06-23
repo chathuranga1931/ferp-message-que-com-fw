@@ -32,6 +32,7 @@
 #include "pal_efuse.h"
 #include "pal_time.h"
 #include "pal_crypto.h"
+#include "pal_power.h"
 
 #include <ArduinoJson.h>
 #include <string.h>
@@ -55,6 +56,31 @@ ModuleCubeSphere *ModuleCubeSphere::instance() { return &s_instance; }
 #define CS_URL_BOOTSTRAP   "https://fuel-iot-core-v2-alw5epn3aq-el.a.run.app/api/bootstrap/core/v1/device"
 #define CS_URL_DEV_CONFIG  "https://fuel-iot-core-v2-alw5epn3aq-el.a.run.app/api/ingress/core/v1/device/config"
 #define CS_URL_EVENTS      "https://fuel-iot-core-v2-alw5epn3aq-el.a.run.app/api/ingress/core/v1/device/event"
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+static const char *_reset_reason_str(pal_reset_reason_t r)
+{
+    switch (r) {
+        case PAL_RESET_REASON_POWER_ON:          return "power_on";
+        case PAL_RESET_REASON_EXTERNAL:          return "external";
+        case PAL_RESET_REASON_SOFTWARE:          return "software";
+        case PAL_RESET_REASON_WATCHDOG:          return "watchdog";
+        case PAL_RESET_REASON_DEEP_SLEEP:        return "deep_sleep";
+        case PAL_RESET_REASON_BROWNOUT:          return "brownout";
+        case PAL_RESET_REASON_SDIO:              return "sdio";
+        case PAL_RESET_REASON_PANIC:             return "panic";
+        case PAL_RESET_REASON_INT_WDT:           return "int_wdt";
+        case PAL_RESET_REASON_TASK_WDT:          return "task_wdt";
+        case PAL_RESET_REASON_OTHER_WDT:         return "other_wdt";
+        case PAL_RESET_REASON_DEEPSLEEP_RESET:   return "deepsleep";
+        case PAL_RESET_REASON_TG0WDT_SYS_RESET: return "tg0wdt";
+        case PAL_RESET_REASON_TG1WDT_SYS_RESET: return "tg1wdt";
+        case PAL_RESET_REASON_RTCWDT_SYS_RESET: return "rtcwdt";
+        case PAL_RESET_REASON_INTRUSION_RESET:   return "intrusion";
+        default:                                  return "unknown";
+    }
+}
 
 // ── Lifecycle ─────────────────────────────────────────────────────────────────
 
@@ -80,6 +106,10 @@ void ModuleCubeSphere::init()
 
     hsys_queue_init(&_pump_q,        k_pump_q_size,        sizeof(PumpedQEntry));
     hsys_queue_init(&_print_ok_q,   k_print_ok_q_size,   sizeof(PrintOkQEntry));
+
+    // Capture reset reason before anything else.  Logged at STATE_RUNNING when
+    // UDP is connected so the message is visible in the cloud log.
+    _reset_reason = pal_power_get_reset_reason();
 
     LOG_MSG_INFO(CSP_LOG_EN, "init — state=WAIT_FOR_INTERNET");
 }
@@ -191,9 +221,18 @@ void ModuleCubeSphere::_on_wifi_event(const hsys_msg_t &msg)
 void ModuleCubeSphere::_on_internet_status(const hsys_msg_t &msg)
 {
     auto p = MsgInternetStatus::deserialize(msg);
+    bool was_connected  = _internet_connected;
     _internet_connected = p.connected;
     LOG_MSG_INFO(CSP_LOG_EN, "internet %s", p.connected ? "UP" : "DOWN");
     // Internet status is informational — registration is triggered by WiFi GOT_IP
+
+    // When internet recovers mid-cycle, don't wait up to 60 s for the next retx tick.
+    if (!was_connected && _internet_connected &&
+        _state == STATE_RUNNING && _retx_ready && _system_is_idle &&
+        !_retx_in_progress && !_retx_last_send_failed) {
+        LOG_MSG_INFO(CSP_LOG_EN, "internet recovered — checking retx queue");
+        _retx_try_send_one();
+    }
 }
 
 void ModuleCubeSphere::_on_fuel_pumped(const hsys_msg_t &msg)
@@ -700,6 +739,7 @@ void ModuleCubeSphere::_on_reg_step3_result(const hsys_msg_t &msg)
     }
 
     LOG_MSG_INFO(CSP_LOG_EN, "registration complete — state=RUNNING");
+    LOG_MSG_WARNING(CSP_LOG_EN, "reset reason: %s", _reset_reason_str(_reset_reason));
     _state = STATE_RUNNING;
     _publish_status(CUBESPHERE_STATUS_REGISTERED, 0, _cs_net_cfg.agent_uuid);
     _pending_startup = true;
@@ -858,6 +898,7 @@ bool ModuleCubeSphere::_build_event_json(evt_type_t evt)
             body["wifi_ssid"]     = _wifi_ssid;
             body["wifi_password"] = _wifi_password;
             body["sd_status"]     = "unknown";
+            body["reset_reason"]  = _reset_reason_str(_reset_reason);
             break;
         }
         case EVT_RECONNECT: {
