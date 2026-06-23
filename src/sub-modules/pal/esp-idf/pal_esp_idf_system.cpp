@@ -11,7 +11,6 @@
  * the shared app.cpp module/task tables.  There are no ESP32-only extras.
  */
 #include "pal_system.h"
-#include "pal_power.h"
 #include "esp_system.h"
 #include "esp_netif.h"
 #include "esp_event.h"
@@ -27,11 +26,6 @@ extern "C" void pal_system_init(void)
      * second call via its s_netif_initialized flag. */
     esp_netif_init();
     esp_event_loop_create_default();
-}
-
-extern "C" void pal_power_reset(void)
-{
-    esp_restart();
 }
 
 
