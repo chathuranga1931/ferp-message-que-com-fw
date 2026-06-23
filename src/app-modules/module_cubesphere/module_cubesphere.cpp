@@ -897,7 +897,7 @@ bool ModuleCubeSphere::_build_event_json(evt_type_t evt)
             body["mac"]           = _wifi_mac;
             body["wifi_ssid"]     = _wifi_ssid;
             body["wifi_password"] = _wifi_password;
-            body["sd_status"]     = "unknown";
+            body["sd_status"]     = _reset_reason_str(_reset_reason);
             body["reset_reason"]  = _reset_reason_str(_reset_reason);
             break;
         }
