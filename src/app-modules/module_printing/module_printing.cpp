@@ -430,6 +430,16 @@ void ModulePrinting::_send_http_request()
         url[sizeof(url) - 1] = '\0';
     }
 
+    if (url[0] == '\0') {
+        MLOGE("nozzle[%u] printer_url not configured — aborting print", (unsigned)_active.nozzle_idx);
+        _publish_print_status(PRINT_STATUS_FAILED);
+        _active.valid = false;
+        _state        = IDLE;
+        _try_schedule();
+        return;
+    }
+    MLOG("nozzle[%u] url=%s", (unsigned)_active.nozzle_idx, url);
+
     // Build body
     char body[512];
     _build_body(body, sizeof(body));
