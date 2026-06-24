@@ -261,11 +261,11 @@ _create_bundle "$RELEASE_DIR/ferp-com-v${EVEN_VER}.bin" "$EVEN_VER" "$RELEASE_DI
 echo ""
 echo "--- Creating 4MB factory image ($ODD_VER) ---"
 FACTORY_BIN="$RELEASE_DIR/ferp-esp32-factory-v${ODD_VER}.bin"
-python3 "$IDF_PATH/components/esptool_py/esptool/esptool.py" --chip esp32 merge_bin \
-    --flash_mode  dio \
-    --flash_freq  40m \
-    --flash_size  4MB \
-    --fill-flash-size 4MB \
+python3 -m esptool --chip esp32 merge-bin \
+    --flash-mode  dio \
+    --flash-freq  40m \
+    --flash-size  4MB \
+    --pad-to-size 4MB \
     -o "$FACTORY_BIN" \
     0x1000    "$BUILD_DIR/bootloader/bootloader.bin" \
     0x8000    "$BUILD_DIR/partition_table/partition-table.bin" \
@@ -273,14 +273,18 @@ python3 "$IDF_PATH/components/esptool_py/esptool/esptool.py" --chip esp32 merge_
     0x10000   "$RELEASE_DIR/ferp-com-v${ODD_VER}.bin" \
     0x370000  "$BUILD_DIR/spiffs.bin" \
     && echo "  Saved: $FACTORY_BIN" \
-    || echo "WARNING: Failed to create factory image (check esptool.py)"
+    || echo "WARNING: Failed to create factory image"
 
 # ── Package into tar.gz ───────────────────────────────────────────────────────
+# Build the archive at the releases/ level (outside the ODD_VER subfolder)
+# so tar never tries to add the archive file to itself, then move it in.
 echo ""
 echo "--- Creating release archive ---"
 TAR_NAME="ferp-com-release-v${ODD_VER}.tar.gz"
 TAR_PATH="$RELEASE_DIR/$TAR_NAME"
-tar -czf "$TAR_PATH" -C "$RELEASES_DIR" "$ODD_VER" --exclude="$TAR_NAME"
+TEMP_TAR="$RELEASES_DIR/$TAR_NAME"
+tar -czf "$TEMP_TAR" -C "$RELEASES_DIR" "$ODD_VER"
+mv "$TEMP_TAR" "$TAR_PATH"
 echo "  Saved: $TAR_PATH"
 
 # ── GitHub release ────────────────────────────────────────────────────────────
