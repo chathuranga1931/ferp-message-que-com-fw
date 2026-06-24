@@ -139,6 +139,11 @@ void pal_logger_vlog(bool en, const char *format, va_list args) {
         return;
     }
 
+    log_index++;
+    if (log_index > 9999) {
+        log_index = 0;
+    }
+
     // Re-entrancy guard: if this task already holds the log mutex (e.g. a sink
     // callback triggered another log call), return immediately.  Trying to
     // acquire the mutex would time-out and assert in
@@ -176,10 +181,7 @@ void pal_logger_vlog(bool en, const char *format, va_list args) {
     }
     uint32_t prefix_visible_len = visible_strlen(prefix_copy);
 
-    snprintf(header, sizeof(header), "%6ld %4ld", (long)pal_time_get_ms(), log_index++);
-    if (log_index > 9999) {
-        log_index = 0;
-    }
+    snprintf(header, sizeof(header), "%6ld %4ld", (long)pal_time_get_ms(), log_index);
     uint32_t hdr_len = strlen(header);
     s_log_uart.print_char_buff(header);
 
@@ -246,6 +248,11 @@ void pal_logger_vlog_prefix(bool en, bool is_error, const char *prefix,
     if (s_log_mutex == NULL || !en || !prefix || !format) return;
     if (s_logging_task == xTaskGetCurrentTaskHandle()) return;
 
+    log_index++;
+    if (log_index > 9999) {
+        log_index = 0;
+    }
+
     if (!hsys_mutex_try_lock(s_log_mutex, 100)) {
         s_log_uart.print_str("\r\n[Log Missed]\r\n");
         return;
@@ -263,8 +270,7 @@ void pal_logger_vlog_prefix(bool en, bool is_error, const char *prefix,
 
     // Reuse the same display path as pal_logger_vlog via the already-filled
     // s_log_buffer.  Print timestamp, sinks, UART, footer.
-    snprintf(header, sizeof(header), "%6ld %4ld", (long)pal_time_get_ms(), log_index++);
-    if (log_index > 9999) log_index = 0;
+    snprintf(header, sizeof(header), "%6ld %4ld", (long)pal_time_get_ms(), log_index);
     s_log_uart.print_char_buff(header);
 
     if (s_sink_count > 0) {
