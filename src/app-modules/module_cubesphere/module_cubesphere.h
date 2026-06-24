@@ -207,6 +207,8 @@ private:
     bool _pending_status_update = false;
     bool _pending_crash_send    = false; ///< crash.json on SD waiting to be sent
     bool _pending_pump_start[CS_NO_NOZZLES] = {}; ///< nozzle went to PUMPING
+    bool _pump_start_sent[CS_NO_NOZZLES]    = {}; ///< pump-start already dispatched for this session
+                                                   ///<   cleared on PUMPED or IDLE, set when EVT_PUMP_START is dequeued
 
     uint32_t _hb_interval_ms   = MODULE_CUBESPHERE_DEFAULT_HB_INTERVAL_MS;
     bool     _hb_enabled        = true;

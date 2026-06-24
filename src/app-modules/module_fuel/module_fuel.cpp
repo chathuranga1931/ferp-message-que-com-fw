@@ -550,11 +550,18 @@ void ModuleFuel::_process_queues()
                     _publish_nozzle_state(idx, ns);
                     MLOG("nozzle[%u] state= PUMPED", (unsigned)idx);
                 }
-                else 
+                else if(state == Pumping_State_Pumping)
                 {
                     nozzle_state_t ns = NOZZLE_PUMPING;
                     _publish_nozzle_state(idx, ns);
                     MLOG("nozzle[%u] state= PUMPING", (unsigned)idx);
+                }
+                else
+                {
+                    // Pumping_State_Pumping_Waiting, Pumping_State_Stopped_Waiting,
+                    // Pumping_State_Nozzle_Off_Waiting_To_Stable — transient debounce
+                    // states that must not generate cloud events.  Logging only.
+                    MLOG("nozzle[%u] state= (transient %d, no event)", (unsigned)idx, (int)state);
                 }
             }
 

@@ -317,8 +317,21 @@ void ModuleCubeSphere::_on_fuel_pumped(const hsys_msg_t &msg)
 void ModuleCubeSphere::_on_nozzle_state(const hsys_msg_t &msg)
 {
     auto p = MsgNozzleState::deserialize(msg);
-    if (p.state != NOZZLE_PUMPING) return;   // only pump-start is cloud-reported
     if (p.nozzle_idx >= CS_NO_NOZZLES) return;
+
+    // Clear the per-session pump-start-sent guard when the nozzle finishes
+    // pumping.  This allows a new pump-start to be sent for the next session.
+    if (p.state == NOZZLE_PUMPED || p.state == NOZZLE_IDLE) {
+        if (_pump_start_sent[p.nozzle_idx]) {
+            LOG_MSG_DEBUG(CSP_LOG_EN, "nozzle[%u] %s — clearing pump-start-sent guard",
+                          (unsigned)p.nozzle_idx,
+                          p.state == NOZZLE_PUMPED ? "PUMPED" : "IDLE");
+            _pump_start_sent[p.nozzle_idx] = false;
+        }
+        return;
+    }
+
+    if (p.state != NOZZLE_PUMPING) return;   // only pump-start is cloud-reported
 
     if (_cs_nozzles[p.nozzle_idx].uuid[0] == '\0') {
         LOG_MSG_DEBUG(CSP_LOG_EN, "nozzle[%u] PUMPING — not provisioned in cloud, skipping pump-start",
@@ -332,7 +345,16 @@ void ModuleCubeSphere::_on_nozzle_state(const hsys_msg_t &msg)
         return;
     }
 
-    _pump_start_nozzle_idx          = p.nozzle_idx;
+    // Guard: if a pump-start was already dispatched for this session (i.e. the
+    // nozzle went PUMPING → [HTTP in-flight / busy] → PUMPED, and now the
+    // queued PUMPING message is delivered late), suppress the duplicate.
+    if (_pump_start_sent[p.nozzle_idx]) {
+        LOG_MSG_DEBUG(CSP_LOG_EN, "nozzle[%u] PUMPING — pump-start already sent for this session, suppressing duplicate",
+                      (unsigned)p.nozzle_idx);
+        return;
+    }
+
+    _pump_start_nozzle_idx            = p.nozzle_idx;
     _pending_pump_start[p.nozzle_idx] = true;
     LOG_MSG_DEBUG(CSP_LOG_EN, "nozzle[%u] PUMPING — pending pump-start event",
                   (unsigned)p.nozzle_idx);
@@ -822,8 +844,9 @@ void ModuleCubeSphere::_start_next_event()
         for (int i = 0; i < CS_NO_NOZZLES; i++) 
         {
             if (_pending_pump_start[i]) {
-                _pending_pump_start[i] = false;
-                _pump_start_nozzle_idx = (uint8_t)i;
+                _pending_pump_start[i]  = false;
+                _pump_start_sent[i]     = true;   // guard: suppress late duplicate PUMPING msgs
+                _pump_start_nozzle_idx  = (uint8_t)i;
                 break;
             }
         }
