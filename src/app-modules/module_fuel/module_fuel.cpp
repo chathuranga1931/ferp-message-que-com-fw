@@ -33,6 +33,7 @@
 #include "pal_logger.h"
 #include "pal_gpio.h"
 #include "pal_time.h"
+#include "hsys_task.h"
 #include "app_hw_config.h"
 #include <string.h>
 
@@ -50,6 +51,11 @@ typedef struct {
     display_type_t     dtype;
     app_display_data_t data;
 } fuel_frame_item_t;
+
+typedef struct {
+    uint8_t nozzle_idx;
+    bool    is_pressed;
+} _nozzle_btn_evt_t;
 
 // ---------------------------------------------------------------------------
 // Singleton
@@ -80,26 +86,18 @@ static hsys_tog_button_t s_nozzle_btn[FUEL_MAX_NOZZLES];
 // Static nozzle GPIO ISRs — read pin level → drive toggle-button state machine
 // ---------------------------------------------------------------------------
 
-static void _nozzle1_gpio_isr(int32_t /*gpio_num*/, void *arg)
+static void _nozzle1_gpio_isr(int32_t /*gpio_num*/, void * /*arg*/)
 {
     pal_gpio_level_t lvl = PAL_GPIO_LEVEL_LOW;
     pal_gpio_get_level(32, &lvl);
-    uint64_t ts = 0;
-    if (lvl == PAL_GPIO_LEVEL_HIGH)
-        hsys_tog_button_release_event(arg, ts);
-    else
-        hsys_tog_button_press_event(arg, ts);
+    ModuleFuel::instance()->_nozzle_btn_event_from_isr(0, lvl != PAL_GPIO_LEVEL_HIGH);
 }
 
-static void _nozzle2_gpio_isr(int32_t /*gpio_num*/, void *arg)
+static void _nozzle2_gpio_isr(int32_t /*gpio_num*/, void * /*arg*/)
 {
     pal_gpio_level_t lvl = PAL_GPIO_LEVEL_LOW;
     pal_gpio_get_level(33, &lvl);
-    uint64_t ts = 0;
-    if (lvl == PAL_GPIO_LEVEL_HIGH)
-        hsys_tog_button_release_event(arg, ts);
-    else
-        hsys_tog_button_press_event(arg, ts);
+    ModuleFuel::instance()->_nozzle_btn_event_from_isr(1, lvl != PAL_GPIO_LEVEL_HIGH);
 }
 
 // ---------------------------------------------------------------------------
@@ -120,14 +118,19 @@ static void _nozzle2_down_cb() { ModuleFuel::instance()->_on_nozzle_down(1); }
 
 void ModuleFuel::init()
 {
-    log("init");
-
     // Initialise per-nozzle frame queues
     for (uint8_t i = 0; i < FUEL_MAX_NOZZLES; i++) {
         if (!hsys_queue_init(&_frame_queue[i], FUEL_FRAME_QUEUE_DEPTH,
-                             sizeof(fuel_frame_item_t))) {
+                             sizeof(fuel_frame_item_t))) 
+        {
             MLOGE("init: hsys_queue_init failed for nozzle %u", (unsigned)i);
         }
+    }
+
+    // Nozzle button event queue (GPIO ISR → task context via on_wake)
+    if (!hsys_queue_init(&_btn_queue, 5, sizeof(_nozzle_btn_evt_t)))
+    {
+        MLOGE("init: nozzle btn queue init failed");       
     }
 
     // ── Nozzle toggle buttons ────────────────────────────────────────────────
@@ -146,11 +149,11 @@ void ModuleFuel::init()
     nozzle_cfg.pull          = PAL_GPIO_PULL_UP;
     nozzle_cfg.intr_type     = PAL_GPIO_INTR_ANYEDGE;
     nozzle_cfg.isr_callback  = _nozzle1_gpio_isr;
-    nozzle_cfg.isr_arg       = &s_nozzle_btn[0];
+    nozzle_cfg.isr_arg       = nullptr;
     pal_gpio_config(NOZZLE1_GPIO, nozzle_cfg);   // NOZZLE1_GPIO_PIN = INPUT3
 
     nozzle_cfg.isr_callback  = _nozzle2_gpio_isr;
-    nozzle_cfg.isr_arg       = &s_nozzle_btn[1];
+    nozzle_cfg.isr_arg       = nullptr;
     pal_gpio_config(NOZZLE2_GPIO, nozzle_cfg);   // NOZZLE2_GPIO_PIN = INPUT4
 
     MLOG("init: nozzle GPIOs armed — GPIO32 (nozzle1) GPIO33 (nozzle2)");
@@ -221,7 +224,26 @@ void ModuleFuel::on_msg_received(const hsys_msg_t &msg)
 
 void ModuleFuel::on_wake()
 {
+    _nozzle_btn_evt_t btn_evt;
+    while (hsys_queue_receive(&_btn_queue, &btn_evt, 0)) {
+        if (btn_evt.nozzle_idx < FUEL_MAX_NOZZLES) {
+            if (btn_evt.is_pressed)
+                hsys_tog_button_press_event(&s_nozzle_btn[btn_evt.nozzle_idx], 0);
+            else
+                hsys_tog_button_release_event(&s_nozzle_btn[btn_evt.nozzle_idx], 0);
+        }
+    }
+
     _process_queues();
+}
+
+void ModuleFuel::_nozzle_btn_event_from_isr(uint8_t nozzle_idx, bool is_pressed)
+{
+    _nozzle_btn_evt_t evt = { .nozzle_idx = nozzle_idx, .is_pressed = is_pressed };
+    bool woken = false;
+    hsys_queue_send_from_isr(&_btn_queue, &evt, &woken);
+    wake_from_isr(&woken);
+    if (woken) hsys_yield_from_isr();
 }
 
 // ---------------------------------------------------------------------------

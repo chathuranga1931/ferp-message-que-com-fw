@@ -62,8 +62,11 @@ public:
     void _on_nozzle_up  (uint8_t nozzle_idx);
     void _on_nozzle_down(uint8_t nozzle_idx);
 
+    // Called from the nozzle GPIO ISRs — pushes event to _btn_queue + wakes module
+    void _nozzle_btn_event_from_isr(uint8_t nozzle_idx, bool is_pressed);
+
 protected:
-    void init()             override;
+    void init()              override;
     void on_msg_received(const hsys_msg_t &msg) override;
 
     // Called on the module's own task thread whenever wake() was requested.
@@ -75,6 +78,9 @@ private:
 
     // Per-nozzle frame queues (filled from TCP/ISR thread, drained in on_wake)
     hsys_queue_handle_t   _frame_queue[FUEL_MAX_NOZZLES];
+
+    // Nozzle button event queue (filled from GPIO ISR, drained in on_wake)
+    hsys_queue_handle_t   _btn_queue;
 
     // Last known nozzle state (set from flags.bits.start_stop in each frame,
     // mirrors the hardware GPIO toggle-button state in the real firmware).

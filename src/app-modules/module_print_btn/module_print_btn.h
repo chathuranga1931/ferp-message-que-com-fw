@@ -21,6 +21,7 @@
 
 #include "hsys_module.h"
 #include "hsys_button.h"
+#include "hsys_queue.h"
 #include "pal_gpio.h"
 
 // ---------------------------------------------------------------------------
@@ -44,12 +45,20 @@ public:
 protected:
     void init()                                  override;
     void on_msg_received(const hsys_msg_t &msg)  override;
+    void on_wake()                               override;
 
 private:
-    hsys_button_t _button_p1{};
-    hsys_button_t _button_p2{};
+    hsys_button_t       _button_p1{};
+    hsys_button_t       _button_p2{};
+    hsys_queue_handle_t _event_queue;
 
-    // Static GPIO ISRs — bridge any-edge interrupt into the correct hsys_button
+    struct _btn_event_t {
+        uint8_t  btn_idx;       // 0 = P1, 1 = P2
+        bool     is_pressed;
+        uint64_t timestamp_us;
+    };
+
+    // Static GPIO ISRs — push press/release event to _event_queue + wake module
     static void _gpio_isr_p1(pal_gpio_num_t gpio, void *arg);
     static void _gpio_isr_p2(pal_gpio_num_t gpio, void *arg);
 
