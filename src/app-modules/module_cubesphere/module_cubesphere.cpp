@@ -1103,7 +1103,7 @@ void ModuleCubeSphere::_on_event_result(const hsys_msg_t &msg)
         case EVT_HEARTBEAT:
             if (ok) {
                 _publish_status(CUBESPHERE_STATUS_HB_SENT);
-                LOG_MSG_INFO(CSP_LOG_EN, "heartbeat OK");
+                LOG_MSG_INFO(CSP_LOG_EN, "=====> heartbeat OK");
             } else {
                 LOG_MSG_WARNING(CSP_LOG_EN, "heartbeat failed result=%d status=%d",
                                 (int)f.result, (int)f.status_code);
@@ -1114,7 +1114,7 @@ void ModuleCubeSphere::_on_event_result(const hsys_msg_t &msg)
             break;
         case EVT_STARTUP:
             if (ok) {
-                LOG_MSG_INFO(CSP_LOG_EN, "startup event OK");
+                LOG_MSG_INFO(CSP_LOG_EN, "=====> startup event OK");
             } else {
                 LOG_MSG_WARNING(CSP_LOG_EN, "startup event failed result=%d status=%d — will retry in 10s",
                                 (int)f.result, (int)f.status_code);
@@ -1129,7 +1129,7 @@ void ModuleCubeSphere::_on_event_result(const hsys_msg_t &msg)
             break;
         case EVT_RECONNECT:
             if (ok) {
-                LOG_MSG_INFO(CSP_LOG_EN, "reconnect event OK");
+                LOG_MSG_INFO(CSP_LOG_EN, "=====> reconnect event OK");
             } else {
                 LOG_MSG_WARNING(CSP_LOG_EN, "reconnect event failed result=%d status=%d — will retry in 10s",
                                 (int)f.result, (int)f.status_code);
@@ -1143,7 +1143,7 @@ void ModuleCubeSphere::_on_event_result(const hsys_msg_t &msg)
             if (ok) {
                 _pumped_success++;
                 _publish_status(CUBESPHERE_STATUS_PUMPED_SUCCESS);
-                LOG_MSG_INFO(CSP_LOG_EN, "pumped OK (total=%lu)", (unsigned long)_pumped_success);
+                LOG_MSG_INFO(CSP_LOG_EN, "=====> pumped OK (total=%lu)", (unsigned long)_pumped_success);
             } else {
                 _pumped_failure++;
                 LOG_MSG_WARNING(CSP_LOG_EN, "pumped failed result=%d status=%d — storing for retx",
@@ -1171,7 +1171,7 @@ void ModuleCubeSphere::_on_event_result(const hsys_msg_t &msg)
                 list_mgr_ack(&_retx_mgr.list_mgr, &_retx_pending_rh);
                 _pumped_success++;
                 _publish_status(CUBESPHERE_STATUS_PUMPED_SUCCESS);
-                LOG_MSG_INFO(CSP_LOG_EN, "retx pumped OK — trying next");
+                LOG_MSG_INFO(CSP_LOG_EN, "=====> retx pumped OK — trying next");
                 // Clear _cur_evt BEFORE _retx_try_send_one() so it can set
                 // EVT_PUMPED_RETX again if another item is queued.  If it does
                 // start a send we return early to avoid overwriting _cur_evt.
@@ -1191,7 +1191,7 @@ void ModuleCubeSphere::_on_event_result(const hsys_msg_t &msg)
             break;
         case EVT_PUMP_START:
             if (ok) {
-                LOG_MSG_INFO(CSP_LOG_EN, "pump-start OK (nozzle=%u)",
+                LOG_MSG_INFO(CSP_LOG_EN, "=====> pump-start OK (nozzle=%u)",
                              (unsigned)_pump_start_nozzle_idx);
             } else {
                 LOG_MSG_WARNING(CSP_LOG_EN, "pump-start failed result=%d status=%d",
@@ -1200,7 +1200,7 @@ void ModuleCubeSphere::_on_event_result(const hsys_msg_t &msg)
             break;
         case EVT_PRINT_OK:
             if (ok) {
-                LOG_MSG_INFO(CSP_LOG_EN, "printok OK (nozzle=%u abs_id=%lu)",
+                LOG_MSG_INFO(CSP_LOG_EN, "=====>printok OK (nozzle=%u abs_id=%lu)",
                              (unsigned)_print_ok_nozzle_idx,
                              (unsigned long)_print_ok_dispenser_event_id);
             } else {
@@ -1210,7 +1210,7 @@ void ModuleCubeSphere::_on_event_result(const hsys_msg_t &msg)
             break;
         case EVT_CRASH:
             if (ok) {
-                LOG_MSG_INFO(CSP_LOG_EN, "crash event OK — deleting crash log from SD");
+                LOG_MSG_INFO(CSP_LOG_EN, "=====> crash event OK — deleting crash log from SD");
                 pal_sd_file_delete("/panic/crash.json");
                 _pending_crash_send = false;
             } else {

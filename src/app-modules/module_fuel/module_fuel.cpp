@@ -524,11 +524,13 @@ void ModuleFuel::_process_queues()
                 nozzle_event_t ev{};
                 pump_drivers[dtype].get_event(&ev, idx);
 
-                MLOG("nozzle[%u] PUMPED  vol=%lu  unit=%lu  total=%lu",
+                MLOG("========");
+                MLOG("========>     nozzle[%u] PUMPED  vol=%lu  unit=%lu  total=%lu",
                     (unsigned)idx,
                     (unsigned long)ev.volume_lx1000,
                     (unsigned long)ev.unit_pricex100,
                     (unsigned long)(uint32_t)ev.total_pricex100);
+                MLOG("========");
 
                 _publish_fuel_pumped(idx, ev);
             }
