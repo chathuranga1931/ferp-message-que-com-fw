@@ -1,0 +1,1 @@
+{"events":[{"device":"f18c50ea-d66b-47f0-98e4-29fed681873e","time":"2026-06-25T00:24:44.000+05:30","event":"core/crash","body":{"fw_version":"1.0.0.131","reset_reason":"task_wdt","rtc_valid":true,"uptime_ms":33172,"epoch_sec":1782327267,"heap_free":56408,"backtrace":"0x400e402e:0x3ffd3240 0x400fe4c9:0x3ffd3270 0x400e3ff4:0x3ffd3290 0x40119ca3:0x3ffd32c0 0x40090789:0x3ffd32f0"}}]}
