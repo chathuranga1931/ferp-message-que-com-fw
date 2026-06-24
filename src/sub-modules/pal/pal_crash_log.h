@@ -33,12 +33,29 @@ extern "C" {
 // ── Crash info snapshot ──────────────────────────────────────────────────────
 
 typedef struct {
-    uint32_t uptime_ms;   ///< Uptime at exact panic moment (ms)
-    uint32_t epoch_sec;   ///< UTC epoch at last tick (0 if NTP not synced)
-    uint32_t heap_free;   ///< Free heap at last tick (bytes)
+    uint32_t uptime_ms;      ///< Uptime at exact panic moment (ms)
+    uint32_t epoch_sec;      ///< UTC epoch at last tick (0 if NTP not synced)
+    uint32_t heap_free;      ///< Free heap at last tick (bytes)
+    bool     rtc_was_valid;  ///< true = RTC SRAM was intact; false = wiped by
+                             ///<   RESET_RTC (e.g. RWDT hardware stage fired
+                             ///<   during panic or boot), data fields are 0.
 } pal_crash_info_t;
 
 // ── API ──────────────────────────────────────────────────────────────────────
+
+/// Call as the VERY FIRST instruction in app_main(), before any other code.
+///
+/// On ESP32, esp_restart_noos() arms the RWDT with Stage1=RESET_RTC@2 s as a
+/// chip-reset safety net before every reboot.  IDF's cpu_start.c only disables
+/// this watchdog when the reset reason is RWDT_RESET or MWDT_RESET; for a
+/// software panic (SW_CPU_RESET, e.g. task_wdt) the RWDT keeps counting through
+/// the entire boot sequence.  If it reaches Stage1 before we read s_rtc, all
+/// RTC SRAM is wiped and the crash log is lost.
+///
+/// This function disables the RWDT before any slow peripheral init (NVS, SD,
+/// I2C, ...) can consume the remaining time budget.  It is a no-op on
+/// simulator / non-ESP32 platforms.
+void pal_crash_log_disable_boot_wdt(void);
 
 /// Call once at startup, before any RTOS tasks.
 void pal_crash_log_init(void);

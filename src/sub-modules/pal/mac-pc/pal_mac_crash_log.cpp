@@ -7,7 +7,8 @@
 
 #include "pal_crash_log.h"
 
-extern "C" void        pal_crash_log_init(void)                   {}
+extern "C" void        pal_crash_log_disable_boot_wdt(void)            {}
+extern "C" void        pal_crash_log_init(void)                         {}
 extern "C" void        pal_crash_log_tick(uint32_t, uint32_t)     {}
 extern "C" bool        pal_crash_log_pending(void)                { return false; }
 extern "C" void        pal_crash_log_get(pal_crash_info_t *out)   { if (out) *out = {}; }

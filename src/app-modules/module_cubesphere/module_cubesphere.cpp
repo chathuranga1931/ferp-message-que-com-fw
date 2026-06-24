@@ -37,6 +37,7 @@
 #include "pal_sd.h"
 
 #include <ArduinoJson.h>
+#include "version.h"
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -755,18 +756,23 @@ void ModuleCubeSphere::_on_reg_step3_result(const hsys_msg_t &msg)
     LOG_MSG_WARNING(CSP_LOG_EN, "reset reason: %s", _reset_reason_str(_reset_reason));
 
     if (_pending_crash_send) {
-        char _crash_raw[768] = {};
+        char _crash_raw[800] = {};
         size_t _crash_bytes  = 0;
         if (pal_sd_file_read("/panic/crash.json", _crash_raw, sizeof(_crash_raw) - 1, &_crash_bytes) == PAL_OK
             && _crash_bytes > 0) {
             JsonDocument _crash_doc;
             if (deserializeJson(_crash_doc, _crash_raw) == DeserializationError::Ok) {
+                bool rtc_valid = _crash_doc["rtc_valid"] | true;  // legacy files lack the field → assume valid
                 LOG_MSG_WARNING(CSP_LOG_EN, "--- CRASH REPORT (pending cloud send) ---");
                 LOG_MSG_WARNING(CSP_LOG_EN, "  reset_reason : %s",   (_crash_doc["reset_reason"] | "unknown"));
-                LOG_MSG_WARNING(CSP_LOG_EN, "  uptime_ms    : %u",   (unsigned)(_crash_doc["uptime_ms"]  | (uint32_t)0));
-                LOG_MSG_WARNING(CSP_LOG_EN, "  epoch_sec    : %u",   (unsigned)(_crash_doc["epoch_sec"]  | (uint32_t)0));
-                LOG_MSG_WARNING(CSP_LOG_EN, "  heap_free    : %u",   (unsigned)(_crash_doc["heap_free"]  | (uint32_t)0));
-                LOG_MSG_WARNING(CSP_LOG_EN, "  backtrace    : %s",   (_crash_doc["backtrace"]    | ""));
+                if (!rtc_valid) {
+                    LOG_MSG_WARNING(CSP_LOG_EN, "  rtc_valid    : false (RTC SRAM cleared by RESET_RTC — uptime/heap/backtrace unavailable)");
+                } else {
+                    LOG_MSG_WARNING(CSP_LOG_EN, "  uptime_ms    : %u",   (unsigned)(_crash_doc["uptime_ms"]  | (uint32_t)0));
+                    LOG_MSG_WARNING(CSP_LOG_EN, "  epoch_sec    : %u",   (unsigned)(_crash_doc["epoch_sec"]  | (uint32_t)0));
+                    LOG_MSG_WARNING(CSP_LOG_EN, "  heap_free    : %u",   (unsigned)(_crash_doc["heap_free"]  | (uint32_t)0));
+                    LOG_MSG_WARNING(CSP_LOG_EN, "  backtrace    : %s",   (_crash_doc["backtrace"]    | ""));
+                }
                 LOG_MSG_WARNING(CSP_LOG_EN, "-----------------------------------------");
             }
         }
@@ -930,7 +936,7 @@ bool ModuleCubeSphere::_build_event_json(evt_type_t evt)
             JsonObject body = e0["body"].to<JsonObject>();
             body["hw_type"]       = "ferp-com";
             body["hw_version"]    = "2602";
-            body["sw_version"]    = "1.0.0";
+            body["sw_version"]    = FW_VERSION;
             body["local_ip"]      = _wifi_ip;
             body["mac"]           = _wifi_mac;
             body["wifi_ssid"]     = _wifi_ssid;
@@ -1018,7 +1024,9 @@ bool ModuleCubeSphere::_build_event_json(evt_type_t evt)
             e0["time"]      = ts;
             e0["event"]     = "core/crash";
             JsonObject body = e0["body"].to<JsonObject>();
+            body["fw_version"]   = crash_doc["fw_version"]   | FW_VERSION;
             body["reset_reason"] = crash_doc["reset_reason"] | "unknown";
+            body["rtc_valid"]    = crash_doc["rtc_valid"]    | true;
             body["uptime_ms"]    = crash_doc["uptime_ms"]    | (uint32_t)0;
             body["epoch_sec"]    = crash_doc["epoch_sec"]    | (uint32_t)0;
             body["heap_free"]    = crash_doc["heap_free"]    | (uint32_t)0;
@@ -1415,21 +1423,36 @@ void ModuleCubeSphere::_crash_check_on_sd_ready()
         pal_crash_info_t info = {};
         pal_crash_log_get(&info);
 
-        LOG_MSG_WARNING(CSP_LOG_EN,
-                        "CRASH from previous boot: reset_reason=%s uptime_ms=%u epoch_sec=%u heap_free=%u",
-                        _reset_reason_str(_reset_reason),
-                        (unsigned)info.uptime_ms,
-                        (unsigned)info.epoch_sec,
-                        (unsigned)info.heap_free);
+        if (!info.rtc_was_valid) {
+            // RTC SRAM was wiped by a hardware RESET_RTC (fired by the RWDT
+            // safety stage in panic_handler.c or esp_restart_noos).  The
+            // numeric fields are all 0; only reset_reason is reliable.
+            LOG_MSG_WARNING(CSP_LOG_EN,
+                            "CRASH from previous boot: reset_reason=%s "
+                            "— RTC SRAM cleared by hardware RESET_RTC, "
+                            "uptime/heap/backtrace unavailable",
+                            _reset_reason_str(_reset_reason));
+        } else {
+            LOG_MSG_WARNING(CSP_LOG_EN,
+                            "CRASH from previous boot: reset_reason=%s uptime_ms=%u epoch_sec=%u heap_free=%u",
+                            _reset_reason_str(_reset_reason),
+                            (unsigned)info.uptime_ms,
+                            (unsigned)info.epoch_sec,
+                            (unsigned)info.heap_free);
+        }
 
         const char *bt = pal_crash_log_get_backtrace();
 
-        // json holds: fixed fields (~90 B) + backtrace (up to 512 B) + overhead
-        char json[720] = {};
+        // json holds: fixed fields (~120 B) + backtrace (up to 512 B) + overhead
+        char json[760] = {};
         snprintf(json, sizeof(json),
-                 "{\"reset_reason\":\"%s\",\"uptime_ms\":%u,\"epoch_sec\":%u,"
+                 "{\"fw_version\":\"%s\",\"reset_reason\":\"%s\","
+                 "\"rtc_valid\":%s,"
+                 "\"uptime_ms\":%u,\"epoch_sec\":%u,"
                  "\"heap_free\":%u,\"backtrace\":\"%s\"}",
+                 FW_VERSION,
                  _reset_reason_str(_reset_reason),
+                 info.rtc_was_valid ? "true" : "false",
                  (unsigned)info.uptime_ms,
                  (unsigned)info.epoch_sec,
                  (unsigned)info.heap_free,

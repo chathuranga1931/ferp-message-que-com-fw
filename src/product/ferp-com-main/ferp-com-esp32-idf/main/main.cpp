@@ -28,6 +28,7 @@
 
 #include "app.h"
 #include "pal/pal_i2c.h"
+#include "pal/pal_crash_log.h"  // pal_crash_log_disable_boot_wdt
 
 // ---------------------------------------------------------------------------
 // Platform hook — runs before the module framework starts.
@@ -48,6 +49,14 @@ extern "C" void app_platform_pre_init(void)
 
 extern "C" void app_main(void)
 {
+    // Disable the RWDT before anything else.
+    // esp_restart_noos() arms RWDT Stage0=RESET_SYSTEM@1s and Stage1=RESET_RTC@1s
+    // before every reboot.  IDF cpu_start.c only clears it for RWDT/MWDT resets;
+    // for a software panic (task_wdt → SW_CPU_RESET) it keeps counting through
+    // the entire boot.  If logger.init / board_init / pal_system_init push the
+    // total boot time past ~2 s, Stage1 fires and wipes all RTC SRAM.
+    pal_crash_log_disable_boot_wdt();
+
     app_init();
 
     while(true) 

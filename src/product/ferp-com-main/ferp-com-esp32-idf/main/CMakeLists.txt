@@ -304,6 +304,7 @@ idf_component_register(
         esp_system
         app_update
         mbedtls
+        esp_hal_wdt
 )
 
 # ── Per-file compile-option overrides ─────────────────────────────────────────
@@ -338,5 +339,11 @@ set_source_files_properties(
 # Wrap esp_panic_handler so __wrap_esp_panic_handler in pal_esp_idf_crash_log.cpp
 # runs first (captures crash data to RTC SRAM), then calls __real_esp_panic_handler
 # which is the unmodified IDF implementation (full UART output + reset).
-# This does NOT modify any IDF source file.
-target_link_options(${COMPONENT_LIB} PRIVATE "-Wl,--wrap=esp_panic_handler")
+#
+# idf_build_set_property(LINK_OPTIONS) is used instead of target_link_options PRIVATE.
+# target_link_options PRIVATE on a component static library is NOT propagated to the
+# final elf link step in IDF's CMake build system — the --wrap flag is silently
+# dropped and __wrap_esp_panic_handler becomes dead code.
+# idf_build_set_property injects directly into the global linker command that
+# produces the .elf, guaranteeing --wrap is present when all objects are combined.
+idf_build_set_property(LINK_OPTIONS "-Wl,--wrap=esp_panic_handler" APPEND)
