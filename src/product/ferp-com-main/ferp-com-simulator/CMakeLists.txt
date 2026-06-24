@@ -90,6 +90,7 @@ add_library(pal_mac STATIC
     ${PAL_MAC}/pal_mac_fw_update.cpp
     # UDP log PAL (macOS no-op stubs)
     ${PAL_MAC}/pal_mac_udp_log.cpp
+    ${PAL_MAC}/pal_mac_crash_log.cpp
     ${APP_MODS}/module_ota/targets/ota_driver_esp32_main.c
     ${APP_MODS}/module_ota/targets/ota_driver_esp32_dt.c
 )

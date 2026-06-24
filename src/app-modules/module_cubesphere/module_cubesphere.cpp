@@ -33,6 +33,8 @@
 #include "pal_time.h"
 #include "pal_crypto.h"
 #include "pal_power.h"
+#include "pal_crash_log.h"
+#include "pal_sd.h"
 
 #include <ArduinoJson.h>
 #include <string.h>
@@ -400,6 +402,14 @@ void ModuleCubeSphere::_on_tick()
 {
     _uptime_sec++;
 
+    // Keep RTC crash-log snapshot current so a panic at any point has at most
+    // 1-second-stale data available for the crash report on the next boot.
+    {
+        time_t epoch = 0;
+        pal_time_get_epoch_time(&epoch);
+        pal_crash_log_tick((uint32_t)(_uptime_sec * 1000UL), (uint32_t)epoch);
+    }
+
     // Watchdog: if HTTP_EXECUTING persists for >45 s the HTTP result was dropped
     // (network_task inbox was full when http_task sent its reply; http_task has
     // already reset to IDLE, but we never received the message).  Retry the
@@ -521,6 +531,9 @@ void ModuleCubeSphere::_recover_exec_miss()
             // Release the in-progress lock so the retx cycle can retry this entry.
             // The list item is NOT acked — it stays in place for the next retx attempt.
             _retx_in_progress = false;
+            break;
+        case EVT_CRASH:
+            _pending_crash_send = true;
             break;
         default: break;  // EVT_HEARTBEAT: best-effort, drop silently
     }
@@ -740,6 +753,25 @@ void ModuleCubeSphere::_on_reg_step3_result(const hsys_msg_t &msg)
 
     LOG_MSG_INFO(CSP_LOG_EN, "registration complete — state=RUNNING");
     LOG_MSG_WARNING(CSP_LOG_EN, "reset reason: %s", _reset_reason_str(_reset_reason));
+
+    if (_pending_crash_send) {
+        char _crash_raw[768] = {};
+        size_t _crash_bytes  = 0;
+        if (pal_sd_file_read("/panic/crash.json", _crash_raw, sizeof(_crash_raw) - 1, &_crash_bytes) == PAL_OK
+            && _crash_bytes > 0) {
+            JsonDocument _crash_doc;
+            if (deserializeJson(_crash_doc, _crash_raw) == DeserializationError::Ok) {
+                LOG_MSG_WARNING(CSP_LOG_EN, "--- CRASH REPORT (pending cloud send) ---");
+                LOG_MSG_WARNING(CSP_LOG_EN, "  reset_reason : %s",   (_crash_doc["reset_reason"] | "unknown"));
+                LOG_MSG_WARNING(CSP_LOG_EN, "  uptime_ms    : %u",   (unsigned)(_crash_doc["uptime_ms"]  | (uint32_t)0));
+                LOG_MSG_WARNING(CSP_LOG_EN, "  epoch_sec    : %u",   (unsigned)(_crash_doc["epoch_sec"]  | (uint32_t)0));
+                LOG_MSG_WARNING(CSP_LOG_EN, "  heap_free    : %u",   (unsigned)(_crash_doc["heap_free"]  | (uint32_t)0));
+                LOG_MSG_WARNING(CSP_LOG_EN, "  backtrace    : %s",   (_crash_doc["backtrace"]    | ""));
+                LOG_MSG_WARNING(CSP_LOG_EN, "-----------------------------------------");
+            }
+        }
+    }
+
     _state = STATE_RUNNING;
     _publish_status(CUBESPHERE_STATUS_REGISTERED, 0, _cs_net_cfg.agent_uuid);
     _pending_startup = true;
@@ -821,13 +853,19 @@ void ModuleCubeSphere::_start_next_event()
         _cur_evt = EVT_PRINT_OK;
         LOG_MSG_DEBUG(CSP_LOG_EN, "pending print-ok event for nozzle %u", (unsigned)e.nozzle_idx);
     }
-    else if (_pending_heartbeat && _hb_enabled) 
+    else if (_pending_crash_send)
+    {
+        _pending_crash_send = false;
+        _cur_evt = EVT_CRASH;
+        LOG_MSG_DEBUG(CSP_LOG_EN, "pending crash event — sending crash report to cloud");
+    }
+    else if (_pending_heartbeat && _hb_enabled)
     {
         _pending_heartbeat = false;
         _cur_evt = EVT_HEARTBEAT;
         LOG_MSG_DEBUG(CSP_LOG_EN, "pending heartbeat event");
-    } 
-    else 
+    }
+    else
     {
         if (_hb_enabled) _arm_timer(_hb_interval_ms);
         return;
@@ -958,6 +996,35 @@ bool ModuleCubeSphere::_build_event_json(evt_type_t evt)
                 _last_pumped_ts_epoch,
                 _last_pumped_event_id,
                 _last_pumped_ne_id);
+        case EVT_CRASH: {
+            // Read the crash data persisted to SD on the previous boot.
+            // crash.json is up to ~620 B (4 fields + 512-char backtrace).
+            char raw[768] = {};
+            size_t bytes_read = 0;
+            if (pal_sd_file_read("/panic/crash.json", raw, sizeof(raw) - 1, &bytes_read) != PAL_OK
+                || bytes_read == 0) {
+                LOG_MSG_ERROR(CSP_LOG_EN, "EVT_CRASH: cannot read crash.json from SD");
+                return false;
+            }
+
+            JsonDocument crash_doc;
+            if (deserializeJson(crash_doc, raw) != DeserializationError::Ok) {
+                LOG_MSG_ERROR(CSP_LOG_EN, "EVT_CRASH: failed to parse crash.json");
+                return false;
+            }
+
+            JsonObject e0   = events.add<JsonObject>();
+            e0["device"]    = _cs_net_cfg.agent_uuid;
+            e0["time"]      = ts;
+            e0["event"]     = "core/crash";
+            JsonObject body = e0["body"].to<JsonObject>();
+            body["reset_reason"] = crash_doc["reset_reason"] | "unknown";
+            body["uptime_ms"]    = crash_doc["uptime_ms"]    | (uint32_t)0;
+            body["epoch_sec"]    = crash_doc["epoch_sec"]    | (uint32_t)0;
+            body["heap_free"]    = crash_doc["heap_free"]    | (uint32_t)0;
+            body["backtrace"]    = crash_doc["backtrace"]    | "";
+            break;
+        }
         default: return false;
     }
 
@@ -1131,6 +1198,17 @@ void ModuleCubeSphere::_on_event_result(const hsys_msg_t &msg)
             } else {
                 LOG_MSG_WARNING(CSP_LOG_EN, "printok failed result=%d status=%d",
                                 (int)f.result, (int)f.status_code);
+            }
+            break;
+        case EVT_CRASH:
+            if (ok) {
+                LOG_MSG_INFO(CSP_LOG_EN, "crash event OK — deleting crash log from SD");
+                pal_sd_file_delete("/panic/crash.json");
+                _pending_crash_send = false;
+            } else {
+                LOG_MSG_WARNING(CSP_LOG_EN, "crash event failed result=%d status=%d — will retry",
+                                (int)f.result, (int)f.status_code);
+                _pending_crash_send = true;
             }
             break;
         default: break;
@@ -1325,8 +1403,58 @@ void ModuleCubeSphere::_cs_format_iso8601(time_t epoch_sec, const char *tz_offse
 
 void ModuleCubeSphere::_on_sd_ready()
 {
-    LOG_MSG_INFO(CSP_LOG_EN, "SD ready — initialising retx manager");
+    LOG_MSG_INFO(CSP_LOG_EN, "SD ready — checking crash log, initialising retx manager");
+    _crash_check_on_sd_ready();
     _retx_init();
+}
+
+void ModuleCubeSphere::_crash_check_on_sd_ready()
+{
+    // Case 1: fresh crash detected in RTC memory from this boot cycle
+    if (pal_crash_log_pending()) {
+        pal_crash_info_t info = {};
+        pal_crash_log_get(&info);
+
+        LOG_MSG_WARNING(CSP_LOG_EN,
+                        "CRASH from previous boot: reset_reason=%s uptime_ms=%u epoch_sec=%u heap_free=%u",
+                        _reset_reason_str(_reset_reason),
+                        (unsigned)info.uptime_ms,
+                        (unsigned)info.epoch_sec,
+                        (unsigned)info.heap_free);
+
+        const char *bt = pal_crash_log_get_backtrace();
+
+        // json holds: fixed fields (~90 B) + backtrace (up to 512 B) + overhead
+        char json[720] = {};
+        snprintf(json, sizeof(json),
+                 "{\"reset_reason\":\"%s\",\"uptime_ms\":%u,\"epoch_sec\":%u,"
+                 "\"heap_free\":%u,\"backtrace\":\"%s\"}",
+                 _reset_reason_str(_reset_reason),
+                 (unsigned)info.uptime_ms,
+                 (unsigned)info.epoch_sec,
+                 (unsigned)info.heap_free,
+                 bt);
+
+        // pal_sd_file_write() creates parent directories automatically
+        int32_t rc = pal_sd_file_write("/panic/crash.json", json, strlen(json));
+        if (rc == PAL_OK) {
+            LOG_MSG_INFO(CSP_LOG_EN, "crash log written to SD: %s", json);
+            _pending_crash_send = true;
+        } else {
+            LOG_MSG_ERROR(CSP_LOG_EN, "failed to write crash log to SD (rc=%d)", (int)rc);
+        }
+
+        pal_crash_log_clear();
+        return;
+    }
+
+    // Case 2: no fresh crash, but crash.json may remain from a previous boot
+    // where the file was written but the cloud send failed (e.g. no network).
+    bool exists = false;
+    if (pal_sd_file_exists("/panic/crash.json", &exists) == PAL_OK && exists) {
+        LOG_MSG_WARNING(CSP_LOG_EN, "unsent crash.json found on SD — will send to cloud when connected");
+        _pending_crash_send = true;
+    }
 }
 
 void ModuleCubeSphere::_retx_init()

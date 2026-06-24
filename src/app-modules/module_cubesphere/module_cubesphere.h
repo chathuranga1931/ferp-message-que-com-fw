@@ -162,6 +162,7 @@ private:
         EVT_PUMP_START,     ///< app.fuel/pump-start — nozzle lifted (pumping begins)
         EVT_PRINT_OK,       ///< app.fuel/printok — receipt printed successfully
         EVT_STATUS_UPDATE,
+        EVT_CRASH,          ///< core/crash — panic/watchdog crash report from previous boot
     } evt_type_t;
 
     cs_state_t        _state        = STATE_WAIT_FOR_INTERNET;
@@ -204,6 +205,7 @@ private:
     bool _pending_reconnect     = false;
     bool _pending_heartbeat     = false;
     bool _pending_status_update = false;
+    bool _pending_crash_send    = false; ///< crash.json on SD waiting to be sent
     bool _pending_pump_start[CS_NO_NOZZLES] = {}; ///< nozzle went to PUMPING
 
     uint32_t _hb_interval_ms   = MODULE_CUBESPHERE_DEFAULT_HB_INTERVAL_MS;
@@ -316,6 +318,9 @@ private:
     // ── Status publisher ──────────────────────────────────────────────────────
     void _publish_status(cubesphere_status_event_t ev, uint8_t nozzle_idx = 0,
                          const char *uuid = nullptr);
+
+    // ── Crash log ─────────────────────────────────────────────────────────────
+    void _crash_check_on_sd_ready();  ///< Detect + persist crash data on SD mount
 
     // ── Retransmission ────────────────────────────────────────────────────────
     void _retx_init();

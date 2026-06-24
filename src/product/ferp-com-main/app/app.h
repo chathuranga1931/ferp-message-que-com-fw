@@ -46,6 +46,18 @@ const app_config_t *app_config_get(void);
 /** Returns the config field table and optionally its size. */
 config_t *app_config_get_table(uint16_t *out_size);
 
+// ── Crash-recovery test helpers (not called in production) ───────────────────
+
+/** Immediately trigger a null-pointer panic. Device reboots, detects the crash,
+ *  writes crash.json to SD, and sends a core/crash event to the cloud.
+ *  No-op on the simulator. */
+void app_test_trigger_panic(void);
+
+/** Spin-lock the calling task to trigger a task watchdog (~10 s).
+ *  Device reboots, detects the WDT crash, and follows the same SD + cloud path.
+ *  No-op on the simulator. */
+void app_test_trigger_task_wdt(void);
+
 #ifdef __cplusplus
 }
 #endif

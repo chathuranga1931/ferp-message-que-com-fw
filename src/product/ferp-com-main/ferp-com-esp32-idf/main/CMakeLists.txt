@@ -185,6 +185,7 @@ idf_component_register(
         "${D_SUB}/pal/esp-idf/pal_esp_idf_fw_update.cpp"
         "${D_SUB}/pal/esp-idf/pal_esp_idf_udp_log.cpp"
         "${D_SUB}/pal/esp-idf/pal_esp_idf_nvs.cpp"
+        "${D_SUB}/pal/esp-idf/pal_esp_idf_crash_log.cpp"
 
         # ── DISTAP device library (protocol only, from ferp_board) ───────
         "${D_SUB}/ferp-device-firmware/ferp_board/main-esp32/lib/device/board.c"
@@ -332,3 +333,10 @@ set_source_files_properties(
     "${D_SUB}/pal/esp-idf/pal_esp_idf_uart.cpp"
     PROPERTIES COMPILE_OPTIONS "-Wno-missing-field-initializers"
 )
+
+# ── Panic handler intercept ───────────────────────────────────────────────────
+# Wrap esp_panic_handler so __wrap_esp_panic_handler in pal_esp_idf_crash_log.cpp
+# runs first (captures crash data to RTC SRAM), then calls __real_esp_panic_handler
+# which is the unmodified IDF implementation (full UART output + reset).
+# This does NOT modify any IDF source file.
+target_link_options(${COMPONENT_LIB} PRIVATE "-Wl,--wrap=esp_panic_handler")

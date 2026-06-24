@@ -80,6 +80,7 @@
 #include "version.h"
 
 // Codec registry
+#include "pal_crash_log.h"
 #include "app_msg_codec.h"
 #include "msg_config_get_mqtt.h"
 #include "msg_config_get_wifi.h"
@@ -837,6 +838,9 @@ extern "C" void app_init(void)
     //     Must run before anything else so the UI port is open from the very first log line.
     pal_system_init();
 
+    // 0a-i. Crash-log detection — must run before tasks start so pending()
+    //       is valid when ModuleCubeSphere checks it on the first SD-ready event.
+    pal_crash_log_init();
 
     // 0b. Platform-specific setup + extra module registration
     app_platform_pre_init();
@@ -913,5 +917,35 @@ extern "C" void app_init(void)
 extern "C" void app_run(void)
 {
    hsys_task_delay(1000);
+}
+
+// ── Crash-recovery test helpers ───────────────────────────────────────────────
+// These functions let you manually trigger the crash-reporting path so you can
+// validate the full flow (RTC capture → SD write → cloud send) without waiting
+// for a real crash.
+//
+// HOW TO USE:
+//   Call either function from any task context (e.g. inside a button handler or
+//   the web API).  The device will immediately crash, reboot, detect the crash
+//   via esp_reset_reason(), write /panic/crash.json to the SD card, and send a
+//   core/crash event to the cloud when network is available.
+//
+// These functions are intentionally NOT called anywhere in production code.
+
+void app_test_trigger_panic(void)
+{
+#ifndef FERP_SIMULATOR
+    // Dereference a null pointer — causes a LoadProhibited Guru Meditation Error.
+    volatile int *p = nullptr;
+    (void)*p;
+#endif
+}
+
+void app_test_trigger_task_wdt(void)
+{
+#ifndef FERP_SIMULATOR
+    // Spin forever without yielding — the task watchdog fires after ~10 s.
+    while (true) { }
+#endif
 }
 
