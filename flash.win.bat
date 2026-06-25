@@ -26,8 +26,21 @@
 ::   %USERPROFILE%\.espressif\v6.0.1\esp-idf  (manual install)
 
 :: ── Windows defaults (edit as needed) ────────────────────────────────────────
-set IDF_PATH=C:\Espressif\frameworks\esp-idf-v6.0.1
+set IDF_PATH=D:\esp\v6.0.1\esp-idf
 set DEFAULT_PORT=COM3
+
+:: ── Activate IDF environment so idf.py is in PATH before flash.py runs ───────
+if not exist "%IDF_PATH%\export.bat" (
+    echo ERROR: IDF not found at %IDF_PATH%
+    echo        Update IDF_PATH at the top of this file.
+    exit /b 1
+)
+call "%IDF_PATH%\export.bat" > NUL
+if errorlevel 1 (
+    echo ERROR: Failed to activate IDF environment.
+    echo        Try running: %IDF_PATH%\export.bat
+    exit /b 1
+)
 
 :: ── Parse --serial-port override; forward everything else to flash.py ────────
 set SERIAL_PORT=%DEFAULT_PORT%

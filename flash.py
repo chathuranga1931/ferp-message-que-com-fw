@@ -96,7 +96,8 @@ def idf(*args: str, port: str = "", baud: int = 0) -> None:
     if baud:
         cmd += ["-b", str(baud)]
     cmd += list(args)
-    subprocess.run(cmd, cwd=str(PROJECT_DIR), check=True)
+    subprocess.run(cmd, cwd=str(PROJECT_DIR), check=True,
+                   shell=(platform.system() == "Windows"))
 
 
 def parse_args() -> argparse.Namespace:
