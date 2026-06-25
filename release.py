@@ -98,7 +98,8 @@ def set_version(version: str) -> None:
 
 
 def build() -> None:
-    subprocess.run(["idf.py", "build"], cwd=str(PROJECT_DIR), check=True)
+    subprocess.run(["idf.py", "build"], cwd=str(PROJECT_DIR), check=True,
+                   shell=(platform.system() == "Windows"))
 
 
 def copy_artifacts(version: str, dest: Path) -> None:
