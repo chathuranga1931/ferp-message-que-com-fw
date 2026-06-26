@@ -322,7 +322,7 @@ def mode_release(idf_path: str) -> None:
     factory_bin = release_dir / f"ferp-esp32-factory-v{odd_ver}.bin"
     esptool_result = subprocess.run(
         [
-            sys.executable, "-m", "esptool",
+            "esptool.py",
             "--chip", "esp32",
             "merge-bin",
             "--flash-mode", "dio",
@@ -340,7 +340,7 @@ def mode_release(idf_path: str) -> None:
     if esptool_result.returncode == 0:
         print(f"  Saved: {factory_bin}")
     else:
-        print("WARNING: Failed to create factory image")
+        die("Failed to create factory image — aborting release")
 
     # Package into tar.gz
     # Archive is created outside release_dir first so tar never includes itself,
