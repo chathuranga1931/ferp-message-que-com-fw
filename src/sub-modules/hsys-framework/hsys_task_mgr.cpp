@@ -148,11 +148,11 @@ static void dispatch_loop(void *param)
     for (;;) {
         if (hsys_queue_receive(&entry->queue, &msg_ptr, HSYS_WAIT_FOREVER)) {
 
-            if (msg_ptr->msg_id == HSYS_MSG_ID_WAKE) {
-                // Wake token — call on_wake() on the targeted module
-                HsysModule *mod = hsys_module_find(msg_ptr->receiver_id);
-                if (mod) mod->on_wake();
-                hsys_msg_release(msg_ptr);
+            if (msg_ptr == nullptr) {
+                for (uint8_t i = 0; i < mcount; i++) {
+                    HsysModule *mod = hsys_module_find(mids[i]);
+                    if (mod) mod->on_wake();
+                }
             } else {
                 hsys_module_dispatch_for_task(msg_ptr, mids, mcount);
                 hsys_msg_release(msg_ptr);
@@ -291,21 +291,11 @@ hsys_status_t hsys_task_mgr_wake_module(hsys_module_id_t module_id)
 {
     if (!s_initialised) return HSYS_ERR_NOT_INIT;
 
-    hsys_msg_t *token = hsys_msg_create_wake(module_id);
-    if (!token) return HSYS_ERR_NO_MEM;
-
     hsys_task_entry_t *entry = find_task_for_module(module_id);
-    if (!entry) {
-        hsys_msg_release(token);
-        return HSYS_ERR_NOT_FOUND;
-    }
+    if (!entry) return HSYS_ERR_NOT_FOUND;
 
-    bool ok = hsys_queue_send(&entry->queue, &token, 0);
-    if (!ok) {
-        hsys_msg_release(token);
-        return HSYS_ERR_QUEUE_FULL;
-    }
-    return HSYS_OK;
+    hsys_msg_t *null_token = nullptr;
+    return hsys_queue_send(&entry->queue, &null_token, 0) ? HSYS_OK : HSYS_ERR_QUEUE_FULL;
 }
 
 hsys_status_t hsys_task_mgr_wake_module_from_isr(hsys_module_id_t module_id,
@@ -313,23 +303,14 @@ hsys_status_t hsys_task_mgr_wake_module_from_isr(hsys_module_id_t module_id,
 {
     if (!s_initialised) return HSYS_ERR_NOT_INIT;
 
-    hsys_msg_t *token = hsys_msg_create_wake_from_isr(module_id);
-    if (!token) return HSYS_ERR_NO_MEM;
-
     hsys_task_entry_t *entry = find_task_for_module(module_id);
-    if (!entry) {
-        hsys_msg_release(token);
-        return HSYS_ERR_NOT_FOUND;
-    }
+    if (!entry) return HSYS_ERR_NOT_FOUND;
 
+    hsys_msg_t *null_token = nullptr;
     bool woken = false;
-    bool ok = hsys_queue_send_from_isr(&entry->queue, &token, &woken);
+    bool ok = hsys_queue_send_from_isr(&entry->queue, &null_token, &woken);
     if (higher_priority_woken) *higher_priority_woken = woken;
-    if (!ok) {
-        hsys_msg_release(token);
-        return HSYS_ERR_QUEUE_FULL;
-    }
-    return HSYS_OK;
+    return ok ? HSYS_OK : HSYS_ERR_QUEUE_FULL;
 }
 
 bool hsys_task_mgr_same_task(hsys_module_id_t a, hsys_module_id_t b)

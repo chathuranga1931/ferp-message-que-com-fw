@@ -279,36 +279,6 @@ void hsys_msg_release(hsys_msg_t *msg)
 }
 
 // ---------------------------------------------------------------------------
-// Wake token  (no descriptor, no payload — direct header pool access)
-// ---------------------------------------------------------------------------
-
-hsys_msg_t *hsys_msg_create_wake(hsys_module_id_t module_id)
-{
-    if (!s_initialised) return nullptr;
-    hsys_msg_t *msg = header_alloc();
-    if (!msg) {
-        LOG_MSG_ERROR(HSYS_MSG_LOG_EN, "create_wake: header pool exhausted");
-        return nullptr;
-    }
-    memset(msg, 0, sizeof(*msg));
-    msg->msg_id      = HSYS_MSG_ID_WAKE;
-    msg->sender_id   = module_id;
-    msg->receiver_id = module_id;
-    msg->ref_count   = 1;
-    msg->payload     = nullptr;
-    msg->desc        = nullptr;
-    return msg;
-}
-
-hsys_msg_t *hsys_msg_create_wake_from_isr(hsys_module_id_t module_id)
-{
-    // header_alloc uses a mutex which is not ISR-safe, but on FreeRTOS the
-    // header pool is small and contention is negligible.  For now we call
-    // the same path; replace with a lock-free pool if ISR latency matters.
-    return hsys_msg_create_wake(module_id);
-}
-
-// ---------------------------------------------------------------------------
 // Publish
 // ---------------------------------------------------------------------------
 
