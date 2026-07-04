@@ -65,6 +65,14 @@ private:
     // ── Connectivity tracking ─────────────────────────────────────────────────
     bool _internet_up             = false;   ///< last published state
 
+    // While an OTA session is active, flash-erase stalls can make the ping
+    // socket miss its 2s timeout even though the network is fine — a false
+    // "internet DOWN" here makes ModuleMqtt call pal_mqtt_client_stop(),
+    // which is far more disruptive than a plain MQTT-level reconnect.
+    // Skip pinging (and leave _internet_up exactly as it was) while OTA is
+    // in progress; re-check immediately once it ends.
+    bool _ota_in_progress          = false;
+
     // ── Timer slot ────────────────────────────────────────────────────────────
     bool     _timer_active        = false;
 
@@ -79,4 +87,5 @@ private:
     // Message handlers
     void _on_wifi_event(const hsys_msg_t &msg);
     void _on_timer_alarm(const hsys_msg_t &msg);
+    void _on_ota_event(const hsys_msg_t &msg);
 };

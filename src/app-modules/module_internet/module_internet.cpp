@@ -14,6 +14,7 @@
 #include "msg_timer_stop.h"
 #include "msg_timer_start_response.h"
 #include "msg_timer_alarm.h"
+#include "msg_ota_event.h"
 
 #define __TAG__  "MOD_INT "
 
@@ -35,6 +36,7 @@ void ModuleInternet::init()
     subscribe(MsgWifiEvent::ID);
     subscribe(MsgTimerAlarm::ID);
     subscribe(MsgTimerStartResponse::ID);
+    subscribe(MsgOtaEvent::ID);
 
     log("init");
 }
@@ -53,6 +55,10 @@ void ModuleInternet::on_msg_received(const hsys_msg_t &msg)
 
         case MsgTimerAlarm::ID:
             _on_timer_alarm(msg);
+            break;
+
+        case MsgOtaEvent::ID:
+            _on_ota_event(msg);
             break;
 
         case MsgTimerStartResponse::ID: {
@@ -105,6 +111,32 @@ void ModuleInternet::_on_timer_alarm(const hsys_msg_t &msg)
     auto p = MsgTimerAlarm::deserialize(msg);
     if (p.source_module_id != MODULE_INTERNET_ID) return;   // not our timer
 
+    if (_state == STATE_CHECKING && !_ota_in_progress) {
+        _run_ping_and_publish();
+    }
+}
+
+void ModuleInternet::_on_ota_event(const hsys_msg_t &msg)
+{
+    auto p = MsgOtaEvent::deserialize(msg);
+
+    if (p.event == OTA_EVENT_SESSION_STARTED) {
+        _ota_in_progress = true;
+        LOG_MSG_INFO(INT_LOG, "OTA session started — pausing internet ping checks");
+        return;
+    }
+
+    if (p.event != OTA_EVENT_COMPLETE && p.event != OTA_EVENT_SESSION_ABORTED &&
+        p.event != OTA_EVENT_TIMEOUT) {
+        return;
+    }
+    if (!_ota_in_progress) return;
+
+    _ota_in_progress = false;
+    LOG_MSG_INFO(INT_LOG, "OTA session ended (event=%d) — resuming internet ping checks", (int)p.event);
+
+    // Re-check right away instead of waiting for the next scheduled tick,
+    // so a real connectivity change during the OTA is still caught promptly.
     if (_state == STATE_CHECKING) {
         _run_ping_and_publish();
     }
