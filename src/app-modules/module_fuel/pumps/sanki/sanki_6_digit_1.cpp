@@ -30,12 +30,7 @@ static uint64_t display_data_unit_price[NO_NOZZELS];
 static uint32_t display_data_unit_price_new_count[NO_NOZZELS];
 static uint32_t display_data_unit_price_count[NO_NOZZELS];
 
-static uint64_t last_totalizer_volume[NO_NOZZELS] = {0};
-static uint64_t last_pushed_totalizer_volume[NO_NOZZELS]  = {0};
-static unsigned long last_totalizer_event_ts[NO_NOZZELS] = {0};
-
 static uint32_t display_tap_event_idx = 0;
-static uint8_t totalizer_same_value_count = 0;
 static bool is_unit_price_stabilized[NO_NOZZELS] = {0};
 static uint32_t pumping_increment_count[NO_NOZZELS];
 static pumping_state_t pumping_state_value_based[NO_NOZZELS];

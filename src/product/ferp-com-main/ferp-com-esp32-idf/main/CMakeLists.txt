@@ -127,6 +127,7 @@ idf_component_register(
         "${D_MSGS}/fuel/msg_printer_btn.cpp"
         "${D_MSGS}/fuel/msg_fuel_print_status.cpp"
         "${D_MSGS}/fuel/msg_totalizer_data.cpp"
+        "${D_MSGS}/fuel/msg_fuel_totalizer.cpp"
         # Device info messages
         "${D_MSGS}/deviceInfo/msg_dev_info_read.cpp"
         "${D_MSGS}/deviceInfo/msg_dev_info_write.cpp"

@@ -13,6 +13,7 @@
 #include "msg_config_updated.h"
 #include "msg_nozzle_state.h"
 #include "msg_fuel_pumped.h"
+#include "msg_fuel_totalizer.h"
 #include "msg_timer_start.h"
 #include "msg_timer_stop.h"
 #include "msg_timer_alarm.h"
@@ -346,6 +347,9 @@ void ModuleFuel::_on_distap_frame(uint8_t nozzle_idx, display_type_t type,
 // _process_queues — drain all nozzle queues and run the sanki6 pipeline
 // ---------------------------------------------------------------------------
 
+// Forward declaration — shared by every pump type in pump_drivers[] below;
+// defined further down this file.
+bool process_totalizer_data(const app_display_data_t * display_data, uint8_t nozzle_id, uint64_t * tot_value);
 
 const pump_driver_t pump_drivers[DIS_SIZE] = {
     /* DIS_NONE             [0] */ { nullptr, nullptr, nullptr, nullptr },
@@ -353,45 +357,140 @@ const pump_driver_t pump_drivers[DIS_SIZE] = {
         (fp_pump_get_event_t *)censtar6_get_event,
         (fp_pump_process_data_t *)censtar6_process_data,
         (fp_pump_process_state_machine_t *)censtar6_process_state_machine,
-        (fp_pump_data_validate *)censtar6_data_validate
+        (fp_pump_data_validate *)censtar6_data_validate,
+        (fp_pump_totalizer_data *)process_totalizer_data
     },
     /* DIS_CENSTAR_7_DIGIT  [2] */ {
         (fp_pump_get_event_t *)censtar7_get_event,
         (fp_pump_process_data_t *)censtar7_process_data,
         (fp_pump_process_state_machine_t *)censtar7_process_state_machine,
-        (fp_pump_data_validate *)censtar7_data_validate
+        (fp_pump_data_validate *)censtar7_data_validate,
+        (fp_pump_totalizer_data *)process_totalizer_data
     },
     /* DIS_CENSTAR_7_DIGIT_CS [3] */ {
         (fp_pump_get_event_t *)censtar7_get_event,
         (fp_pump_process_data_t *)censtar7_process_data,
         (fp_pump_process_state_machine_t *)censtar7_process_state_machine,
-        (fp_pump_data_validate *)censtar7_data_validate
+        (fp_pump_data_validate *)censtar7_data_validate,
+        (fp_pump_totalizer_data *)process_totalizer_data
     },
     /* DIS_HONGYANG_8_DIGIT [4] */ {
         (fp_pump_get_event_t *)hongyang8_get_event,
         (fp_pump_process_data_t *)hongyang8_process_data,
         (fp_pump_process_state_machine_t *)hongyang8_process_state_machine,
-        (fp_pump_data_validate *)hongyang8_data_validate
+        (fp_pump_data_validate *)hongyang8_data_validate,
+        (fp_pump_totalizer_data *)process_totalizer_data
     },
     /* DIS_WAYNE_6_DIGIT    [5] */ {
         (fp_pump_get_event_t *)wayne6_get_event,
         (fp_pump_process_data_t *)wayne6_process_data,
         (fp_pump_process_state_machine_t *)wayne6_process_state_machine,
-        (fp_pump_data_validate *)wayne6_data_validate
+        (fp_pump_data_validate *)wayne6_data_validate,
+        (fp_pump_totalizer_data *)process_totalizer_data
     },
     /* DIS_SANKI_6_DIGIT    [6] */ {
         (fp_pump_get_event_t *)sanki6_get_event,
         (fp_pump_process_data_t *)sanki6_process_data,
         (fp_pump_process_state_machine_t *)sanki6_process_state_machine,
-        (fp_pump_data_validate *)sanki6_data_validate
+        (fp_pump_data_validate *)sanki6_data_validate,
+        (fp_pump_totalizer_data *)process_totalizer_data
     },
     /* DIS_LONGFENG_8_DIGIT [7] */ {
         (fp_pump_get_event_t *)longfeng8_get_event,
         (fp_pump_process_data_t *)longfeng8_process_data,
         (fp_pump_process_state_machine_t *)longfeng8_process_state_machine,
-        (fp_pump_data_validate *)longfeng8_data_validate
+        (fp_pump_data_validate *)longfeng8_data_validate,
+        (fp_pump_totalizer_data *)process_totalizer_data
     },
 };
+
+
+// If this function returns true, *tot_value holds a reading that should be
+// queued to send to the cloud (see _publish_totalizer_event()).
+//
+// Behaviour (per-nozzle):
+//   - On the FIRST frame after entering totalizer mode (select_ll goes
+//     true): send display_data->volume_lx1000 immediately.
+//   - While REMAINING in totalizer mode: some pumps send continuous data
+//     with occasional invalid/noisy frames in between, so a raw value is
+//     only trusted once it has repeated for tot_cnt consecutive frames
+//     (config: CFG_KEY_TOT_CNT, default 10). Even once stable, it is only
+//     resent at most once per tot_dur ms (config: CFG_KEY_TOT_DUR, default
+//     5 minutes) so a long totalizer-mode dwell doesn't flood the cloud.
+//   - On EXIT from totalizer mode (select_ll goes false): send the last
+//     observed value if it hasn't already been sent, so the final reading
+//     for that totalizer session isn't lost even if tot_dur hasn't elapsed.
+bool process_totalizer_data(const app_display_data_t * display_data, uint8_t nozzle_id, uint64_t * tot_value)
+{
+    bool is_ready = false;
+
+    static uint64_t      last_sent_value[NO_NOZZELS]   = {0};   // last value actually sent to cloud
+    static unsigned long last_sent_ts[NO_NOZZELS]      = {0};   // ms timestamp of last send
+    static uint64_t      instant_value[NO_NOZZELS]     = {0};   // last raw reading observed
+    static uint32_t      same_value_count[NO_NOZZELS]  = {0};   // consecutive same-reading counter
+    static bool          is_prev_totalizer[NO_NOZZELS] = {false};
+
+    unsigned long now = pal_time_get_ms();
+    const app_config_t *cfg = app_config_get();
+    uint32_t tot_cnt = cfg ? cfg->tot_cnt : 10;
+    uint32_t tot_dur = cfg ? cfg->tot_dur : 300000;
+
+    uint64_t current_value = display_data->volume_lx1000;
+
+    if (display_data->select_ll && !is_prev_totalizer[nozzle_id])
+    {
+        // First totalizer frame for this mode-session — send immediately.
+        instant_value[nozzle_id]    = current_value;
+        same_value_count[nozzle_id] = 0;
+        last_sent_value[nozzle_id]  = current_value;
+        last_sent_ts[nozzle_id]     = now;
+
+        *tot_value = current_value;
+        is_ready = true;
+    }
+    else if (display_data->select_ll)
+    {
+        // Continuing in totalizer mode — debounce + rate-limit resends.
+        if (current_value != instant_value[nozzle_id])
+        {
+            instant_value[nozzle_id]    = current_value;
+            same_value_count[nozzle_id] = 0;
+        }
+        else if (same_value_count[nozzle_id] < UINT32_MAX)
+        {
+            same_value_count[nozzle_id]++;
+        }
+
+        bool is_stable     = same_value_count[nozzle_id] >= tot_cnt;
+        bool interval_ok   = (now - last_sent_ts[nozzle_id]) >= tot_dur;
+        bool value_changed = current_value != last_sent_value[nozzle_id];
+
+        if (is_stable && interval_ok && value_changed)
+        {
+            last_sent_value[nozzle_id] = current_value;
+            last_sent_ts[nozzle_id]    = now;
+
+            *tot_value = current_value;
+            is_ready = true;
+        }
+    }
+    else if (is_prev_totalizer[nozzle_id])
+    {
+        // Just switched out of totalizer mode — send the last observed
+        // value if it wasn't already sent, so the final reading isn't lost.
+        if (instant_value[nozzle_id] != last_sent_value[nozzle_id])
+        {
+            last_sent_value[nozzle_id] = instant_value[nozzle_id];
+            last_sent_ts[nozzle_id]    = now;
+
+            *tot_value = instant_value[nozzle_id];
+            is_ready = true;
+        }
+    }
+
+    is_prev_totalizer[nozzle_id] = display_data->select_ll ? true : false;
+    return is_ready;
+}
 
 void ModuleFuel::_process_queues()
 {
@@ -483,11 +582,17 @@ void ModuleFuel::_process_queues()
                 }
             }
 
-            if(pump_drivers[dtype].process_data == nullptr || 
-               pump_drivers[dtype].process_state_machine == nullptr || 
-               pump_drivers[dtype].get_event == nullptr || 
+            if(pump_drivers[dtype].process_data == nullptr ||
+               pump_drivers[dtype].process_state_machine == nullptr ||
+               pump_drivers[dtype].get_event == nullptr ||
                pump_drivers[dtype].data_validate == nullptr )
             {
+                continue;
+            }
+
+            if(pump_drivers[dtype].process_totalizer_data == nullptr)
+            {
+                MLOGE("nozzle[%u] display type %d has no process_totalizer_data wired up", (unsigned)idx, (int)dtype);
                 continue;
             }
 
@@ -495,6 +600,15 @@ void ModuleFuel::_process_queues()
             {
                 // If all values are zero, it's likely a "nozzle down" frame with no valid data. Skip processing to avoid false events.
                 continue;
+            }
+
+            // Process totalizer data, should be called even if it is not totalized, to identify the 
+            // tot start and endpoints
+            uint64_t totalized_value;
+            if(pump_drivers[dtype].process_totalizer_data(&display_data[idx], idx, &totalized_value))
+            {
+                //if true, should send the totalized value to cloud
+                _publish_totalizer_event(idx, totalized_value);
             }
 
             // disable handling totalizer for now. TODO
@@ -511,7 +625,6 @@ void ModuleFuel::_process_queues()
                 MLOG("nozzle[%u] process_data rejected frame", (unsigned)idx);
                 continue;
             }
-
 
             pump_drivers[dtype].data_validate(&display_data[idx], idx);                
 
@@ -605,6 +718,24 @@ void ModuleFuel::_publish_fuel_pumped(uint8_t nozzle_idx, const nozzle_event_t &
 
     hsys_msg_t *msg = create_typed<MsgFuelPumped>(p);
     if (!msg) { log_error("create_typed<MsgFuelPumped> failed"); return; }
+    publish(msg);
+}
+
+void ModuleFuel::_publish_totalizer_event(uint32_t nozzle_idx, uint64_t totalizer_value)
+{
+    time_t epoch = 0;
+    pal_time_get_epoch_time(&epoch);
+
+    MsgFuelTotalizer::Payload p{};
+    p.nozzle_idx = (uint8_t)nozzle_idx;
+    p.vol_lx1000 = totalizer_value;
+    p.time_stamp = (uint32_t)epoch;
+
+    MLOG("nozzle[%u] totalizer=%llu L x1000", (unsigned)nozzle_idx,
+         (unsigned long long)totalizer_value);
+
+    hsys_msg_t *msg = create_typed<MsgFuelTotalizer>(p);
+    if (!msg) { log_error("create_typed<MsgFuelTotalizer> failed"); return; }
     publish(msg);
 }
 

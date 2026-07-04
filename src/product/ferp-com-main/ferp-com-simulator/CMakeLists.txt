@@ -59,6 +59,7 @@ add_library(pal_mac STATIC
     ${PAL_MAC}/pal_mac_logger_uart.cpp
     ${PAL_MAC}/pal_mac_spiffs.cpp           # POSIX SPIFFS emulation
     ${PAL_MAC}/pal_mac_sd.cpp               # POSIX SD card emulation (SDCARD/ folder)
+    ${PAL_MAC}/pal_mac_nvs.cpp              # File-backed NVS emulation
     ${PAL_MAC}/pal_mac_gpio.cpp             # GPIO → mac_driver_send_gpio()
     ${PAL_MAC}/pal_mac_system.cpp           # pal_system_init() → boot everything
     ${PAL_MAC}/pal_mac_network.cpp          # pal_network_ping() via TCP connect
@@ -142,6 +143,7 @@ add_library(app_messages STATIC
     ${APP_MSGS}/system/msg_spiffs_ready.cpp
     ${APP_MSGS}/system/msg_sd_ready.cpp
     ${APP_MSGS}/system/msg_sd_status.cpp
+    ${APP_MSGS}/system/msg_sd_cleanup.cpp
     # Config messages
     ${APP_MSGS}/configs/msg_config_ready.cpp
     ${APP_MSGS}/configs/msg_config_set.cpp
@@ -180,6 +182,7 @@ add_library(app_messages STATIC
     ${APP_MSGS}/fuel/msg_printer_btn.cpp
     ${APP_MSGS}/fuel/msg_fuel_print_status.cpp
     ${APP_MSGS}/fuel/msg_totalizer_data.cpp
+    ${APP_MSGS}/fuel/msg_fuel_totalizer.cpp
     # System messages (extended)
     ${APP_MSGS}/system/msg_persist_log.cpp
     ${APP_MSGS}/system/msg_system_status.cpp
@@ -205,20 +208,8 @@ add_library(app_messages STATIC
     ${APP_MSGS}/ota/msg_ota_event.cpp
     ${APP_MSGS}/ota/msg_ota_progress.cpp
     # HTTP session messages
-    ${APP_MSGS}/http/msg_http_start_request.cpp
-    ${APP_MSGS}/http/msg_http_start_response.cpp
-    ${APP_MSGS}/http/msg_http_set_url_request.cpp
-    ${APP_MSGS}/http/msg_http_set_url_response.cpp
-    ${APP_MSGS}/http/msg_http_set_root_ca_request.cpp
-    ${APP_MSGS}/http/msg_http_set_root_ca_response.cpp
-    ${APP_MSGS}/http/msg_http_set_stream_sink.cpp
-    ${APP_MSGS}/http/msg_http_header_request.cpp
-    ${APP_MSGS}/http/msg_http_header_response.cpp
-    ${APP_MSGS}/http/msg_http_body_request.cpp
-    ${APP_MSGS}/http/msg_http_body_response.cpp
-    ${APP_MSGS}/http/msg_http_send_request.cpp
+    ${APP_MSGS}/http/msg_http_request.cpp
     ${APP_MSGS}/http/msg_http_result.cpp
-    ${APP_MSGS}/http/msg_http_abort_request.cpp
     ${APP_MSGS}/http/msg_http_response_header.cpp
 )
 target_include_directories(app_messages PUBLIC
@@ -251,6 +242,7 @@ target_link_libraries(app_messages PRIVATE hsys_framework)
 add_library(app_pheripherals STATIC
     ${APP_PHR}/app_spiffs.cpp
     ${APP_PHR}/app_sd.cpp
+    ${APP_PHR}/app_nvs.cpp
     ${PERIPHERAL}/generic_peripheral/hsys_led.cpp
     ${PERIPHERAL}/generic_peripheral/hsys_buzzer.cpp
     ${PERIPHERAL}/generic_peripheral/hsys_button.cpp

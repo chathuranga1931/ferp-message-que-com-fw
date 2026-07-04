@@ -102,6 +102,7 @@
 #include "msg_default_btn.h"
 #include "msg_printer_btn.h"
 #include "msg_totalizer_data.h"
+#include "msg_fuel_totalizer.h"
 #include "msg_sd_ready.h"
 #include "msg_sd_status.h"
 #include "msg_sd_cleanup.h"
@@ -199,8 +200,8 @@ void app_config_load_defaults(app_config_t *cfg)
     
     cfg->display_type = 0;
     cfg->stabilize_delay_ms = 500;
-    cfg->tot_cnt = 3;
-    cfg->tot_dur = 1000;
+    cfg->tot_cnt = 10;
+    cfg->tot_dur = 300000;   // 5 minutes
     strncpy(cfg->nozzle_0_id, "P01", sizeof(cfg->nozzle_0_id) - 1);
     strncpy(cfg->nozzle_1_id, "P02", sizeof(cfg->nozzle_1_id) - 1);
     strncpy(cfg->printer_url, "http://printer.local", sizeof(cfg->printer_url) - 1);
@@ -394,6 +395,7 @@ static const app_msg_codec_entry_t k_codec_table[] = {
     { "MsgFuelPumped",           MSG_ID_FUEL_PUMPED,           MsgFuelPumped::from_json,           MsgFuelPumped::to_json          },
     { "MsgNozzleState",          MSG_ID_NOZZLE_STATE,          MsgNozzleState::from_json,          MsgNozzleState::to_json         },
     { "MsgTotalizerData",        MSG_ID_TOTALIZER_DATA,        MsgTotalizerData::from_json,        MsgTotalizerData::to_json       },
+    { "MsgFuelTotalizer",        MSG_ID_FUEL_TOTALIZER,        MsgFuelTotalizer::from_json,        MsgFuelTotalizer::to_json       },
 
     // ── Buttons ───────────────────────────────────────────────────────────────
     { "MsgDefaultBtn",           MSG_ID_DEFAULT_BTN,           MsgDefaultBtn::from_json,           MsgDefaultBtn::to_json          },

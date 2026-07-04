@@ -27,11 +27,13 @@ _NOZZLE_OFF_BG = "#585b70"   # grey   — DOWN / inactive
 _NOZZLE_OFF_FG = "#1e1e2e"   # dark text on grey
 _BTN_SEND_BG   = "#89b4fa"   # accent blue for Send Frame / Pump
 _BTN_SEND_FG   = "#1e1e2e"   # dark text on blue
+_BTN_TOT_BG    = "#cba6f7"   # mauve — Totalizer button (distinct from Pump)
+_BTN_TOT_FG    = "#1e1e2e"   # dark text on mauve
 _MONO          = ("Menlo", 10)
 _MONO_SM       = ("Menlo", 9)
 _MONO_LG       = ("Menlo", 11, "bold")
 
-from sim_core import DISPLAY_TYPES   # display_type_t enum values (from display_types.h)
+from sim_core import DISPLAY_TYPES, FLAG_SELECT_LL   # (from display_types.h)
 _DEFAULT_DISPLAY = "SANKI 6-digit (6)"
 
 
@@ -45,7 +47,9 @@ class NozzleWidget(tk.Frame):
         self._nozzle_active = False   # False = DOWN (inactive), True = UP (active)
         self._auto_job      = None    # after() handle for pump ticking
         self._cont_job      = None    # after() handle for continuous resend
+        self._tot_job       = None    # after() handle for totalizer resend
         self._pumping       = False
+        self._sending_tot   = False
         self._volume_ml     = 0.0     # accumulated volume in mL (internal units)
 
         self._build_ui()
@@ -109,15 +113,21 @@ class NozzleWidget(tk.Frame):
         disp_menu.configure(width=22)
         disp_menu.grid(row=0, column=1, columnspan=2, sticky=tk.W, pady=2)
 
-        # Unit price (only manual field — volume/total are calculated)
+        # Unit price (only manual field — volume/total are calculated).
+        # Default matches PumpEmulator.SANKI6_DEFAULT_UNIT_PRICE ($4.23/L):
+        # Sanki encodes unit_price at x10000, not x100 like other display
+        # types, and sanki6_process_data() rejects anything below 20000
+        # ($2.00/L) outright — a generic low default fails validation for
+        # the default-selected display type.
         tk.Label(flds, text="unit_price ×100:", bg=_BG, fg=_FG_DIM,
                  font=_MONO_SM, anchor=tk.W).grid(row=1, column=0, sticky=tk.W, pady=1)
-        self._unit_price_var = tk.StringVar(value="300")
+        self._unit_price_var = tk.StringVar(value="42300")
         tk.Entry(flds, textvariable=self._unit_price_var,
                  bg=_BG_MID, fg=_FG, insertbackground=_FG,
                  font=_MONO, width=10, relief=tk.FLAT).grid(
                      row=1, column=1, sticky=tk.W, padx=4, pady=1)
-        tk.Label(flds, text="e.g. 300 = $3.00/L", bg=_BG, fg=_FG_DIM,
+        tk.Label(flds, text="Sanki: x10000, e.g. 42300 = $4.23/L. Other types: x100.",
+                 bg=_BG, fg=_FG_DIM,
                  font=("Menlo", 8)).grid(row=1, column=2, sticky=tk.W)
 
         # Vol rate (mL per second)
@@ -176,6 +186,41 @@ class NozzleWidget(tk.Frame):
             font=_MONO_SM,
             command=self._on_continuous_changed,
         ).pack(side=tk.LEFT)
+
+        ttk.Separator(self, orient=tk.HORIZONTAL).pack(fill=tk.X, padx=4, pady=2)
+
+        # ── Totalizer ─────────────────────────────────────────────────────────
+        # Simulates the DT board's LL (totalizer) display mode: sends
+        # SIM_DISTAP_FRAME with FLAG_SELECT_LL set and the given lifetime
+        # volume, ignoring the pump accumulator above entirely.
+        tk.Label(self, text="Totalizer (LL mode)",
+                 bg=_BG, fg=_ACCENT,
+                 font=("Menlo", 9, "bold")).pack(anchor=tk.W, padx=8, pady=(4, 0))
+
+        tot_row = tk.Frame(self, bg=_BG)
+        tot_row.pack(fill=tk.X, padx=8, pady=4)
+        tk.Label(tot_row, text="Volume (L):", bg=_BG, fg=_FG_DIM,
+                 font=_MONO_SM).pack(side=tk.LEFT)
+        self._tot_vol_var = tk.StringVar(value="1000.000")
+        tk.Entry(tot_row, textvariable=self._tot_vol_var,
+                 bg=_BG_MID, fg=_FG, insertbackground=_FG,
+                 font=_MONO, width=12, relief=tk.FLAT).pack(side=tk.LEFT, padx=4)
+        tk.Label(tot_row, text="lifetime total", bg=_BG, fg=_FG_DIM,
+                 font=("Menlo", 8)).pack(side=tk.LEFT)
+
+        self._tot_btn = tk.Button(
+            self, text="▶  Hold Totalizer",
+            bg=_BTN_TOT_BG, fg=_BTN_TOT_FG,
+            activebackground="#b4befe",
+            font=("Menlo", 11, "bold"), relief=tk.FLAT,
+            padx=8, pady=6,
+            command=self._toggle_totalizer)
+        self._tot_btn.pack(fill=tk.X, padx=8, pady=(0, 4))
+        tk.Label(self,
+                 text="Holds LL high at the set volume (resent at Interval above)\n"
+                      "until stopped — needed to exercise tot_cnt/tot_dur debounce.",
+                 bg=_BG, fg=_FG_DIM, font=("Menlo", 8), justify=tk.LEFT).pack(
+                     anchor=tk.W, padx=8, pady=(0, 4))
 
         ttk.Separator(self, orient=tk.HORIZONTAL).pack(fill=tk.X, padx=4, pady=2)
 
@@ -326,8 +371,9 @@ class NozzleWidget(tk.Frame):
         except ValueError:
             interval = 100
         self._rate_var.set(str(interval))
-        # Stop continuous resend — pump loop takes over
+        # Stop continuous resend / totalizer hold — pump loop takes over
         self._stop_continuous()
+        self._stop_totalizer()
         self._pumping = True
         self._pump_btn.config(text="■  Stop", bg="#f38ba8", fg="#1e1e2e")
         self._pump_tick(interval)
@@ -344,6 +390,70 @@ class NozzleWidget(tk.Frame):
         if self._continuous_var.get():
             self._start_continuous()
 
+    # ── Totalizer (LL mode) ──────────────────────────────────────────────────
+
+    def _send_totalizer_frame(self, select_ll: bool) -> bool:
+        """Build and send one SIM_DISTAP_FRAME for totalizer mode.
+        select_ll=False sends the mode-exit frame (LL cleared)."""
+        try:
+            vol_lx1000 = int(round(float(self._tot_vol_var.get()) * 1000))
+            payload = {
+                "cmd":          "SIM_DISTAP_FRAME",
+                "nozzle":       self._nozzle_idx,
+                "display_type": DISPLAY_TYPES[self._disp_var.get()],
+                "flags":        FLAG_SELECT_LL if select_ll else 0,
+                "error":        0,
+                "unit_price":   0,
+                "total_price":  0,
+                "volume_l":     vol_lx1000,
+            }
+            self._send_fn(payload)
+            return True
+        except (ValueError, KeyError):
+            self._stop_totalizer()
+            self._tot_btn.config(bg="#f38ba8", fg="#1e1e2e")
+            self.after(800, lambda: self._tot_btn.config(
+                bg=_BTN_TOT_BG, fg=_BTN_TOT_FG))
+            return False
+
+    def _toggle_totalizer(self):
+        if self._sending_tot:
+            self._stop_totalizer()
+        else:
+            self._start_totalizer()
+
+    def _start_totalizer(self):
+        try:
+            interval = max(10, int(self._rate_var.get()))
+        except ValueError:
+            interval = 100
+        self._rate_var.set(str(interval))
+        # Mutually exclusive with pump/continuous — same nozzle, same wire.
+        self._stop_pump()
+        self._stop_continuous()
+        self._sending_tot = True
+        self._tot_btn.config(text="■  Stop Totalizer", bg="#f38ba8", fg="#1e1e2e")
+        self._totalizer_tick(interval)
+
+    def _stop_totalizer(self):
+        if not self._sending_tot:
+            return
+        self._sending_tot = False
+        if self._tot_job is not None:
+            self.after_cancel(self._tot_job)
+            self._tot_job = None
+        self._tot_btn.config(text="▶  Hold Totalizer", bg=_BTN_TOT_BG, fg=_BTN_TOT_FG)
+        # Send the mode-exit frame (LL cleared) so the firmware's "just left
+        # totalizer mode" path (send last known value) gets exercised.
+        self._send_totalizer_frame(select_ll=False)
+
+    def _totalizer_tick(self, interval: int):
+        if not self._sending_tot:
+            self._tot_job = None
+            return
+        if self._send_totalizer_frame(select_ll=True):
+            self._tot_job = self.after(interval, lambda: self._totalizer_tick(interval))
+
     def _on_continuous_changed(self):
         """Called when the Continuous checkbox is toggled."""
         if self._continuous_var.get():
@@ -356,6 +466,7 @@ class NozzleWidget(tk.Frame):
     def _start_continuous(self):
         """Start a repeating job that resends the last frame at the set interval."""
         self._stop_continuous()   # cancel any existing job first
+        self._stop_totalizer()    # mutually exclusive — same nozzle, same wire
         try:
             interval = max(10, int(self._rate_var.get()))
         except ValueError:

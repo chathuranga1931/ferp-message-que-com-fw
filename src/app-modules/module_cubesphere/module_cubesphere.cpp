@@ -97,6 +97,7 @@ void ModuleCubeSphere::init()
     subscribe(MsgWifiEvent::ID);
     subscribe(MsgInternetStatus::ID);
     subscribe(MsgFuelPumped::ID);
+    subscribe(MsgFuelTotalizer::ID);
     subscribe(MsgNozzleState::ID);         // pump-start
     subscribe(MsgFuelPrintStatus::ID);         // printok
     subscribe(MsgTimerAlarm::ID);
@@ -131,6 +132,7 @@ void ModuleCubeSphere::on_msg_received(const hsys_msg_t &msg)
         case MsgWifiEvent::ID:             _on_wifi_event(msg);          break;
         case MsgInternetStatus::ID:        _on_internet_status(msg);     break;
         case MsgFuelPumped::ID:            _on_fuel_pumped(msg);         break;
+        case MsgFuelTotalizer::ID:         _on_fuel_totalizer(msg);      break;
         case MsgNozzleState::ID:           _on_nozzle_state(msg);        break;
         case MsgFuelPrintStatus::ID:       _on_fuel_print_ok(msg);       break;
         case MsgSdReady::ID:               _on_sd_ready();               break;
@@ -314,6 +316,36 @@ void ModuleCubeSphere::_on_fuel_pumped(const hsys_msg_t &msg)
 
     LOG_MSG_DEBUG(CSP_LOG_EN, "pumped queued (nozzle=%u id=%u q=%u)",
                   (unsigned)p.nozzle_idx, (unsigned)event_id, (unsigned)hsys_queue_size(&_pump_q));
+    _start_next_event();
+}
+
+void ModuleCubeSphere::_on_fuel_totalizer(const hsys_msg_t &msg)
+{
+    auto p = MsgFuelTotalizer::deserialize(msg);
+
+    // Best-effort only — no retransmission/storage on any of these paths,
+    // unlike _on_fuel_pumped(). A dropped totalizer reading is reported
+    // again automatically next time process_totalizer_data() fires.
+    if (p.nozzle_idx >= CS_NO_NOZZLES) {
+        LOG_MSG_WARNING(CSP_LOG_EN, "totalizer: invalid nozzle_idx %u — discarding", p.nozzle_idx);
+        return;
+    }
+    if (_state != STATE_RUNNING || !_internet_connected ||
+        _cs_nozzles[p.nozzle_idx].uuid[0] == '\0') {
+        LOG_MSG_WARNING(CSP_LOG_EN,
+                        "totalizer: not ready (state=%d online=%d nozzle=%u provisioned=%d) — dropping",
+                        (int)_state, (int)_internet_connected, (unsigned)p.nozzle_idx,
+                        (int)(_cs_nozzles[p.nozzle_idx].uuid[0] != '\0'));
+        return;
+    }
+
+    // Overwrite any not-yet-sent reading for this nozzle — only the latest matters.
+    _pending_totalizer[p.nozzle_idx]     = true;
+    _pending_totalizer_vol[p.nozzle_idx] = p.vol_lx1000;
+    _pending_totalizer_ts[p.nozzle_idx]  = p.time_stamp;
+
+    LOG_MSG_DEBUG(CSP_LOG_EN, "totalizer pending (nozzle=%u vol=%llu)",
+                  (unsigned)p.nozzle_idx, (unsigned long long)p.vol_lx1000);
     _start_next_event();
 }
 
@@ -600,7 +632,7 @@ void ModuleCubeSphere::_recover_exec_miss()
         case EVT_CRASH:
             _pending_crash_send = true;
             break;
-        default: break;  // EVT_HEARTBEAT: best-effort, drop silently
+        default: break;  // EVT_HEARTBEAT, EVT_TOTALIZED: best-effort, drop silently
     }
 
     _cur_evt = EVT_NONE;
@@ -942,6 +974,19 @@ void ModuleCubeSphere::_start_next_event()
         _cur_evt = EVT_CRASH;
         LOG_MSG_DEBUG(CSP_LOG_EN, "pending crash event — sending crash report to cloud");
     }
+    else if (_pending_totalizer[0] || _pending_totalizer[1])
+    {
+        for (int i = 0; i < CS_NO_NOZZLES; i++) {
+            if (!_pending_totalizer[i]) continue;
+            _pending_totalizer[i] = false;
+            _totalizer_nozzle_idx = (uint8_t)i;
+            _totalizer_vol_lx1000 = _pending_totalizer_vol[i];
+            _totalizer_ts_epoch   = (time_t)_pending_totalizer_ts[i];
+            break;
+        }
+        _cur_evt = EVT_TOTALIZED;
+        LOG_MSG_DEBUG(CSP_LOG_EN, "pending totalizer event for nozzle %u", (unsigned)_totalizer_nozzle_idx);
+    }
     else if (_pending_heartbeat && _hb_enabled)
     {
         _pending_heartbeat = false;
@@ -1108,6 +1153,25 @@ bool ModuleCubeSphere::_build_event_json(evt_type_t evt)
             body["epoch_sec"]    = crash_doc["epoch_sec"]    | (uint32_t)0;
             body["heap_free"]    = crash_doc["heap_free"]    | (uint32_t)0;
             body["backtrace"]    = crash_doc["backtrace"]    | "";
+            break;
+        }
+        case EVT_TOTALIZED: {
+            // app.fuel/totalized — best-effort report of the pump's lifetime
+            // totalizer reading (no ID/ABS_ID, no price — same shape as the
+            // legacy firmware's convert_totalizer_ne_to_json()).
+            if (_totalizer_nozzle_idx >= CS_NO_NOZZLES ||
+                _cs_nozzles[_totalizer_nozzle_idx].uuid[0] == '\0') return false;
+            char tot_ts[64] = {};
+            _cs_format_iso8601(_totalizer_ts_epoch + (int)(3600 * 5.5), "+05:30", tot_ts, sizeof(tot_ts));
+            JsonObject e0   = events.add<JsonObject>();
+            e0["device"]    = _cs_nozzles[_totalizer_nozzle_idx].uuid;
+            e0["time"]      = tot_ts;
+            e0["event"]     = "app.fuel/totalized";
+            JsonObject body = e0["body"].to<JsonObject>();
+            body["L"] = _totalizer_vol_lx1000 * 0.001;
+            body["T"] = _cs_nozzles[_totalizer_nozzle_idx].fuel_type;
+            body["P"] = 0;
+            body["U"] = 0;
             break;
         }
         default: return false;
@@ -1294,6 +1358,16 @@ void ModuleCubeSphere::_on_event_result(const hsys_msg_t &msg)
                 LOG_MSG_WARNING(CSP_LOG_EN, "crash event failed result=%d status=%d — will retry",
                                 (int)f.result, (int)f.status_code);
                 _pending_crash_send = true;
+            }
+            break;
+        case EVT_TOTALIZED:
+            // Best-effort — no retry/requeue on failure, matches EVT_HEARTBEAT.
+            if (ok) {
+                LOG_MSG_INFO(CSP_LOG_EN, "=====> totalized OK (nozzle=%u)",
+                             (unsigned)_totalizer_nozzle_idx);
+            } else {
+                LOG_MSG_WARNING(CSP_LOG_EN, "totalized failed result=%d status=%d (nozzle=%u) — dropped",
+                                (int)f.result, (int)f.status_code, (unsigned)_totalizer_nozzle_idx);
             }
             break;
         default: break;
