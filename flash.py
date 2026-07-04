@@ -11,6 +11,8 @@ Actions:
   --flashall       Build all (no clean), flash all (app + SPIFFS)
   --flashspiffs    Build + flash SPIFFS partition only
   --flashapp       Build (no clean) + flash app partition only
+  --release-flash  Flash a pre-built release factory image (0x0) — no build step.
+                    Requires --serial-port and --bin-path.
   --console        Open serial monitor
   --release        Full release workflow (delegates to release.py)
   --create-bundle  Create OTA bundle from existing build artifacts (delegates to release.py)
@@ -31,6 +33,11 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).resolve().parent
 PROJECT_DIR = SCRIPT_DIR / "src/product/ferp-com-main/ferp-com-esp32-idf"
 BAUD_RATE = 230400
+# Matches releases/flash-factory-bin.sh — factory images are flashed directly
+# with esptool (not idf.py) at a higher baud since there's no app-partition
+# offset math involved, just one raw write at 0x0.
+FACTORY_BAUD_RATE = 1152000
+FACTORY_FLASH_OFFSET = "0x0"
 
 
 def die(msg: str) -> None:
@@ -114,6 +121,12 @@ def parse_args() -> argparse.Namespace:
     group.add_argument("--flashall", action="store_true", help="Build + flash all")
     group.add_argument("--flashspiffs", action="store_true", help="Build + flash SPIFFS only")
     group.add_argument("--flashapp", action="store_true", help="Build + flash app only")
+    group.add_argument(
+        "--release-flash",
+        action="store_true",
+        dest="release_flash",
+        help="Flash a pre-built release factory image (0x0) — no build step",
+    )
     group.add_argument("--console", action="store_true", help="Open serial monitor")
     group.add_argument("--release", action="store_true", help="Full release workflow")
     group.add_argument(
@@ -124,6 +137,11 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--serial-port", help="Serial port (e.g. /dev/tty.usbserial-... or COM3)")
     parser.add_argument("--idf-path", help="Path to ESP-IDF installation")
+    parser.add_argument(
+        "--bin-path",
+        dest="bin_path",
+        help="Path to the release factory .bin file (required for --release-flash)",
+    )
     return parser.parse_args()
 
 
@@ -201,6 +219,27 @@ def main() -> None:
         print("=== Flash app partition ===")
         idf("app-flash", port=serial_port, baud=BAUD_RATE)
         print("=== Done (flash app) ===")
+
+    elif args.release_flash:
+        if not serial_port:
+            die("--serial-port is required for --release-flash")
+        if not args.bin_path:
+            die("--bin-path is required for --release-flash")
+        bin_path = Path(args.bin_path).expanduser().resolve()
+        if not bin_path.is_file():
+            die(f"Release bin file not found: {bin_path}")
+        print(f"=== Flashing release image {bin_path.name} to {serial_port} ===")
+        result = subprocess.run(
+            [
+                "esptool.py", "--chip", "esp32",
+                "-p", serial_port, "-b", str(FACTORY_BAUD_RATE),
+                "write_flash", FACTORY_FLASH_OFFSET, str(bin_path),
+            ],
+            shell=(platform.system() == "Windows"),
+        )
+        if result.returncode != 0:
+            sys.exit(result.returncode)
+        print("=== Done (release image flashed) ===")
 
     elif args.console:
         if not serial_port:

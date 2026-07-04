@@ -26,6 +26,7 @@ import re
 import sys
 import threading
 import tkinter as tk
+from tkinter import font as tkfont
 from tkinter import ttk, scrolledtext
 from pathlib import Path
 
@@ -67,6 +68,22 @@ LEVEL_COLOR: dict[str, str] = {
     "INF":   BLUE,
     "PLAIN": DIM,
 }
+
+# ─── Console font (log text widgets only) ────────────────────────────────────
+# Preference order: Consolas / Courier New first (per request), Menlo/Monaco
+# as the previous macOS default, then whatever fixed-width font Tk can find —
+# so the tool still runs on a machine with none of these installed instead of
+# silently falling back to a proportional font.
+CONSOLE_FONT_PREFERENCE = ("Consolas", "Courier New", "Menlo", "Monaco", "DejaVu Sans Mono")
+
+
+def _pick_console_font(root: tk.Misc) -> str:
+    available = set(tkfont.families(root))
+    for name in CONSOLE_FONT_PREFERENCE:
+        if name in available:
+            return name
+    return "TkFixedFont"
+
 
 # ─── ANSI / log parsing ───────────────────────────────────────────────────────
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
@@ -194,6 +211,7 @@ class App(tk.Tk):
         self._cfg     = _load_cfg()
         self._rx_q    = queue.Queue()
         self._reader  = SerialReader(self._rx_q)
+        self._console_font = _pick_console_font(self)
 
         self._level_vars:      dict[str, tk.BooleanVar] = {}
         self._tag_vars:        dict[str, tk.BooleanVar] = {}
@@ -382,7 +400,7 @@ class App(tk.Tk):
     def _make_text(self, parent: tk.Frame) -> scrolledtext.ScrolledText:
         """Create a colour-tagged, read-only scrolled text widget."""
         txt = scrolledtext.ScrolledText(
-            parent, bg=BG, fg=FG, font=("Menlo", 10),
+            parent, bg=BG, fg=FG, font=(self._console_font, 10),
             wrap=tk.NONE, state=tk.DISABLED,
             insertbackground=FG, relief=tk.FLAT,
             selectbackground=BG3, pady=2)
