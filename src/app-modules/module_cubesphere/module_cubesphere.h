@@ -189,6 +189,13 @@ private:
 
     // ── System status (from ModuleMsgTranslator) ──────────────────────────────
     bool     _system_is_idle         = true;    ///< Updated by MSG_ID_SYSTEM_STATUS
+    // OTA-only busy flag — deliberately separate from _system_is_idle, which
+    // also goes BUSY while any nozzle is fueling. Fueling must NOT pause
+    // CubeSphere (one nozzle pumping doesn't stop reporting another nozzle's
+    // events); only an actual OTA session (MQTT-driven or CubeSphere's own
+    // web-client OTA) should. Tracked directly from MsgOtaEvent so it's
+    // correct regardless of which source started the OTA.
+    bool     _ota_in_progress        = false;
     uint16_t _http_exec_ticks         = 0;       ///< Ticks spent in HTTP_EXECUTING; watchdog fires at 45 s
     uint32_t _retx_check_countdown   = 10;      ///< Ticks remaining until first retransmit check (10 s after RUNNING; resets to 60 s)
     bool     _retx_in_progress       = false;   ///< True while an EVT_PUMPED_RETX HTTP send is live
@@ -275,6 +282,7 @@ private:
     void _on_tick();
     void _on_sd_ready();
     void _on_system_status(const hsys_msg_t &msg);
+    void _on_ota_event(const hsys_msg_t &msg);
 
     // ── HTTP response handlers (DIRECT from ModuleHttp) ───────────────────────
     void _on_http_response_header(const hsys_msg_t &msg);

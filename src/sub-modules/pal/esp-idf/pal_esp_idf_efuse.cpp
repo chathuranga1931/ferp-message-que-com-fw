@@ -63,6 +63,7 @@ int32_t pal_efuse_get_chip_id(uint8_t* id, size_t* length) {
     }
 
 
+#if defined(TEST_PUMP_BUILD)
     // 112233445566
     mac[0] = 0x11;
     mac[1] = 0x22;
@@ -72,6 +73,7 @@ int32_t pal_efuse_get_chip_id(uint8_t* id, size_t* length) {
     mac[5] = 0x66;
     mac[6] = 0x00;
     mac[7] = 0x00;
+#endif
 
     // Copy available bytes
     size_t copy_len = (*length >= 8) ? 8 : 6;

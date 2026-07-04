@@ -19,6 +19,7 @@
 #include "msg_timer_alarm.h"
 #include "msg_sd_ready.h"
 #include "msg_system_status.h"
+#include "msg_ota_event.h"
 #include "list_manager.h"
 
 // HTTP messages (DIRECT to/from ModuleHttp)
@@ -102,6 +103,7 @@ void ModuleCubeSphere::init()
     subscribe(MsgSdReady::ID);
     subscribe(MSG_ID_TICK_1000MS);
     subscribe(MSG_ID_SYSTEM_STATUS);
+    subscribe(MsgOtaEvent::ID);
 
     // DIRECT responses from ModuleHttp
     subscribe(MSG_ID_HTTP_RESPONSE_HEADER);
@@ -135,6 +137,7 @@ void ModuleCubeSphere::on_msg_received(const hsys_msg_t &msg)
         case MsgTimerAlarm::ID:            _on_timer_alarm();            break;
         case MSG_ID_TICK_1000MS:           _on_tick();                   break;
         case MSG_ID_SYSTEM_STATUS:         _on_system_status(msg);       break;
+        case MsgOtaEvent::ID:              _on_ota_event(msg);           break;
         // HTTP session responses (DIRECT from ModuleHttp)
         case MSG_ID_HTTP_RESPONSE_HEADER:  _on_http_response_header(msg);break;
         case MSG_ID_HTTP_RESULT:           _on_http_result(msg);         break;
@@ -400,12 +403,22 @@ void ModuleCubeSphere::_on_timer_alarm()
         case STATE_REGISTERING:
             if (_http_phase == HTTP_IDLE) 
             {
-                if (_reg_step == REG_STEP_WAIT_2) 
+                if (_reg_step == REG_STEP_WAIT_2)
                 {
                     LOG_MSG_DEBUG(CSP_LOG_EN, "step1->step2 cooldown elapsed — starting step2");
                     _start_reg_step_2();
-                } 
-                else 
+                }
+                else if (_ota_in_progress)
+                {
+                    // An OTA session is active — defer the retry rather than
+                    // opening a new TLS connection that competes with it for
+                    // heap/CPU. _on_ota_event() resumes immediately once OTA
+                    // ends; this re-arm is just the fallback cadence in case
+                    // that hook is somehow missed.
+                    LOG_MSG_INFO(CSP_LOG_EN, "retry timer fired but OTA in progress — deferring registration");
+                    _arm_timer(MODULE_CUBESPHERE_RETRY_INTERVAL_MS);
+                }
+                else
                 {
                     LOG_MSG_INFO(CSP_LOG_EN, "retry timer — re-attempting registration");
                     _start_registration();
@@ -486,6 +499,35 @@ void ModuleCubeSphere::_on_system_status(const hsys_msg_t &msg)
         && _state == STATE_RUNNING && !_retx_in_progress && !_retx_last_send_failed)
     {
         _retx_try_send_one();
+    }
+}
+
+void ModuleCubeSphere::_on_ota_event(const hsys_msg_t &msg)
+{
+    auto p = MsgOtaEvent::deserialize(msg);
+
+    if (p.event == OTA_EVENT_SESSION_STARTED) {
+        _ota_in_progress = true;
+        LOG_MSG_INFO(CSP_LOG_EN, "OTA session started — pausing new HTTP work until it ends");
+        return;
+    }
+
+    if (p.event != OTA_EVENT_COMPLETE && p.event != OTA_EVENT_SESSION_ABORTED &&
+        p.event != OTA_EVENT_TIMEOUT) {
+        return;
+    }
+    if (!_ota_in_progress) return;   // wasn't tracking a session (e.g. started before we booted)
+
+    _ota_in_progress = false;
+    LOG_MSG_INFO(CSP_LOG_EN, "OTA session ended (event=%d) — resuming deferred HTTP work", (int)p.event);
+
+    // Resume whatever was deferred while the OTA was in progress instead of
+    // waiting out a timer that was only armed to wait for it to finish.
+    if (_state == STATE_REGISTERING && _http_phase == HTTP_IDLE
+        && _reg_step != REG_STEP_WAIT_2) {
+        _start_registration();
+    } else if (_state == STATE_RUNNING) {
+        _start_next_event();
     }
 }
 
@@ -820,7 +862,19 @@ void ModuleCubeSphere::_start_next_event()
 {
     if (_state != STATE_RUNNING || _http_phase != HTTP_IDLE) return;
 
-    if (_pending_startup) 
+    if (_ota_in_progress) {
+        // An OTA session (via MQTT or CubeSphere's own web-client OTA) is
+        // active — defer every pending event/queue entry as-is (nothing
+        // discarded) and just re-check on the next heartbeat tick.
+        // Fueling alone must NOT pause this: one nozzle pumping does not
+        // stop CubeSphere from reporting a different nozzle's events.
+        // _on_ota_event() calls us immediately once OTA ends, so this
+        // re-arm is a safety-net cadence only.
+        if (_hb_enabled) _arm_timer(_hb_interval_ms);
+        return;
+    }
+
+    if (_pending_startup)
     {
         _pending_startup = false;
         _cur_evt = EVT_STARTUP;

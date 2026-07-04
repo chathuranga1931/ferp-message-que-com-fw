@@ -26,9 +26,6 @@
 #include "app_module_ids.h"
 #include "pal_mqtt.h"
 #include "FileSystemDriver.h"
-#include "hsys_queue.h"
-#include "hsys_mutex.h"
-#include "hsys_task.h"
 #include <stdint.h>
 
 #define MODULE_MQTT_NAME "mqtt"
@@ -41,15 +38,6 @@
 
 // Maximum size of JSON published on ota/resp
 #define MODULE_MQTT_OTA_RESP_MAX 128
-
-// Maximum OTA chunk payload (data only, offset header already stripped).
-// Matches the default OTA_CHUNK_SIZE documented in pal_mqtt_get_default_config().
-#define MODULE_MQTT_OTA_CHUNK_MAX 4096
-
-// Depth of the OTA write-job queue. The wire protocol is strict lockstep
-// (host waits for the ota/resp ack before sending the next chunk), so only
-// one job is ever really in flight — 2 slots/buffers just give headroom.
-#define MODULE_MQTT_OTA_WRITE_QUEUE_DEPTH 2
 
 // ---------------------------------------------------------------------------
 // MQTT OTA target name entry
@@ -140,39 +128,6 @@ private:
     uint32_t               _ota_running_crc      = 0xFFFFFFFF;  ///< running CRC32 (pre-finalized)
     uint32_t               _ota_seq              = 0;           ///< seq echoed in ota/resp
     bool                   _ota_fopen_done       = false;
-
-    // ── OTA write decoupling ─────────────────────────────────────────────────
-    // The actual flash write (esp_ota_write → blocking SPI erase) must never
-    // run inline on the MQTT client's own task — it starves that task's
-    // socket/keepalive servicing for the duration of the erase and is the
-    // prime suspect for mid-OTA MQTT disconnects. _handle_ota_data() only
-    // parses/validates/copies the chunk and enqueues a job here; a dedicated
-    // writer task drains the queue and does the real driver I/O.
-    //
-    // _ota_io_mutex serializes every _ota_driver->{fopen,fwrite,fclose,ferase}
-    // call (and the state they guard) between the MQTT task (control path:
-    // ota_start/ota_abort/ota_complete) and the writer task (data path).
-    //
-    // _ota_session_gen is bumped on every _ota_reset(); each queued job is
-    // tagged with the generation active when it was enqueued, so a job that
-    // was queued just before an abort/reset races ahead of it is silently
-    // dropped instead of writing into a torn-down session.
-    typedef struct {
-        uint8_t  buf_index;
-        uint32_t offset;
-        uint32_t len;
-        uint32_t session_gen;
-    } ota_write_job_t;
-
-    hsys_mutex_handle_t _ota_io_mutex     = nullptr;
-    hsys_queue_handle_t _ota_write_queue  = {};
-    hsys_task_handle_t  _ota_writer_task  = nullptr;
-    uint32_t            _ota_session_gen  = 0;
-    uint8_t             _ota_chunk_buf[2][MODULE_MQTT_OTA_CHUNK_MAX] = {};
-    uint8_t             _ota_next_buf_idx = 0;
-
-    void        _ota_writer_loop();
-    static void s_ota_writer_task_entry(void *arg);
 
     // ── Helpers ───────────────────────────────────────────────────────────────
     void _on_config_mqtt(const hsys_msg_t &msg);

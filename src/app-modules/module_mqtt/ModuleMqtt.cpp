@@ -128,12 +128,6 @@ void ModuleMqtt::init()
     subscribe(MsgPoolJson::ID);      // NOTIFICATION → pool snapshot response
     subscribe(MsgFileListSpiffs::ID); // NOTIFICATION → SPIFFS file listing response
 
-    // OTA write decoupling — see ModuleMqtt.h for rationale.
-    _ota_io_mutex = hsys_mutex_create();
-    hsys_queue_init(&_ota_write_queue, MODULE_MQTT_OTA_WRITE_QUEUE_DEPTH, sizeof(ota_write_job_t));
-    _ota_writer_task = hsys_task_create(&ModuleMqtt::s_ota_writer_task_entry,
-                                         "ota_writer", 3072, this, 5);
-
     LOG_MSG_INFO(MQTT_LOG, "init — state=WAIT_CONFIG");
 }
 
@@ -218,8 +212,8 @@ void ModuleMqtt::on_msg_received(const hsys_msg_t &msg)
             if (_state == STATE_CONNECTED) {
                 _on_outbound_msg(msg, true /*evt*/);
             }
+            // If we are waiting for OtaModule to confirm ota_complete, respond now
             if (_ota_state == MQTT_OTA_COMPLETING) {
-                // We are waiting for OtaModule to confirm ota_complete — respond now.
                 auto ep = MsgOtaEvent::deserialize(msg);
                 char resp[MODULE_MQTT_OTA_RESP_MAX];
                 if (ep.event == OTA_EVENT_COMPLETE) {
@@ -238,26 +232,7 @@ void ModuleMqtt::on_msg_received(const hsys_msg_t &msg)
                     LOG_MSG_WARNING(MQTT_LOG, "OTA: complete aborted by OtaModule (event=%d)",
                                     (int)ep.event);
                 }
-                hsys_mutex_lock(_ota_io_mutex);
                 _ota_reset();
-                hsys_mutex_unlock(_ota_io_mutex);
-            } else if (_ota_state != MQTT_OTA_IDLE) {
-                // OtaModule ended a session we were mid-stream on (e.g. its own
-                // PENDING/ACTIVE deadline fired — including after a transient
-                // MQTT disconnect the host never resumed from) without any
-                // ota_complete cmd ever arriving. Resync local bookkeeping so
-                // a stuck _ota_state doesn't permanently reject future
-                // ota_start requests as "busy". OtaModule already erased the
-                // partial write itself before publishing this event.
-                auto ep = MsgOtaEvent::deserialize(msg);
-                if (ep.event == OTA_EVENT_SESSION_ABORTED || ep.event == OTA_EVENT_TIMEOUT) {
-                    LOG_MSG_INFO(MQTT_LOG,
-                                 "OTA: session ended by OtaModule (event=%d) while mqtt-state=%d — resyncing",
-                                 (int)ep.event, (int)_ota_state);
-                    hsys_mutex_lock(_ota_io_mutex);
-                    _ota_reset();
-                    hsys_mutex_unlock(_ota_io_mutex);
-                }
             }
             break;
 
@@ -304,9 +279,7 @@ void ModuleMqtt::on_msg_received(const hsys_msg_t &msg)
             _ota_ctx    = p.ctx;
 
             // Open write session on the driver
-            hsys_mutex_lock(_ota_io_mutex);
             ota_fs_err_t err = _ota_driver->fopen(_ota_ctx, nullptr, OTA_FS_OPEN_WRITE);
-            hsys_mutex_unlock(_ota_io_mutex);
             if (err != OTA_FS_OK) {
                 LOG_MSG_ERROR(MQTT_LOG, "OTA: fopen failed err=%d", (int)err);
                 MsgOtaAbortRequest::Payload ap{ OTA_ABORT_WRITE_ERROR, {} };
@@ -513,18 +486,18 @@ void ModuleMqtt::_on_pal_disconnected()
         if (m) publish(m);
     }
 
-    // Do NOT abort an in-progress OTA session here. A disconnect is often a
-    // few-second reconnect blip (auto-reconnect is on); tearing the session
-    // down immediately throws away all progress for a transient network hit.
-    // Leave _ota_driver/_ota_ctx/offsets/CRC exactly as they are — no new
-    // ota/data or ota/ctrl messages can arrive until we resubscribe on
-    // reconnect, so the session just sits idle in the meantime. OtaModule's
-    // own PENDING deadline / ACTIVE inactivity timeout (reset by every
-    // MsgOtaProgress) is the backstop that eventually aborts it — via
-    // MsgOtaEvent(TIMEOUT/SESSION_ABORTED) — if the host never resumes.
+    // Abort any in-progress OTA session
     if (_ota_state != MQTT_OTA_IDLE) {
-        LOG_MSG_WARNING(MQTT_LOG, "OTA: MQTT disconnected — leaving session intact, "
-                        "relying on OtaModule inactivity timeout as backstop");
+        LOG_MSG_WARNING(MQTT_LOG, "OTA: MQTT disconnected — aborting OTA session");
+        if (_ota_state == MQTT_OTA_ACTIVE || _ota_state == MQTT_OTA_COMPLETING) {
+            if (_ota_fopen_done && _ota_driver) {
+                _ota_driver->ferase(_ota_ctx);
+            }
+            MsgOtaAbortRequest::Payload ap{ OTA_ABORT_SOURCE_DISCONNECTED, {} };
+            hsys_msg_t *am = MsgOtaAbortRequest::create(id(), ap);
+            if (am) send(am, MODULE_OTA_ID);
+        }
+        _ota_reset();
     }
 }
 
@@ -800,7 +773,6 @@ void ModuleMqtt::_ota_reset()
     _ota_seq             = 0;
     _ota_fopen_done      = false;
     _last_progress_pct   = 255;  // reset throttle so next session starts fresh
-    _ota_session_gen++;         // invalidate any write job still queued from this session
 }
 
 // ---------------------------------------------------------------------------
@@ -900,13 +872,9 @@ void ModuleMqtt::_handle_ota_ctrl(const pal_mqtt_message_t *m)
             _publish_ota_resp(resp);
             return;
         }
-        hsys_mutex_lock(_ota_io_mutex);
         if (_ota_fopen_done && _ota_driver) {
             _ota_driver->ferase(_ota_ctx);
         }
-        _ota_reset();
-        hsys_mutex_unlock(_ota_io_mutex);
-
         MsgOtaAbortRequest::Payload ap{ OTA_ABORT_SOURCE_CANCELLED, {} };
         hsys_msg_t *am = MsgOtaAbortRequest::create(id(), ap);
         if (am) send(am, MODULE_OTA_ID);
@@ -915,6 +883,7 @@ void ModuleMqtt::_handle_ota_ctrl(const pal_mqtt_message_t *m)
         snprintf(resp, sizeof(resp),
                  "{\"seq\":%u,\"cmd\":\"ota_abort\",\"status\":\"ok\"}", (unsigned)seq);
         _publish_ota_resp(resp);
+        _ota_reset();
         return;
     }
 
@@ -938,10 +907,7 @@ void ModuleMqtt::_handle_ota_ctrl(const pal_mqtt_message_t *m)
         if (do_crc && host_crc != local_crc) {
             LOG_MSG_ERROR(MQTT_LOG, "OTA: CRC mismatch got=0x%08X expected=0x%08X",
                           (unsigned)local_crc, (unsigned)host_crc);
-            hsys_mutex_lock(_ota_io_mutex);
             if (_ota_driver) _ota_driver->ferase(_ota_ctx);
-            _ota_reset();
-            hsys_mutex_unlock(_ota_io_mutex);
             MsgOtaCompleteNotify::Payload np{ false, {}, OTA_FS_ERR_WRITE_FAIL };
             hsys_msg_t *nm = MsgOtaCompleteNotify::create(id(), np);
             if (nm) send(nm, MODULE_OTA_ID);
@@ -950,17 +916,13 @@ void ModuleMqtt::_handle_ota_ctrl(const pal_mqtt_message_t *m)
                      "{\"seq\":%u,\"cmd\":\"ota_complete\",\"status\":\"error\","
                      "\"code\":\"crc_mismatch\"}", (unsigned)seq);
             _publish_ota_resp(resp);
+            _ota_reset();
             return;
         }
 
         // Commit the written image
-        hsys_mutex_lock(_ota_io_mutex);
         ota_fs_err_t close_err = _ota_driver->fclose(_ota_ctx);
         _ota_fopen_done = false;
-        if (close_err != OTA_FS_OK) {
-            _ota_reset();
-        }
-        hsys_mutex_unlock(_ota_io_mutex);
         if (close_err != OTA_FS_OK) {
             LOG_MSG_ERROR(MQTT_LOG, "OTA: fclose failed err=%d", (int)close_err);
             MsgOtaCompleteNotify::Payload np{ false, {}, close_err };
@@ -971,6 +933,7 @@ void ModuleMqtt::_handle_ota_ctrl(const pal_mqtt_message_t *m)
                      "{\"seq\":%u,\"cmd\":\"ota_complete\",\"status\":\"error\","
                      "\"code\":\"commit_failed\"}", (unsigned)seq);
             _publish_ota_resp(resp);
+            _ota_reset();
             return;
         }
 
@@ -1001,10 +964,6 @@ void ModuleMqtt::_handle_ota_ctrl(const pal_mqtt_message_t *m)
 // _handle_ota_data  — binary chunk on .../ota/data
 // ---------------------------------------------------------------------------
 
-// Runs on the MQTT client's own task (called synchronously from the PAL
-// event callback). Deliberately kept cheap: parse + validate + copy into a
-// static buffer + enqueue. The actual driver->fwrite() (blocking SPI flash
-// erase/write) must NOT run here — see ModuleMqtt.h for why.
 void ModuleMqtt::_handle_ota_data(const pal_mqtt_message_t *m)
 {
     if (_ota_state != MQTT_OTA_ACTIVE) {
@@ -1037,111 +996,44 @@ void ModuleMqtt::_handle_ota_data(const pal_mqtt_message_t *m)
         return;
     }
 
-    // Reject chunks that would overflow the fixed copy buffer
-    if (len > MODULE_MQTT_OTA_CHUNK_MAX) {
-        LOG_MSG_ERROR(MQTT_LOG, "OTA chunk: too large (%u bytes, max %u) — dropped",
-                      (unsigned)len, (unsigned)MODULE_MQTT_OTA_CHUNK_MAX);
+    // Write chunk to driver
+    ota_fs_err_t err = _ota_driver->fwrite(_ota_ctx, chunk, len);
+    if (err != OTA_FS_OK) {
+        LOG_MSG_ERROR(MQTT_LOG, "OTA chunk: fwrite failed at offset=%u err=%d",
+                      (unsigned)offset, (int)err);
+        _ota_driver->ferase(_ota_ctx);
+        MsgOtaAbortRequest::Payload ap{ OTA_ABORT_WRITE_ERROR, {} };
+        hsys_msg_t *am = MsgOtaAbortRequest::create(id(), ap);
+        if (am) send(am, MODULE_OTA_ID);
         char resp[MODULE_MQTT_OTA_RESP_MAX];
         snprintf(resp, sizeof(resp),
                  "{\"cmd\":\"ota_chunk\",\"status\":\"error\","
-                 "\"offset_expecting\":%u}", (unsigned)_ota_expected_offset);
+                 "\"offset_expecting\":%u}", (unsigned)offset);
         _publish_ota_resp(resp);
+        _ota_reset();
         return;
     }
 
-    // Copy into a ping-pong buffer and hand off to the writer task. The wire
-    // protocol is strict lockstep (host waits for our ack before sending the
-    // next chunk), so this enqueue essentially never blocks/fails in practice.
-    uint8_t idx = _ota_next_buf_idx;
-    _ota_next_buf_idx ^= 1;
-    memcpy(_ota_chunk_buf[idx], chunk, len);
+    // Update running CRC32 and counters
+    _ota_running_crc     = crc32_update(_ota_running_crc, chunk, len);
+    _ota_expected_offset += len;
+    _ota_bytes_written   += len;
 
-    ota_write_job_t job{ idx, offset, len, _ota_session_gen };
-    if (!hsys_queue_send(&_ota_write_queue, &job, 50 /*ms*/)) {
-        LOG_MSG_ERROR(MQTT_LOG, "OTA chunk: writer queue full — chunk dropped at offset=%u",
-                      (unsigned)offset);
-        // No ack sent — host will time out/retry, or OtaModule's inactivity
-        // timeout will eventually abort the stalled session.
-    }
-}
+    // Publish progress notification (resets OtaModule inactivity timer)
+    MsgOtaProgress::Payload pp{};
+    pp.target_idx    = _ota_target_idx;
+    pp.bytes_written = _ota_bytes_written;
+    pp.total_bytes   = _ota_total_size;
+    pp.percent       = (_ota_total_size > 0)
+                       ? (uint8_t)((_ota_bytes_written * 100U) / _ota_total_size)
+                       : 0;
+    hsys_msg_t *pm = MsgOtaProgress::create(id(), pp);
+    if (pm) publish(pm);
 
-// ---------------------------------------------------------------------------
-// _ota_writer_loop  — dedicated task: performs the actual flash write
-// ---------------------------------------------------------------------------
-// Kept off the MQTT client's task so a slow flash erase can't starve its
-// socket/keepalive servicing. See ModuleMqtt.h for the concurrency scheme.
-
-void ModuleMqtt::s_ota_writer_task_entry(void *arg)
-{
-    static_cast<ModuleMqtt *>(arg)->_ota_writer_loop();
-}
-
-void ModuleMqtt::_ota_writer_loop()
-{
-    for (;;) {
-        ota_write_job_t job;
-        if (!hsys_queue_receive(&_ota_write_queue, &job, HSYS_WAIT_FOREVER)) {
-            continue;
-        }
-
-        hsys_mutex_lock(_ota_io_mutex);
-
-        // The session this job belonged to may have been aborted/reset while
-        // it was queued — drop it rather than writing into a torn-down session.
-        if (job.session_gen != _ota_session_gen || _ota_state != MQTT_OTA_ACTIVE) {
-            hsys_mutex_unlock(_ota_io_mutex);
-            LOG_MSG_WARNING(MQTT_LOG, "OTA chunk: stale job (gen=%u cur=%u) — dropped",
-                            (unsigned)job.session_gen, (unsigned)_ota_session_gen);
-            continue;
-        }
-
-        const uint8_t *chunk  = _ota_chunk_buf[job.buf_index];
-        uint32_t       offset = job.offset;
-        uint32_t       len    = job.len;
-
-        ota_fs_err_t err = _ota_driver->fwrite(_ota_ctx, chunk, len);
-        if (err != OTA_FS_OK) {
-            LOG_MSG_ERROR(MQTT_LOG, "OTA chunk: fwrite failed at offset=%u err=%d",
-                          (unsigned)offset, (int)err);
-            _ota_driver->ferase(_ota_ctx);
-            _ota_reset();
-            hsys_mutex_unlock(_ota_io_mutex);
-
-            MsgOtaAbortRequest::Payload ap{ OTA_ABORT_WRITE_ERROR, {} };
-            hsys_msg_t *am = MsgOtaAbortRequest::create(id(), ap);
-            if (am) send(am, MODULE_OTA_ID);
-            char resp[MODULE_MQTT_OTA_RESP_MAX];
-            snprintf(resp, sizeof(resp),
-                     "{\"cmd\":\"ota_chunk\",\"status\":\"error\","
-                     "\"offset_expecting\":%u}", (unsigned)offset);
-            _publish_ota_resp(resp);
-            continue;
-        }
-
-        // Update running CRC32 and counters
-        _ota_running_crc     = crc32_update(_ota_running_crc, chunk, len);
-        _ota_expected_offset += len;
-        _ota_bytes_written   += len;
-        uint32_t next_offset = _ota_expected_offset;
-
-        hsys_mutex_unlock(_ota_io_mutex);
-
-        // Publish progress notification (resets OtaModule inactivity timer)
-        MsgOtaProgress::Payload pp{};
-        pp.target_idx    = _ota_target_idx;
-        pp.bytes_written = _ota_bytes_written;
-        pp.total_bytes   = _ota_total_size;
-        pp.percent       = (_ota_total_size > 0)
-                           ? (uint8_t)((_ota_bytes_written * 100U) / _ota_total_size)
-                           : 0;
-        hsys_msg_t *pm = MsgOtaProgress::create(id(), pp);
-        if (pm) publish(pm);
-
-        // Respond with next expected offset
-        char resp[MODULE_MQTT_OTA_RESP_MAX];
-        snprintf(resp, sizeof(resp),
-                 "{\"cmd\":\"ota_chunk\",\"status\":\"ok\",\"offset_next\":%u}",
-                 (unsigned)next_offset);
-        _publish_ota_resp(resp);
-    }
+    // Respond with next expected offset
+    char resp[MODULE_MQTT_OTA_RESP_MAX];
+    snprintf(resp, sizeof(resp),
+             "{\"cmd\":\"ota_chunk\",\"status\":\"ok\",\"offset_next\":%u}",
+             (unsigned)_ota_expected_offset);
+    _publish_ota_resp(resp);
 }
