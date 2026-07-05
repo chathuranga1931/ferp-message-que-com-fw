@@ -420,7 +420,7 @@ const pump_driver_t pump_drivers[DIS_SIZE] = {
 //   - On EXIT from totalizer mode (select_ll goes false): send the last
 //     observed value if it hasn't already been sent, so the final reading
 //     for that totalizer session isn't lost even if tot_dur hasn't elapsed.
-bool process_totalizer_data(const app_display_data_t * display_data, uint8_t nozzle_id, uint64_t * tot_value)
+bool process_totalizer_data(const app_display_data_t * display_data, uint8_t nozzle_id, uint64_t * tot_valuex1000)
 {
     bool is_ready = false;
 
@@ -435,25 +435,25 @@ bool process_totalizer_data(const app_display_data_t * display_data, uint8_t noz
     uint32_t tot_cnt = cfg ? cfg->tot_cnt : 10;
     uint32_t tot_dur = cfg ? cfg->tot_dur : 300000;
 
-    uint64_t current_value = display_data->volume_lx1000;
+    uint64_t current_valuex1000 = display_data->total_pricex100;
 
     if (display_data->select_ll && !is_prev_totalizer[nozzle_id])
     {
         // First totalizer frame for this mode-session — send immediately.
-        instant_value[nozzle_id]    = current_value;
+        instant_value[nozzle_id]    = current_valuex1000;
         same_value_count[nozzle_id] = 0;
-        last_sent_value[nozzle_id]  = current_value;
+        last_sent_value[nozzle_id]  = current_valuex1000;
         last_sent_ts[nozzle_id]     = now;
 
-        *tot_value = current_value;
+        *tot_valuex1000 = current_valuex1000;
         is_ready = true;
     }
     else if (display_data->select_ll)
     {
         // Continuing in totalizer mode — debounce + rate-limit resends.
-        if (current_value != instant_value[nozzle_id])
+        if (current_valuex1000 != instant_value[nozzle_id])
         {
-            instant_value[nozzle_id]    = current_value;
+            instant_value[nozzle_id]    = current_valuex1000;
             same_value_count[nozzle_id] = 0;
         }
         else if (same_value_count[nozzle_id] < UINT32_MAX)
@@ -463,14 +463,14 @@ bool process_totalizer_data(const app_display_data_t * display_data, uint8_t noz
 
         bool is_stable     = same_value_count[nozzle_id] >= tot_cnt;
         bool interval_ok   = (now - last_sent_ts[nozzle_id]) >= tot_dur;
-        bool value_changed = current_value != last_sent_value[nozzle_id];
+        bool value_changed = current_valuex1000 != last_sent_value[nozzle_id];
 
         if (is_stable && interval_ok && value_changed)
         {
-            last_sent_value[nozzle_id] = current_value;
+            last_sent_value[nozzle_id] = current_valuex1000;
             last_sent_ts[nozzle_id]    = now;
 
-            *tot_value = current_value;
+            *tot_valuex1000 = current_valuex1000;
             is_ready = true;
         }
     }
@@ -483,7 +483,7 @@ bool process_totalizer_data(const app_display_data_t * display_data, uint8_t noz
             last_sent_value[nozzle_id] = instant_value[nozzle_id];
             last_sent_ts[nozzle_id]    = now;
 
-            *tot_value = instant_value[nozzle_id];
+            *tot_valuex1000 = instant_value[nozzle_id];
             is_ready = true;
         }
     }
@@ -590,11 +590,6 @@ void ModuleFuel::_process_queues()
                 continue;
             }
 
-            if(pump_drivers[dtype].process_totalizer_data == nullptr)
-            {
-                MLOGE("nozzle[%u] display type %d has no process_totalizer_data wired up", (unsigned)idx, (int)dtype);
-                continue;
-            }
 
             if(display_data[idx].volume_lx1000 == 0 && display_data[idx].unit_pricex100 == 0 && display_data[idx].total_pricex100 == 0)
             {
@@ -602,13 +597,16 @@ void ModuleFuel::_process_queues()
                 continue;
             }
 
-            // Process totalizer data, should be called even if it is not totalized, to identify the 
-            // tot start and endpoints
-            uint64_t totalized_value;
-            if(pump_drivers[dtype].process_totalizer_data(&display_data[idx], idx, &totalized_value))
+            if(pump_drivers[dtype].process_totalizer_data)
             {
-                //if true, should send the totalized value to cloud
-                _publish_totalizer_event(idx, totalized_value);
+                // Process totalizer data, should be called even if it is not totalized, to identify the 
+                // tot start and endpoints
+                uint64_t totalized_valuex1000;
+                if(pump_drivers[dtype].process_totalizer_data(&display_data[idx], idx, &totalized_valuex1000))
+                {
+                    //if true, should send the totalized value to cloud
+                    _publish_totalizer_event(idx, totalized_valuex1000);
+                }
             }
 
             // disable handling totalizer for now. TODO
@@ -721,18 +719,18 @@ void ModuleFuel::_publish_fuel_pumped(uint8_t nozzle_idx, const nozzle_event_t &
     publish(msg);
 }
 
-void ModuleFuel::_publish_totalizer_event(uint32_t nozzle_idx, uint64_t totalizer_value)
+void ModuleFuel::_publish_totalizer_event(uint32_t nozzle_idx, uint64_t totalizer_valuex1000)
 {
     time_t epoch = 0;
     pal_time_get_epoch_time(&epoch);
 
     MsgFuelTotalizer::Payload p{};
     p.nozzle_idx = (uint8_t)nozzle_idx;
-    p.vol_lx1000 = totalizer_value;
+    p.vol_lx1000 = totalizer_valuex1000;
     p.time_stamp = (uint32_t)epoch;
 
     MLOG("nozzle[%u] totalizer=%llu L x1000", (unsigned)nozzle_idx,
-         (unsigned long long)totalizer_value);
+         (unsigned long long)totalizer_valuex1000);
 
     hsys_msg_t *msg = create_typed<MsgFuelTotalizer>(p);
     if (!msg) { log_error("create_typed<MsgFuelTotalizer> failed"); return; }
