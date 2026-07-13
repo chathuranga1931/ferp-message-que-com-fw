@@ -10,19 +10,22 @@
 #include "raw_capture.h"
 
 // One capture batch per channel PER DATA LINE, sent as RAW_CHUNK_COUNT
-// packets of RAW_CHUNK_LEN bytes each, then a pacing delay before the next
-// batch — see PLAN.md for why (downstream log forwarding can't keep up
-// with a continuous stream). SDATA1 and SDATA2 share one SCLK/RCLK per
-// channel but carry independent data, so each line is captured into its
-// own buffer and sent under its own pck_id (TX_ID_RAW_DIS{1,2}_L{1,2}_DATA)
-// — a fully independent stream per channel+line, no shared field needed to
-// tell them apart. Batch size halved vs. an earlier single-ID-per-channel
-// revision of this driver, so total bandwidth per pacing cycle stays the
-// same now that there are 4 streams instead of 2.
+// packets of RAW_CHUNK_LEN bytes each. SDATA1 and SDATA2 share one
+// SCLK/RCLK per channel but carry independent data, so each line is
+// captured into its own buffer and sent under its own pck_id
+// (TX_ID_RAW_DIS{1,2}_L{1,2}_DATA) — a fully independent stream per
+// channel+line, no shared field needed to tell them apart.
+//
+// Only ONE line's batch is sent per "channel full" event — the two lines
+// alternate (L1, L2, L1, L2, ...) — followed by RAW_PACING_MS of silence
+// before the next capture starts. This keeps each capture-and-send burst
+// down to a single 128-byte/4-chunk stream instead of two back-to-back,
+// and gives the pacing gap room to be generous (a few seconds) without
+// doubling the total time before every line gets a fresh sample.
 #define RAW_BATCH_SIZE  128
 #define RAW_CHUNK_COUNT 4
 #define RAW_CHUNK_LEN   (RAW_BATCH_SIZE / RAW_CHUNK_COUNT)
-#define RAW_PACING_MS   2000
+#define RAW_PACING_MS   10000
 
 // Internal "which channel filled up" marker for capture_queue — distinct
 // from the wire pck_id enum, since each channel now maps to two different
@@ -58,6 +61,12 @@ static volatile uint16_t accumulator_dis_2_l2 = 0;
 static volatile uint16_t buf_idx_dis_2 = 0;
 static uint8_t raw_buf_dis_2_l1[RAW_BATCH_SIZE];
 static uint8_t raw_buf_dis_2_l2[RAW_BATCH_SIZE];
+
+// Which line to send next for each channel — alternates every cycle
+// (both lines are always captured together regardless, since one RCLK
+// edge latches both; this only controls which one gets transmitted).
+static uint8_t next_line_dis_1 = 1;
+static uint8_t next_line_dis_2 = 1;
 
 static void pin_interrupt_enable_dis_1(void);
 static void pin_interrupt_enable_dis_2(void);
@@ -155,19 +164,37 @@ static void send_one_line_batch(tx_pckt_id_t pck_id, const uint8_t *buf)
     }
 }
 
-// Sends both data lines' batches for the channel that just filled up —
-// SDATA1 first, then SDATA2 — each under its own dedicated pck_id.
+// Sends only ONE data line's batch for the channel that just filled up —
+// whichever line's turn it is — then flips to the other line for next
+// time. Both lines were captured either way; the unsent one's fresh data
+// just waits for its own turn.
 static void send_raw_batch(uint8_t chan)
 {
     if (chan == RAW_CHAN_DIS1)
     {
-        send_one_line_batch(TX_ID_RAW_DIS1_L1_DATA, raw_buf_dis_1_l1);
-        send_one_line_batch(TX_ID_RAW_DIS1_L2_DATA, raw_buf_dis_1_l2);
+        if (next_line_dis_1 == 1)
+        {
+            send_one_line_batch(TX_ID_RAW_DIS1_L1_DATA, raw_buf_dis_1_l1);
+            next_line_dis_1 = 2;
+        }
+        else
+        {
+            send_one_line_batch(TX_ID_RAW_DIS1_L2_DATA, raw_buf_dis_1_l2);
+            next_line_dis_1 = 1;
+        }
     }
     else
     {
-        send_one_line_batch(TX_ID_RAW_DIS2_L1_DATA, raw_buf_dis_2_l1);
-        send_one_line_batch(TX_ID_RAW_DIS2_L2_DATA, raw_buf_dis_2_l2);
+        if (next_line_dis_2 == 1)
+        {
+            send_one_line_batch(TX_ID_RAW_DIS2_L1_DATA, raw_buf_dis_2_l1);
+            next_line_dis_2 = 2;
+        }
+        else
+        {
+            send_one_line_batch(TX_ID_RAW_DIS2_L2_DATA, raw_buf_dis_2_l2);
+            next_line_dis_2 = 1;
+        }
     }
 }
 

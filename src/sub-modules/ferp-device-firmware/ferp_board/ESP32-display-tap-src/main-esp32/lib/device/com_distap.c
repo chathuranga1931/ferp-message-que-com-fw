@@ -168,11 +168,17 @@ static void serial_receive_task(void *arg)
                         {
                             printf("invalid\r\n");
                         }
-                        
-                        uart_flush(UART_NUM_2);
+
+                        // Do NOT uart_flush()/break here: `buffer` may hold
+                        // more than one frame if two arrive close together
+                        // (e.g. a fast back-to-back burst) — flushing +
+                        // breaking out of the for-loop silently discarded
+                        // any bytes already read past this frame's EOM
+                        // (including the start of the next frame), which
+                        // is exactly what caused every other raw-capture
+                        // chunk to go missing. Just reset rx_idx and keep
+                        // scanning the rest of this buffer for the next SOM.
                         rx_idx = -1;
-                        index = 0;
-                        break; // going out from for loop
                     }
                     else
                     {

@@ -69,6 +69,56 @@ latter. The flash-size goal is genuinely met; it just happens via linker
 dead-code elimination rather than skipped compilation (build time isn't
 improved, binary size is).
 
+**D. Real bug found from actual field logs (flashed hardware, not just
+build-verification) — fixed in the shared UART framing parser used by
+every packet type, not code specific to this feature:**
+
+Field testing showed `chunk=2/4` and `chunk=4/4` almost never arriving —
+consistently only `1/4` and `3/4` — for every capture cycle. Root cause:
+`serial_receive_task()` (`com_distap.c`, both main-esp32 trees, and the
+mirrored logic in distap's own `device.c`) did this on every successfully
+parsed frame:
+```c
+if (rx_idx >= 4) {
+    ... validate_packet() + dispatch ...
+    uart_flush(UART_NUM_2);
+    rx_idx = -1;
+    index = 0;
+    break;   // exits the for-loop over the just-read buffer entirely
+}
+```
+`buffer[]` holds *everything* returned by one `uart_read_bytes()` call —
+which can be more than one frame's worth if two frames arrive close
+together. The `break` discarded every byte after the current frame's EOM
+still sitting in that buffer (i.e. the start of the *next* frame, if it
+had already been read), and `uart_flush()` additionally dropped anything
+still unread in the UART driver's own FIFO. Raw-capture is the first thing
+in this codebase to transmit packets back-to-back only ~10ms apart (every
+other pump type sends occasionally, on data change or a once/second
+keepalive) — fast enough for two frames to regularly land in the same
+read call, which is exactly the condition that triggers this loss. The
+fact that it was *always* the 2nd/4th chunk lost, never random, is
+consistent with a deterministic timing-dependent drop rather than noise.
+
+**Fix** (applied to all three copies: both `com_distap.c` and distap's
+`device.c`): removed the `uart_flush()` and `break`, keeping just
+`rx_idx = -1` — the for-loop now naturally keeps scanning any bytes
+already sitting past the current frame's EOM for the next SOM, instead of
+throwing them away. Rebuilt and reverified (§0 table) after the fix.
+
+**Design change requested after reviewing field logs:** rather than
+sending both `SDATA1` and `SDATA2` batches back-to-back every cycle (8
+packets every `RAW_PACING_MS`), `raw_capture.c` now sends **one line per
+cycle, alternating** (`L1`, `L2`, `L1`, `L2`, ...), with `RAW_PACING_MS`
+raised from 2000 to **5000, then to 10000** (10s) after confirming that
+gap length is acceptable. Both lines are still captured together every
+cycle regardless (hardware lockstep, unavoidable); only which one gets
+*transmitted* alternates. This halves the packets sent per wake-up (4
+instead of 8) and stretches the overall cadence out — a deliberate
+simplification, not a fix for the parser bug above (that bug can still
+affect same-line back-to-back chunks; the two changes are independent and
+both landed together).
+
 Implemented (code, all six items below build-verified above):
 
 - §4 wire protocol (new packet IDs, `raw_capture_chunk_t`, `is_raw_capture_type()`,
@@ -227,16 +277,17 @@ ESP32 (`ferp-com-main`, code lives in
 - **Chunked, paced transfer**: DT board collects a capture batch **per
   channel per data line** (both `SDATA1` and `SDATA2` are captured — see
   §0 for how this grew from the original single-line design below), sends
-  it as 4 packets, then waits 2 seconds before capturing/sending the next
-  batch. This exists because downstream (main → cloud log forwarding)
-  can't keep up if raw data is streamed continuously. As actually
-  implemented (§0/§4.2): 128 bytes per line, 32 bytes per packet — so
-  each physical channel moves 256 bytes total per 2s cycle (128 × 2
-  lines), and a full 2-second window moves ~512 bytes across both DIS1 and
-  DIS2 combined. (This paragraph originally sized a single-line-only
-  256-byte-per-channel batch before SDATA2 capture was added — the
-  512-bytes-per-2s total turned out to land in the same place either way,
-  just split differently.) Worth keeping in mind when sizing the
+  it as 4 packets, then waits before capturing/sending the next batch.
+  This exists because downstream (main → cloud log forwarding) can't keep
+  up if raw data is streamed continuously. As actually implemented
+  (§0/D/§4.2/§5.1): 128 bytes per line, 32 bytes per packet, **only one
+  line sent per cycle, alternating L1/L2**, with a **10-second** pacing
+  delay (raised from an original 2s, via 5s, after reviewing field logs —
+  the 8-packets-both-lines-every-2s cadence turned out to be too aggressive
+  for the downstream log pipeline to keep up with, see §0/D). So each
+  physical channel moves 128 bytes per 10s cycle (whichever line's turn it
+  is), and each individual line gets a fresh sample roughly every 20s
+  (since it alternates). Worth keeping in mind when sizing the
   log-forwarding path on main, but not something this DT-side plan needs
   to throttle further.
 
@@ -423,26 +474,28 @@ behaviour once probed on the bench):
   in `main.c` — neither is on the capture/send path, and this feature
   doesn't add to that list.
 
-Send state machine (per channel, both data lines), matching the final
-128B/4×32B/2s spec (see §0 for how this superseded an earlier 256B/4×64B
-cut once the design moved from 2 pck_ids+`data_line` to 4 dedicated
-pck_ids):
+Send state machine (per channel), matching the final 128B/4×32B/10s spec —
+**only one line is sent per cycle, alternating** (see §0/D for why: this
+was changed after reviewing field logs, requesting a simpler one-
+line-at-a-time cadence with a longer gap rather than both lines
+back-to-back every 2s):
 ```
 loop:
   capture until both lines' buffers hold 128 bytes each (shared buf_idx
     per channel, since one RCLK edge always advances both together;
     disable capture ISR once full, same pattern as
     pin_interrupt_disable_dis_1() in existing drivers)
-  for line in [SDATA1, SDATA2]:                  // pck_id picks (channel, line):
-      pck_id = TX_ID_RAW_DIS{1,2}_L{1,2}_DATA     // e.g. TX_ID_RAW_DIS1_L1_DATA
-      for chunk_index in 0..3:
-          build raw_capture_chunk_t{ codeword_bits,
-                                      total_len=128, chunk_index,
-                                      chunk_count=4, chunk_len=32,
-                                      data=line_buffer+chunk_index*32 }
-          xQueueSend(send_queue, ...)           // reuses existing serial_send_task, pck_id set on data_packet_t
-          vTaskDelay(10ms)                      // existing inter-packet gap
-  vTaskDelay(2000ms)                             // pacing delay so main/cloud can keep up
+  line = next_line_dis_{1,2}                     // alternates L1, L2, L1, L2, ... per channel
+  pck_id = TX_ID_RAW_DIS{1,2}_L{1,2}_DATA         // e.g. TX_ID_RAW_DIS1_L1_DATA
+  for chunk_index in 0..3:
+      build raw_capture_chunk_t{ codeword_bits,
+                                  total_len=128, chunk_index,
+                                  chunk_count=4, chunk_len=32,
+                                  data=line_buffer+chunk_index*32 }
+      xQueueSend(send_queue, ...)           // reuses existing serial_send_task, pck_id set on data_packet_t
+      vTaskDelay(10ms)                      // existing inter-packet gap
+  flip next_line_dis_{1,2} to the other line
+  vTaskDelay(10000ms)                            // pacing delay so main/cloud can keep up (was 2000ms, then 5000ms)
   re-enable capture ISR, clear both buffers, repeat
 ```
 Each channel (DIS1/DIS2) runs its own instance of this loop independently
