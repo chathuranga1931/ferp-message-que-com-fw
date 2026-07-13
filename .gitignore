@@ -77,5 +77,4 @@ Desktop.ini
 *.sln.docstates # Visual Studio
 releases
 old
-ESP32-display-tap-src
 src/product/ferp-com-main/ferp-com-esp32-idf/managed_components

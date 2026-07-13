@@ -1,0 +1,15 @@
+# Build output
+build/
+
+# Release binaries
+releases/
+
+# Generated SDK config (sdkconfig.defaults is tracked; sdkconfig is generated)
+sdkconfig
+
+# macOS metadata
+._*
+
+# Python cache
+__pycache__/
+*.pyc

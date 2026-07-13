@@ -1,7 +1,7 @@
 #ifndef _DEVICE_H_
 #define _DEVICE_H_
 
-#include "board_inf.h"
+#include "board.h"
 
 #ifdef __cplusplus
 extern "C" {

@@ -5,7 +5,7 @@
 #include <SPI.h>
 #include <Wire.h>
 #include "DS1307RTC.h"
-#include "board_inf.h"
+#include "board.h"
 #include "cmd_distap.h"
 #include "production_test.h"
 

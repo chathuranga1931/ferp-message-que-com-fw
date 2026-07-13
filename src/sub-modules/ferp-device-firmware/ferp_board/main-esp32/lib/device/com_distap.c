@@ -17,6 +17,8 @@ static uint8_t rx_buffer[UART0_BUFF];
 static uint8_t tx_buffer[UART0_BUFF];
 static void (*dis1_cb)(display_type_t type, uint8_t *data);
 static void (*dis2_cb)(display_type_t type, uint8_t *data);
+static void (*dis1_raw_cb)(const raw_capture_chunk_t *chunk);
+static void (*dis2_raw_cb)(const raw_capture_chunk_t *chunk);
 static data_packet_t *rx_packet = NULL;
 static bool got_data = false;
 static TaskHandle_t ser_rx_task_hdl = NULL;
@@ -74,6 +76,14 @@ static void read_response(data_packet_t *packet)
     case RX_ID_DIS2_DATA:
         if (dis2_cb)
             dis2_cb(packet->display, packet->ab_data);
+        break;
+    case RX_ID_RAW_DIS1_DATA:
+        if (dis1_raw_cb)
+            dis1_raw_cb((const raw_capture_chunk_t *)packet->ab_data);
+        break;
+    case RX_ID_RAW_DIS2_DATA:
+        if (dis2_raw_cb)
+            dis2_raw_cb((const raw_capture_chunk_t *)packet->ab_data);
         break;
     case RX_ID_KEEP_ALIVE:
         /* keep alive packet has time in ms from start*/
@@ -236,11 +246,14 @@ static void serial_receive_task(void *arg)
     vTaskDelete(NULL);
 }
 
-esp_err_t init_comms_distap(void (*dis1_fuel_event)(display_type_t type, uint8_t *data), void (*dis2_fuel_event)(display_type_t type, uint8_t *data))
+esp_err_t init_comms_distap(void (*dis1_fuel_event)(display_type_t type, uint8_t *data), void (*dis2_fuel_event)(display_type_t type, uint8_t *data),
+                             void (*dis1_raw_event)(const raw_capture_chunk_t *chunk), void (*dis2_raw_event)(const raw_capture_chunk_t *chunk))
 {
     esp_err_t ret = ESP_OK;
     dis1_cb = dis1_fuel_event;
     dis2_cb = dis2_fuel_event;
+    dis1_raw_cb = dis1_raw_event;
+    dis2_raw_cb = dis2_raw_event;
     if (ser_rx_task_hdl != NULL)
         return ret;
     if (xTaskCreate(serial_receive_task, "serial_receive_task", 6 * 1024, NULL, 5, &ser_rx_task_hdl) != pdPASS)
@@ -307,7 +320,7 @@ static bool validate_packet(data_packet_t *packet, int *idx)
         return false;
     }
     // expecting as valid id
-    if (!(packet->pck_id < RX_ID_SIZE && packet->display < DIS_SIZE))
+    if (!(packet->pck_id < RX_ID_SIZE && (packet->display < DIS_SIZE || is_raw_capture_type(packet->display))))
     {
         return false;
     }

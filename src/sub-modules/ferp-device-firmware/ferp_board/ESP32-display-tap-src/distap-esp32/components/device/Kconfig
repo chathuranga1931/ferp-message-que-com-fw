@@ -1,0 +1,16 @@
+menu "Distap device"
+
+    config DISTAP_RAW_CAPTURE_ONLY
+        bool "Build raw-capture-only test firmware (no pump decoders)"
+        default n
+        help
+            Builds a smaller test-only firmware that only supports the
+            generic raw-capture display types (90+, see device.h) used to
+            reverse-engineer unknown pumps. Excludes all real pump decoder
+            components (censtar, hongyang, longfeng, sanki, wayn) to shrink
+            flash usage. Pair with sdkconfig.raw_capture.defaults, which
+            also sets CONFIG_APP_PROJECT_VER to a 99.x.y.z marker so main
+            can tell a raw-capture test board apart from a production one
+            by its reported firmware version.
+
+endmenu
