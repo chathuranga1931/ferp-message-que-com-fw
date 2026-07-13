@@ -16,6 +16,16 @@
 // (TX_ID_RAW_DIS{1,2}_L{1,2}_DATA) — a fully independent stream per
 // channel+line, no shared field needed to tell them apart.
 //
+// Framing model: a codeword is completed every codeword_bits SCLK edges —
+// counted purely from SCLK, continuously, regardless of RCLK. RCLK does
+// NOT store anything; it only resets the bit-position counter (and the
+// in-progress accumulator) back to 0 for both lines. This matters on
+// hardware where only one of the two lines' *real* latch signal is wired
+// to this board's single RCLK input: that line still gets clean,
+// back-to-back codewords purely from SCLK counting, and RCLK — whichever
+// line it actually belongs to — just periodically re-syncs the boundary
+// rather than being the only thing that produces data.
+//
 // Only ONE line's batch is sent per "channel full" event — the two lines
 // alternate (L1, L2, L1, L2, ...) — followed by RAW_PACING_MS of silence
 // before the next capture starts. This keeps each capture-and-send burst
@@ -47,24 +57,28 @@ static uint8_t codeword_bits_g = 8;
 static QueueHandle_t *ptr_send_que = NULL;
 static volatile QueueHandle_t capture_queue = NULL; // signals which channel filled its batch
 
-// SDATA1 and SDATA2 are latched by the same RCLK edge, so they always
-// advance in lockstep — one shared buffer index per channel is enough,
-// covering both lines' buffers.
+// SDATA1 and SDATA2 are shifted on the same SCLK edge and flushed on the
+// same bit-count boundary, so they always advance in lockstep — one
+// shared buffer index and bit counter per channel is enough, covering
+// both lines' buffers.
 static volatile uint16_t accumulator_dis_1_l1 = 0;
 static volatile uint16_t accumulator_dis_1_l2 = 0;
+static volatile uint8_t  bit_count_dis_1 = 0; // SCLK edges since the last flush/reset
 static volatile uint16_t buf_idx_dis_1 = 0;
 static uint8_t raw_buf_dis_1_l1[RAW_BATCH_SIZE];
 static uint8_t raw_buf_dis_1_l2[RAW_BATCH_SIZE];
 
 static volatile uint16_t accumulator_dis_2_l1 = 0;
 static volatile uint16_t accumulator_dis_2_l2 = 0;
+static volatile uint8_t  bit_count_dis_2 = 0; // SCLK edges since the last flush/reset
 static volatile uint16_t buf_idx_dis_2 = 0;
 static uint8_t raw_buf_dis_2_l1[RAW_BATCH_SIZE];
 static uint8_t raw_buf_dis_2_l2[RAW_BATCH_SIZE];
 
 // Which line to send next for each channel — alternates every cycle
-// (both lines are always captured together regardless, since one RCLK
-// edge latches both; this only controls which one gets transmitted).
+// (both lines are always captured together regardless, since both are
+// shifted and flushed off the same SCLK; this only controls which one
+// gets transmitted).
 static uint8_t next_line_dis_1 = 1;
 static uint8_t next_line_dis_2 = 1;
 
@@ -74,71 +88,94 @@ static void pin_interrupt_disable_dis_1(void);
 static void pin_interrupt_disable_dis_2(void);
 
 // One bit per SCLK edge, shifted into each line's running codeword
-// accumulator — both lines sampled on the same edge.
+// accumulator — both lines sampled on the same edge. Once codeword_bits
+// edges have accumulated since the last flush/reset, that's a completed
+// codeword: store it for both lines and start counting the next one.
+// This is what actually produces data now — RCLK no longer does (see
+// word_latch_dis_1/2 below) — so a line still gets clean, back-to-back
+// codewords purely from its own SCLK even if this board's one RCLK input
+// happens to be wired to the *other* line's real latch signal.
 static void IRAM_ATTR bit_read_dis_1(void *arg)
 {
     accumulator_dis_1_l1 = (uint16_t)((accumulator_dis_1_l1 << 1) | (uint16_t)c_pin_sdata1_read_dis_1);
     accumulator_dis_1_l2 = (uint16_t)((accumulator_dis_1_l2 << 1) | (uint16_t)c_pin_sdata2_read_dis_1);
+    bit_count_dis_1++;
+
+    if (bit_count_dis_1 >= codeword_bits_g)
+    {
+        const uint8_t bytes = (codeword_bits_g <= 8) ? 1 : 2;
+        if (buf_idx_dis_1 + bytes <= RAW_BATCH_SIZE)
+        {
+            raw_buf_dis_1_l1[buf_idx_dis_1] = (uint8_t)accumulator_dis_1_l1;
+            raw_buf_dis_1_l2[buf_idx_dis_1] = (uint8_t)accumulator_dis_1_l2;
+            if (bytes == 2)
+            {
+                raw_buf_dis_1_l1[buf_idx_dis_1 + 1] = (uint8_t)(accumulator_dis_1_l1 >> 8);
+                raw_buf_dis_1_l2[buf_idx_dis_1 + 1] = (uint8_t)(accumulator_dis_1_l2 >> 8);
+            }
+            buf_idx_dis_1 = (uint16_t)(buf_idx_dis_1 + bytes);
+        }
+        accumulator_dis_1_l1 = 0;
+        accumulator_dis_1_l2 = 0;
+        bit_count_dis_1 = 0;
+
+        if (buf_idx_dis_1 >= RAW_BATCH_SIZE)
+        {
+            pin_interrupt_disable_dis_1();
+            const uint8_t chan = RAW_CHAN_DIS1;
+            xQueueSendFromISR(capture_queue, &chan, NULL);
+        }
+    }
 }
 static void IRAM_ATTR bit_read_dis_2(void *arg)
 {
     accumulator_dis_2_l1 = (uint16_t)((accumulator_dis_2_l1 << 1) | (uint16_t)c_pin_sdata1_read_dis_2);
     accumulator_dis_2_l2 = (uint16_t)((accumulator_dis_2_l2 << 1) | (uint16_t)c_pin_sdata2_read_dis_2);
+    bit_count_dis_2++;
+
+    if (bit_count_dis_2 >= codeword_bits_g)
+    {
+        const uint8_t bytes = (codeword_bits_g <= 8) ? 1 : 2;
+        if (buf_idx_dis_2 + bytes <= RAW_BATCH_SIZE)
+        {
+            raw_buf_dis_2_l1[buf_idx_dis_2] = (uint8_t)accumulator_dis_2_l1;
+            raw_buf_dis_2_l2[buf_idx_dis_2] = (uint8_t)accumulator_dis_2_l2;
+            if (bytes == 2)
+            {
+                raw_buf_dis_2_l1[buf_idx_dis_2 + 1] = (uint8_t)(accumulator_dis_2_l1 >> 8);
+                raw_buf_dis_2_l2[buf_idx_dis_2 + 1] = (uint8_t)(accumulator_dis_2_l2 >> 8);
+            }
+            buf_idx_dis_2 = (uint16_t)(buf_idx_dis_2 + bytes);
+        }
+        accumulator_dis_2_l1 = 0;
+        accumulator_dis_2_l2 = 0;
+        bit_count_dis_2 = 0;
+
+        if (buf_idx_dis_2 >= RAW_BATCH_SIZE)
+        {
+            pin_interrupt_disable_dis_2();
+            const uint8_t chan = RAW_CHAN_DIS2;
+            xQueueSendFromISR(capture_queue, &chan, NULL);
+        }
+    }
 }
 
-// RCLK edge = one completed codeword on both lines (standard shift-register
-// latch behaviour: SCLK shifts bits in, RCLK/STCP copies the shift register
-// to the output latch). Whatever accumulated since the last RCLK is stored
-// as-is — no bit-count filtering, since capturing exactly what the pump
-// sends (even if it doesn't match codeword_bits) is the point of this
-// driver.
+// RCLK edge = re-sync only. It does NOT store a codeword — it just resets
+// the bit-position counter (and discards whatever partial bits had
+// accumulated since the last flush) for both lines, so the next
+// codeword_bits-wide group starts counting fresh from here. Framing is
+// driven entirely by bit_read_dis_1/2 above.
 static void IRAM_ATTR word_latch_dis_1(void *arg)
 {
-    const uint8_t bytes = (codeword_bits_g <= 8) ? 1 : 2;
-    if (buf_idx_dis_1 + bytes <= RAW_BATCH_SIZE)
-    {
-        raw_buf_dis_1_l1[buf_idx_dis_1] = (uint8_t)accumulator_dis_1_l1;
-        raw_buf_dis_1_l2[buf_idx_dis_1] = (uint8_t)accumulator_dis_1_l2;
-        if (bytes == 2)
-        {
-            raw_buf_dis_1_l1[buf_idx_dis_1 + 1] = (uint8_t)(accumulator_dis_1_l1 >> 8);
-            raw_buf_dis_1_l2[buf_idx_dis_1 + 1] = (uint8_t)(accumulator_dis_1_l2 >> 8);
-        }
-        buf_idx_dis_1 = (uint16_t)(buf_idx_dis_1 + bytes);
-    }
     accumulator_dis_1_l1 = 0;
     accumulator_dis_1_l2 = 0;
-
-    if (buf_idx_dis_1 >= RAW_BATCH_SIZE)
-    {
-        pin_interrupt_disable_dis_1();
-        const uint8_t chan = RAW_CHAN_DIS1;
-        xQueueSendFromISR(capture_queue, &chan, NULL);
-    }
+    bit_count_dis_1 = 0;
 }
 static void IRAM_ATTR word_latch_dis_2(void *arg)
 {
-    const uint8_t bytes = (codeword_bits_g <= 8) ? 1 : 2;
-    if (buf_idx_dis_2 + bytes <= RAW_BATCH_SIZE)
-    {
-        raw_buf_dis_2_l1[buf_idx_dis_2] = (uint8_t)accumulator_dis_2_l1;
-        raw_buf_dis_2_l2[buf_idx_dis_2] = (uint8_t)accumulator_dis_2_l2;
-        if (bytes == 2)
-        {
-            raw_buf_dis_2_l1[buf_idx_dis_2 + 1] = (uint8_t)(accumulator_dis_2_l1 >> 8);
-            raw_buf_dis_2_l2[buf_idx_dis_2 + 1] = (uint8_t)(accumulator_dis_2_l2 >> 8);
-        }
-        buf_idx_dis_2 = (uint16_t)(buf_idx_dis_2 + bytes);
-    }
     accumulator_dis_2_l1 = 0;
     accumulator_dis_2_l2 = 0;
-
-    if (buf_idx_dis_2 >= RAW_BATCH_SIZE)
-    {
-        pin_interrupt_disable_dis_2();
-        const uint8_t chan = RAW_CHAN_DIS2;
-        xQueueSendFromISR(capture_queue, &chan, NULL);
-    }
+    bit_count_dis_2 = 0;
 }
 
 static void send_one_line_batch(tx_pckt_id_t pck_id, const uint8_t *buf)
@@ -227,6 +264,7 @@ static void pin_interrupt_enable_dis_1(void)
 {
     accumulator_dis_1_l1 = 0;
     accumulator_dis_1_l2 = 0;
+    bit_count_dis_1 = 0;
     gpio_set_intr_type(D1_SCLK, GPIO_INTR_POSEDGE);
     gpio_set_intr_type(D1_RCLK, GPIO_INTR_POSEDGE);
 }
@@ -234,6 +272,7 @@ static void pin_interrupt_enable_dis_2(void)
 {
     accumulator_dis_2_l1 = 0;
     accumulator_dis_2_l2 = 0;
+    bit_count_dis_2 = 0;
     gpio_set_intr_type(D2_SCLK, GPIO_INTR_POSEDGE);
     gpio_set_intr_type(D2_RCLK, GPIO_INTR_POSEDGE);
 }

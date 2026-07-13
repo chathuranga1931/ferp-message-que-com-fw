@@ -119,6 +119,33 @@ simplification, not a fix for the parser bug above (that bug can still
 affect same-line back-to-back chunks; the two changes are independent and
 both landed together).
 
+**E. Hardware finding from real captures, and the DT-side-only fix it led
+to:** the real pump protocol has two independent `RCLK` signals, one per
+data line, but this board's hardware only has **one `RCLK` wired per
+channel** — and that wired `RCLK` turned out to belong to data line 2, not
+line 1. Line 1's true latch is never connected, so under the original
+"one codeword per `RCLK` edge" framing (§5.1 as originally written), line 1
+only ever produced a codeword when line 2's `RCLK` happened to fire, and in
+between just kept accumulating — reading back as a constant `0xFF`.
+
+Two options were considered (diode-OR merging both real `RCLK` signals into
+one wire, a hardware change; vs. widening what gets captured per `RCLK`
+pulse, software-only) before settling on a third, more direct fix:
+**framing is now driven purely by counting `SCLK` edges, not by `RCLK` at
+all.** A codeword is flushed into the capture buffer every `codeword_bits`
+`SCLK` edges (8 or 12), continuously, for both lines — `RCLK` no longer
+stores anything; it only resets the bit-position counter and in-progress
+accumulator back to 0 for both lines. This gives line 1 clean, evenly-spaced
+codewords derived purely from its own `SCLK` activity regardless of which
+line the one wired `RCLK` actually belongs to, while line 2 still benefits
+from `RCLK` periodically re-syncing the boundary to its true latch edge.
+Implemented entirely in `components/raw_capture/raw_capture.c`
+(`bit_read_dis_1`/`_2` now do the flush-on-bit-count-boundary work that used
+to live in `word_latch_dis_1`/`_2`, which are reduced to pure resets) — no
+wire-format change (`raw_capture_chunk_t` is unaffected), so nothing else
+needed touching. Rebuilt and reverified both distap-esp32 configs (§0
+table) after the change.
+
 Implemented (code, all six items below build-verified above):
 
 - §4 wire protocol (new packet IDs, `raw_capture_chunk_t`, `is_raw_capture_type()`,
@@ -446,17 +473,29 @@ per-channel-instance sketch), parametrized by `codeword_bits` (8 or 12) so
 the same code serves both `DIS_RAW_8BIT_V1` and `DIS_RAW_12BIT_V1`.
 
 Capture behaviour, reusing the existing GPIO/ISR pattern
-(`SCLK`=bit clock, `RCLK`=frame latch, see `sanki_6_digit.c` for the
+(`SCLK`=bit clock, `RCLK`=re-sync, see `sanki_6_digit.c` for the
 edge-interrupt style or `hongyang_8_digit.c` for the esp_timer-timeout-flush
 style — pick whichever matches the unknown pump's observed signal
-behaviour once probed on the bench):
+behaviour once probed on the bench). **Superseded again by §0/E** — framing
+is now driven purely by `SCLK` bit-count, not by `RCLK`, to work around this
+board's single wired `RCLK` per channel actually belonging to only one of
+the two real per-line latch signals:
 - On each `SCLK` edge, shift one bit from **both** `SDATA1` and `SDATA2`
   into their own separate `codeword_bits`-wide accumulators per channel
-  (both lines sampled on the same edge, but never mixed into one value).
-- On `RCLK` edge (or timeout fallback), push **both** lines' completed
-  codewords into their own separate linear capture buffers, advancing one
-  shared buffer index per channel (both buffers always fill in lockstep,
-  since the same `RCLK` edge latches both at once).
+  (both lines sampled on the same edge, but never mixed into one value),
+  and increment a shared bit-position counter per channel.
+- Once that counter reaches `codeword_bits` (8 or 12), on that same `SCLK`
+  edge: push **both** lines' completed codewords into their own separate
+  linear capture buffers, advancing one shared buffer index per channel
+  (both buffers always fill in lockstep, since both are shifted and flushed
+  off the same `SCLK`), then reset both accumulators and the bit counter to
+  0. This repeats continuously — a codeword is flushed every `codeword_bits`
+  `SCLK` edges, regardless of `RCLK`.
+- `RCLK` edges do **not** produce a codeword. They only reset both
+  accumulators and the bit counter to 0 immediately, resyncing the next
+  `codeword_bits`-wide group to start counting from there — a periodic
+  correction for whichever line's real latch this board's one wired `RCLK`
+  happens to track, without depending on it for the other line's framing.
 - **No decoding** — no digit maps, no index-nibble scheme, no price/volume
   math. Just raw codewords.
 - **Static allocation only, no `malloc`/`free`.** Each channel has two
@@ -482,8 +521,8 @@ back-to-back every 2s):
 ```
 loop:
   capture until both lines' buffers hold 128 bytes each (shared buf_idx
-    per channel, since one RCLK edge always advances both together;
-    disable capture ISR once full, same pattern as
+    per channel, since both lines are flushed off the same SCLK bit-count
+    boundary — see §0/E; disable capture ISR once full, same pattern as
     pin_interrupt_disable_dis_1() in existing drivers)
   line = next_line_dis_{1,2}                     // alternates L1, L2, L1, L2, ... per channel
   pck_id = TX_ID_RAW_DIS{1,2}_L{1,2}_DATA         // e.g. TX_ID_RAW_DIS1_L1_DATA
