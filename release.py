@@ -3,7 +3,10 @@
 
 Modes:
   --release        Full release: git checks → odd build → commit+tag+push →
-                   even build → factory image → tar.gz → GitHub release
+                   even build → factory image → tar.gz → GitHub release.
+                   Output defaults to releases/main-esp32/<version>/ — pass
+                   --out <dir> to override (relative paths resolve against
+                   the invocation directory).
   --create-bundle  Bundle only from existing build artifacts (no build, no git).
                    Bundle version is (255-V1).V2.V3.V4 of current version.h.
                    Output goes to the build directory.
@@ -27,7 +30,7 @@ USER_CONFIG_FILE = SCRIPT_DIR / "src/product/ferp-com-main/app/user_config.h"
 BUILD_DIR = PROJECT_DIR / "build"
 BUILD_BIN = BUILD_DIR / "ferp-com.bin"
 BUILD_ELF = BUILD_DIR / "ferp-com.elf"
-RELEASES_DIR = SCRIPT_DIR / "releases"
+RELEASES_DIR = SCRIPT_DIR / "releases" / "main-esp32"
 BUNDLE_TOOL = SCRIPT_DIR / "tools/ota-bundle-tools/OtaBundleCreate-MainESP32.py"
 
 
@@ -156,7 +159,9 @@ def mode_create_bundle() -> None:
     print("=== Bundle created in build dir ===")
 
 
-def mode_release(idf_path: str) -> None:
+def mode_release(idf_path: str, out_dir: str = "") -> None:
+    releases_dir = Path(out_dir).expanduser().resolve() if out_dir else RELEASES_DIR
+
     # Pre-release git checks
     print("=== Pre-release checks ===")
 
@@ -223,7 +228,7 @@ def mode_release(idf_path: str) -> None:
 
     odd_ver = f"{v1}.{v2}.{v3}.{odd_build}"
     even_ver = f"{v1}.{v2}.{v3}.{even_build}"
-    release_dir = RELEASES_DIR / odd_ver
+    release_dir = releases_dir / odd_ver
     release_dir.mkdir(parents=True, exist_ok=True)
 
     print()
@@ -349,7 +354,7 @@ def mode_release(idf_path: str) -> None:
     print("--- Creating release archive ---")
     tar_name = f"ferp-com-release-v{odd_ver}.tar.gz"
     tar_path = release_dir / tar_name
-    temp_tar = RELEASES_DIR / tar_name
+    temp_tar = releases_dir / tar_name
     with tarfile.open(str(temp_tar), "w:gz") as tar:
         tar.add(str(release_dir), arcname=odd_ver)
     shutil.move(str(temp_tar), str(tar_path))
@@ -425,6 +430,12 @@ def parse_args() -> "argparse.Namespace":
         help="Create OTA bundle from existing build artifacts",
     )
     parser.add_argument("--idf-path", default="", help="Path to ESP-IDF installation")
+    parser.add_argument(
+        "--out",
+        dest="out_dir",
+        default="",
+        help="With --release, output dir override (default: releases/main-esp32)",
+    )
     return parser.parse_args()
 
 
@@ -433,7 +444,7 @@ def main() -> None:
     if args.create_bundle:
         mode_create_bundle()
     else:
-        mode_release(args.idf_path)
+        mode_release(args.idf_path, args.out_dir)
 
 
 if __name__ == "__main__":

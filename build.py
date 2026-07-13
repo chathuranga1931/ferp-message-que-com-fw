@@ -14,8 +14,16 @@ Actions:
   --release-flash  Flash a pre-built release factory image (0x0) — no build step.
                     Requires --serial-port and --bin-path.
   --console        Open serial monitor
-  --release        Full release workflow (delegates to release.py)
+  --release        Full release workflow (delegates to release.py).
+                    Output defaults to releases/main-esp32/<version>/ — pass
+                    --out <dir> to override.
   --create-bundle  Create OTA bundle from existing build artifacts (delegates to release.py)
+  --release-dt-esp32      Release the distap-esp32 (DT board) production firmware
+                          (delegates to distap-esp32/build.py --release,
+                          output under releases/dt-esp32/)
+  --release-dt-esp32-raw  Release the distap-esp32 raw-capture test firmware
+                          (delegates to distap-esp32/build_raw_capture.py --release,
+                          output under releases/dt-esp32/)
 
 Typically called via flash.mac.sh or flash.win.bat which supply the
 default --serial-port and --idf-path for each platform.
@@ -135,8 +143,25 @@ def parse_args() -> argparse.Namespace:
         dest="create_bundle",
         help="Create OTA bundle from existing build artifacts",
     )
+    group.add_argument(
+        "--release-dt-esp32",
+        action="store_true",
+        dest="release_dt_esp32",
+        help="Release the distap-esp32 (DT board) production firmware",
+    )
+    group.add_argument(
+        "--release-dt-esp32-raw",
+        action="store_true",
+        dest="release_dt_esp32_raw",
+        help="Release the distap-esp32 raw-capture test firmware",
+    )
     parser.add_argument("--serial-port", help="Serial port (e.g. /dev/tty.usbserial-... or COM3)")
     parser.add_argument("--idf-path", help="Path to ESP-IDF installation")
+    parser.add_argument(
+        "--out",
+        dest="out_dir",
+        help="With --release, output dir override (default: releases/main-esp32)",
+    )
     parser.add_argument(
         "--bin-path",
         dest="bin_path",
@@ -148,6 +173,27 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
 
+    # --release-dt-esp32 and --release-dt-esp32-raw delegate to the
+    # distap-esp32 board's own build.py / build_raw_capture.py, which is a
+    # separate ESP-IDF project tree requiring its own toolchain version
+    # (v5.5.3, vs this project's own --idf-path default). --idf-path is
+    # deliberately NOT forwarded here: build.mac.sh/build.win.bat always
+    # pass --idf-path explicitly for *this* project, so "was it explicitly
+    # given" can't be used to distinguish a real override from the
+    # wrapper's own default — forwarding it unconditionally silently broke
+    # the distap-esp32 build the first time this shipped (wrong IDF version,
+    # missing 'json' component). To point distap-esp32's release at a
+    # different IDF install, invoke its own build.sh/build.py directly.
+    if args.release_dt_esp32 or args.release_dt_esp32_raw:
+        dt_dir = SCRIPT_DIR / "src/sub-modules/ferp-device-firmware/ferp_board/distap-esp32"
+        dt_script = dt_dir / ("build_raw_capture.py" if args.release_dt_esp32_raw else "build.py")
+        if not dt_script.is_file():
+            die(f"Script not found: {dt_script}")
+        out_dir = SCRIPT_DIR / "releases" / "dt-esp32"
+        cmd = [sys.executable, str(dt_script), "--release", "--out", str(out_dir)]
+        result = subprocess.run(cmd)
+        sys.exit(result.returncode)
+
     # --release and --create-bundle delegate to release.py
     if args.release or args.create_bundle:
         release_py = SCRIPT_DIR / "release.py"
@@ -157,6 +203,8 @@ def main() -> None:
         cmd.append("--release" if args.release else "--create-bundle")
         if args.idf_path:
             cmd += ["--idf-path", args.idf_path]
+        if args.release and args.out_dir:
+            cmd += ["--out", args.out_dir]
         result = subprocess.run(cmd)
         sys.exit(result.returncode)
 

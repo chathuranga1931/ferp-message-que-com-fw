@@ -48,7 +48,7 @@ done
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-exec python3 "$SCRIPT_DIR/flash.py" \
+exec python3 "$SCRIPT_DIR/build.py" \
     --serial-port "$SERIAL_PORT" \
     --idf-path "$IDF_PATH" \
     "${PASS_ARGS[@]}"
