@@ -65,7 +65,11 @@ private:
     // Raw-capture callbacks (display types >= DIS_RAW_TYPE_BASE only) —
     // logging only, deliberately self-contained here rather than routed
     // through frame_cb_t: raw chunks are not display_data_t-shaped and
-    // must never reach ModuleFuel's fuel pipeline.
-    static void _dis1_raw_event(const raw_capture_chunk_t *chunk);
-    static void _dis2_raw_event(const raw_capture_chunk_t *chunk);
+    // must never reach ModuleFuel's fuel pipeline. One per physical
+    // channel per data line (SDATA1/SDATA2 are independent streams, each
+    // under its own pck_id — see com_distap.h).
+    static void _dis1_l1_raw_event(const raw_capture_chunk_t *chunk);
+    static void _dis1_l2_raw_event(const raw_capture_chunk_t *chunk);
+    static void _dis2_l1_raw_event(const raw_capture_chunk_t *chunk);
+    static void _dis2_l2_raw_event(const raw_capture_chunk_t *chunk);
 };

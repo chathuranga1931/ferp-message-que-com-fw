@@ -194,7 +194,9 @@ void fuel_event_display_2(display_type_t type, uint8_t *data)
 // Raw-capture callbacks (display types >= DIS_RAW_TYPE_BASE) — bench-test
 // only, plain Serial hex dump so raw capture output can be verified
 // directly on the bench without the full cloud-connected production app.
-void raw_event_display_1(const raw_capture_chunk_t *chunk)
+// One per physical channel per data line (SDATA1/SDATA2 are independent
+// streams, each under its own pck_id — see com_distap.h).
+static void _raw_hex_dump(const char *tag, const raw_capture_chunk_t *chunk)
 {
     String hex;
     for (uint8_t i = 0; i < chunk->chunk_len; i++)
@@ -202,22 +204,14 @@ void raw_event_display_1(const raw_capture_chunk_t *chunk)
         if (chunk->data[i] < 0x10) hex += "0";
         hex += String(chunk->data[i], HEX) + " ";
     }
-    Serial.println("RAW dis1 bits=" + String(chunk->codeword_bits) +
+    Serial.println(String(tag) + " bits=" + String(chunk->codeword_bits) +
                     " chunk=" + String(chunk->chunk_index + 1) + "/" + String(chunk->chunk_count) +
                     " total=" + String(chunk->total_len) + "B: " + hex);
 }
-void raw_event_display_2(const raw_capture_chunk_t *chunk)
-{
-    String hex;
-    for (uint8_t i = 0; i < chunk->chunk_len; i++)
-    {
-        if (chunk->data[i] < 0x10) hex += "0";
-        hex += String(chunk->data[i], HEX) + " ";
-    }
-    Serial.println("RAW dis2 bits=" + String(chunk->codeword_bits) +
-                    " chunk=" + String(chunk->chunk_index + 1) + "/" + String(chunk->chunk_count) +
-                    " total=" + String(chunk->total_len) + "B: " + hex);
-}
+void raw_event_display_1_l1(const raw_capture_chunk_t *chunk) { _raw_hex_dump("RAW dis1 line=1", chunk); }
+void raw_event_display_1_l2(const raw_capture_chunk_t *chunk) { _raw_hex_dump("RAW dis1 line=2", chunk); }
+void raw_event_display_2_l1(const raw_capture_chunk_t *chunk) { _raw_hex_dump("RAW dis2 line=1", chunk); }
+void raw_event_display_2_l2(const raw_capture_chunk_t *chunk) { _raw_hex_dump("RAW dis2 line=2", chunk); }
 
 void initBoard(void (*pwr_dw_cb)(void*), void *arg)
 {
@@ -232,7 +226,9 @@ void initBoard(void (*pwr_dw_cb)(void*), void *arg)
     RTC.begin(&Wire);
 
     //initilise communication with distap
-    init_comms_distap(fuel_event_display_1, fuel_event_display_2, raw_event_display_1, raw_event_display_2);
+    init_comms_distap(fuel_event_display_1, fuel_event_display_2,
+                       raw_event_display_1_l1, raw_event_display_1_l2,
+                       raw_event_display_2_l1, raw_event_display_2_l2);
 
     // //add power down call back
     // pwr_dw_cb_evt = pwr_dw_cb;

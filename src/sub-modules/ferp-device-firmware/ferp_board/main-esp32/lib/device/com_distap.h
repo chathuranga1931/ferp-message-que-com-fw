@@ -33,8 +33,14 @@ typedef enum
     RX_ID_KEEP_ALIVE,
     RX_ID_LOG_PRINTS,
     RX_ID_NACK,
-    RX_ID_RAW_DIS1_DATA,   // raw capture chunk, channel 1 (types >= DIS_RAW_TYPE_BASE only)
-    RX_ID_RAW_DIS2_DATA,   // raw capture chunk, channel 2 (types >= DIS_RAW_TYPE_BASE only)
+    // Raw capture chunks (types >= DIS_RAW_TYPE_BASE only) — one command
+    // per physical channel PER data line, so all four streams are fully
+    // independent at the protocol level (no shared field needed to tell
+    // them apart).
+    RX_ID_RAW_DIS1_L1_DATA, // channel 1, SDATA1
+    RX_ID_RAW_DIS1_L2_DATA, // channel 1, SDATA2
+    RX_ID_RAW_DIS2_L1_DATA, // channel 2, SDATA1
+    RX_ID_RAW_DIS2_L2_DATA, // channel 2, SDATA2
     RX_ID_SIZE
 } rx_pckt_id_t;
 
@@ -50,18 +56,21 @@ typedef union __attribute__((packed))
     uint8_t ab_raw[MAX_DATA + 2 + 3]; // 64 data bytes MAX + 2 CRC bytes + (pck_id+display+length)
 } data_packet_t;
 
-// RX_ID_RAW_DIS1_DATA / RX_ID_RAW_DIS2_DATA
-// One capture batch (256 raw bytes per channel) arrives as chunk_count
-// packets of chunk_len bytes each; log each chunk as it arrives rather
-// than reassembling the batch first. Must match distap-esp32's device.h
-// exactly.
+// RX_ID_RAW_DIS1_L1_DATA / _L2 / RX_ID_RAW_DIS2_L1_DATA / _L2
+// SDATA1 and SDATA2 share one SCLK/RCLK per physical channel but carry
+// independent data, so each is captured and sent under its own pck_id —
+// no shared "which line" field needed in the payload, the command itself
+// says which channel+line this batch is from. One capture batch (128 raw
+// bytes per channel per line) arrives as chunk_count packets of chunk_len
+// bytes each; log each chunk as it arrives rather than reassembling the
+// batch first. Must match distap-esp32's device.h exactly.
 typedef struct __attribute__((packed))
 {
     uint8_t  codeword_bits; // 8 or 12 — self-describing capture width
-    uint16_t total_len;     // total bytes in this capture batch (256)
+    uint16_t total_len;     // total bytes in this capture batch (128)
     uint8_t  chunk_index;   // 0..(chunk_count-1)
     uint8_t  chunk_count;   // number of chunks per batch (4)
-    uint8_t  chunk_len;     // bytes in this chunk (64)
+    uint8_t  chunk_len;     // bytes in this chunk (32)
     uint8_t  data[];        // chunk_len raw bytes
 } raw_capture_chunk_t;
 
@@ -75,7 +84,8 @@ typedef struct __attribute__((packed))
  *          - (else) Invalid
  */
 esp_err_t init_comms_distap(void (*dis1_fuel_event)(display_type_t type, uint8_t *data), void (*dis2_fuel_event)(display_type_t type, uint8_t *data),
-                             void (*dis1_raw_event)(const raw_capture_chunk_t *chunk), void (*dis2_raw_event)(const raw_capture_chunk_t *chunk));
+                             void (*dis1_l1_raw_event)(const raw_capture_chunk_t *chunk), void (*dis1_l2_raw_event)(const raw_capture_chunk_t *chunk),
+                             void (*dis2_l1_raw_event)(const raw_capture_chunk_t *chunk), void (*dis2_l2_raw_event)(const raw_capture_chunk_t *chunk));
 
 void suspend_comms_distap();
 

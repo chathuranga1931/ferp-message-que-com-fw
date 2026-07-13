@@ -76,20 +76,46 @@ Implemented (code, all six items below build-verified above):
   in **all four** copies of the main-side protocol code (see the "fourth and
   fifth copy" note below).
 - §5 DT board: `components/raw_capture/` (generic 8/12-bit capture + 256B/
-  4×64B/2s chunked send), wired into `device_init()`. One deviation from the
-  original §5.1 sketch: implemented as a single
+  4×64B/2s chunked send per data line), wired into `device_init()`. One
+  deviation from the original §5.1 sketch: implemented as a single
   `display_raw_capture_init(send_queue, codeword_bits)` call that sets up
   *both* channels internally (matching how every existing pump driver in
   this codebase — `sanki_6_digit.c` etc. — is structured), not "one instance
-  per channel" with a `raw_pck_id` parameter. Also captures `SDATA1` only
-  (not `SDATA1`+`SDATA2`) — the "8-bit"/"12-bit" distinction is almost
-  certainly a single shift-register line's width, per the user's original
-  framing; `SDATA2` support can be added later if a specific unknown pump
-  needs it. `RCLK` is treated as the standard shift-register latch signal
-  (one completed codeword per `RCLK` edge, whatever bit count accumulated
-  since the last edge — no filtering against the nominal `codeword_bits`,
-  since capturing the pump's actual behaviour, mismatched or not, is the
-  point of this driver).
+  per channel" with a `raw_pck_id` parameter. `RCLK` is treated as the
+  standard shift-register latch signal (one completed codeword per `RCLK`
+  edge, whatever bit count accumulated since the last edge — no filtering
+  against the nominal `codeword_bits`, since capturing the pump's actual
+  behaviour, mismatched or not, is the point of this driver).
+- **Both `SDATA1` and `SDATA2` are captured, as fully independent streams,
+  each under its own command (pck_id) — not a shared ID plus a "which
+  line" field.** SDATA1 and SDATA2 share one SCLK/RCLK per physical
+  channel but carry independent pump data, so on every `SCLK` edge both
+  lines are shifted into *separate* accumulators (`accumulator_dis_1_l1`/
+  `_l2` etc.), and on `RCLK` both are latched into *separate* buffers —
+  sharing one `buf_idx` per channel since both buffers always fill in
+  exact lockstep (same clock, same latch, same byte count per event).
+  **Two design iterations happened here, in order:**
+  1. First cut: one pck_id per channel (`TX_ID_RAW_DIS1_DATA`/`_DIS2_DATA`)
+     plus a `data_line` (1/2) field in `raw_capture_chunk_t` to tell the
+     two lines apart, at the original 256-byte batch size — 8 packets per
+     2s cycle per channel, ~1024B combined across DIS1+DIS2 per 2s.
+  2. Revised to **4 distinct pck_ids** — one per channel *and* line
+     (`TX_ID_RAW_DIS1_L1_DATA` / `_L2` / `TX_ID_RAW_DIS2_L1_DATA` / `_L2`,
+     mirrored as `RX_ID_RAW_*` on main) — so each of the four streams is
+     fully identified by its own command, no shared field needed;
+     `data_line` was dropped from `raw_capture_chunk_t` entirely. At the
+     same time the batch size was **halved to 128 bytes** (`RAW_CHUNK_LEN`
+     32) so total bandwidth per pacing cycle stays where it was before
+     going to 4 streams: still 8 packets per 2s cycle per channel, but
+     each packet now carries half the payload — ~512B combined across
+     DIS1+DIS2 per 2s, matching the original single-line-era budget.
+  All log consumers (production `fuel_disptap_driver.cpp`, both
+  bench-harness/production `device.cpp` `Serial` dumps, and the
+  simulator's `mac_distap_inject_raw_chunk()`) were updated to register 4
+  raw callbacks (one per channel+line) instead of 2, and
+  `init_comms_distap()`'s signature grew from 2 raw callback parameters to
+  4 across all copies. Rebuilt and reverified across all five buildable
+  targets after both changes (§0 table).
 - §5.3 Kconfig/CMake build split (`CONFIG_DISTAP_RAW_CAPTURE_ONLY`,
   `sdkconfig.raw_capture.defaults`, `flash_raw_capture.sh`).
 - §6 main-side callback plumbing and both consumers (production
@@ -198,15 +224,21 @@ ESP32 (`ferp-com-main`, code lives in
   `TX_ID_DIS1_DATA`/`TX_ID_DIS2_DATA` (which imply `display_data_t`-shaped
   decoded payload). Main registers **different callbacks** for raw data
   so it never enters the fuel/pump pipeline at all.
-- **Chunked, paced transfer**: DT board collects a 256-byte capture batch
-  **per channel**, sends it as 4 packets of 64 bytes each, then waits 2
-  seconds before capturing/sending the next 256-byte batch. This exists
-  because downstream (main → cloud log forwarding) can't keep up if raw
-  data is streamed continuously. DIS1 and DIS2 each run this cycle
-  independently, so a full 2-second window moves up to 512 bytes total
-  (256 × 2 channels) — worth keeping in mind when sizing the log-forwarding
-  path on main, but not something this DT-side plan needs to throttle
-  further.
+- **Chunked, paced transfer**: DT board collects a capture batch **per
+  channel per data line** (both `SDATA1` and `SDATA2` are captured — see
+  §0 for how this grew from the original single-line design below), sends
+  it as 4 packets, then waits 2 seconds before capturing/sending the next
+  batch. This exists because downstream (main → cloud log forwarding)
+  can't keep up if raw data is streamed continuously. As actually
+  implemented (§0/§4.2): 128 bytes per line, 32 bytes per packet — so
+  each physical channel moves 256 bytes total per 2s cycle (128 × 2
+  lines), and a full 2-second window moves ~512 bytes across both DIS1 and
+  DIS2 combined. (This paragraph originally sized a single-line-only
+  256-byte-per-channel batch before SDATA2 capture was added — the
+  512-bytes-per-2s total turned out to land in the same place either way,
+  just split differently.) Worth keeping in mind when sizing the
+  log-forwarding path on main, but not something this DT-side plan needs
+  to throttle further.
 
 ## 3. Why this design (and what it avoids)
 
@@ -239,7 +271,10 @@ Append after the existing entries so no existing packet ID is renumbered
 (both firmwares are versioned/paired anyway for this feature, but keeping
 IDs append-only costs nothing and avoids surprises):
 
-`distap-esp32/components/device/include/device.h` (`tx_pckt_id_t`):
+`distap-esp32/components/device/include/device.h` (`tx_pckt_id_t`) —
+**as actually implemented**, 4 IDs, one per channel *and* data line (not
+2 IDs + a shared field — see §0 for why this superseded an earlier
+2-ID-plus-`data_line`-field cut):
 ```c
 typedef enum
 {
@@ -253,14 +288,16 @@ typedef enum
     TX_ID_KEEP_ALIVE,
     TX_ID_LOG_PRINTS,
     TX_ID_NACK,
-    TX_ID_RAW_DIS1_DATA,   // NEW — raw capture chunk, channel 1
-    TX_ID_RAW_DIS2_DATA,   // NEW — raw capture chunk, channel 2
+    TX_ID_RAW_DIS1_L1_DATA, // channel 1, SDATA1
+    TX_ID_RAW_DIS1_L2_DATA, // channel 1, SDATA2
+    TX_ID_RAW_DIS2_L1_DATA, // channel 2, SDATA1
+    TX_ID_RAW_DIS2_L2_DATA, // channel 2, SDATA2
     TX_ID_SIZE
 } tx_pckt_id_t;
 ```
 
 `com_distap.h` (`rx_pckt_id_t`) in **both** main-esp32 trees mirrors with
-the same two new entries in the same position (after `RX_ID_NACK`, before
+the same four new entries in the same position (after `RX_ID_NACK`, before
 `RX_ID_SIZE`), so the wire values match exactly in all three files.
 
 ### 4.2 Raw chunk payload
@@ -273,27 +310,33 @@ typedef struct __attribute__((packed))
     uint8_t  codeword_bits; // 8 or 12 — self-describing, so the log/tool
                             // knows how to interpret it without cross-
                             // referencing the display type separately
-    uint16_t total_len;     // total bytes in this capture batch (256) —
-                            // must be uint16_t, not uint8_t: 256 doesn't
-                            // fit in a byte (max 255). Caught this while
-                            // revising the batch size below — flagging so
-                            // it isn't silently wrong in the first cut.
+    uint16_t total_len;     // total bytes in this capture batch (128) —
+                            // must be uint16_t, not uint8_t: an earlier
+                            // 256-byte batch size didn't fit in a byte
+                            // (max 255); the field stayed uint16_t after
+                            // the batch size was later halved to 128, as
+                            // cheap insurance against a future resize.
     uint8_t  chunk_index;   // 0..(chunk_count-1)
     uint8_t  chunk_count;   // number of chunks per batch (4)
-    uint8_t  chunk_len;     // bytes in this chunk (64)
+    uint8_t  chunk_len;     // bytes in this chunk (32)
     uint8_t  data[];        // chunk_len raw bytes
 } raw_capture_chunk_t;
 ```
-6-byte header + 64 bytes of data = 70 bytes per packet, comfortably under
-`MAX_DATA` (128 bytes) — the 128-byte ceiling is a **per-packet** limit
-(`data_packet_t.ab_data[]`, checked via `offsetof(data_packet_t, ab_data) +
-length` throughout `device.c`/`com_distap.c`), not a per-batch one; it was
-already respected in the original 200/4×50 sizing too, but 256/4×64 keeps
-the same "4 packets per batch" shape with round, byte-aligned chunk sizes
-(64 is also a clean multiple for both 8-bit and 12-bit-padded-to-16-bit
-codewords). Log each chunk as it arrives (tagged with index/total) rather
-than trying to reassemble the full 256-byte batch before logging —
-simpler and doesn't lose the whole batch if one chunk is dropped.
+No `data_line` field — which channel+line a batch belongs to is now
+carried entirely by the pck_id (§4.1), so the payload doesn't need to
+repeat it. 6-byte header + 32 bytes of data = 38 bytes per packet,
+comfortably under `MAX_DATA` (128 bytes) — the 128-byte ceiling is a
+**per-packet** limit (`data_packet_t.ab_data[]`, checked via
+`offsetof(data_packet_t, ab_data) + length` throughout
+`device.c`/`com_distap.c`), not a per-batch one. Log each chunk as it
+arrives (tagged with index/total) rather than trying to reassemble the
+full 128-byte batch before logging — simpler and doesn't lose the whole
+batch if one chunk is dropped. Each of the 4 streams (DIS1×L1, DIS1×L2,
+DIS2×L1, DIS2×L2) sends its own 4-chunk cycle independently; per physical
+channel that's still 8 packets per pacing cycle (4 chunks × 2 lines), same
+as before the batch size was halved — just 32 bytes of payload per packet
+instead of 64, keeping total bandwidth per cycle where it was originally
+budgeted (§0).
 
 ### 4.3 Still-needed validation fix (narrower than originally scoped)
 
@@ -319,12 +362,12 @@ What *does* still need the range fix:
 - `com_distap.c:310`'s `validate_packet()` — `packet->display < DIS_SIZE`
   check on **incoming** frames — **in both** main-esp32 trees (bench
   harness and production; identical code, identical fix). The new
-  `TX_ID_RAW_DIS1_DATA`/`TX_ID_RAW_DIS2_DATA` packets will carry
-  `display = 90/91` in their header (set the same way existing pump
-  drivers hardcode `.display = DIS_SANKI_6_DIGIT` etc. at declaration), so
-  this check must accept the raw range too or every raw chunk gets
-  silently dropped as "invalid" on whichever main board you're testing
-  with.
+  `TX_ID_RAW_DIS1_L1_DATA`/`_L2`/`TX_ID_RAW_DIS2_L1_DATA`/`_L2` packets
+  will carry `display = 90/91` in their header (set the same way existing
+  pump drivers hardcode `.display = DIS_SANKI_6_DIGIT` etc. at
+  declaration), so this check must accept the raw range too or every raw
+  chunk gets silently dropped as "invalid" on whichever main board you're
+  testing with.
 
 Add the shared helper next to both enums (all three files):
 ```c
@@ -338,67 +381,89 @@ static inline bool is_raw_capture_type(uint8_t display) { return display >= DIS_
 
 ### 5.1 New component `components/raw_capture/`
 
+*(Superseded in part by the dual-line design in §0 — SDATA1 and SDATA2 are
+both captured, as fully independent streams, not SDATA1 alone. This section
+otherwise still describes the actual implementation.)*
+
 ```c
-esp_err_t display_raw_capture_init(QueueHandle_t *send_queue, uint8_t codeword_bits, tx_pckt_id_t raw_pck_id);
+esp_err_t display_raw_capture_init(QueueHandle_t *send_queue, uint8_t codeword_bits);
 ```
-One instance per channel (dis1/dis2), parametrized by `codeword_bits` (8 or
-12) so the same code serves both `DIS_RAW_8BIT_V1` and `DIS_RAW_12BIT_V1` —
-no need for two near-duplicate components.
+A single call sets up **both** physical channels (dis1/dis2) internally,
+matching how every existing pump driver in this codebase is structured
+(see §0's implementation-status note on this deviation from an earlier
+per-channel-instance sketch), parametrized by `codeword_bits` (8 or 12) so
+the same code serves both `DIS_RAW_8BIT_V1` and `DIS_RAW_12BIT_V1`.
 
 Capture behaviour, reusing the existing GPIO/ISR pattern
 (`SCLK`=bit clock, `RCLK`=frame latch, see `sanki_6_digit.c` for the
 edge-interrupt style or `hongyang_8_digit.c` for the esp_timer-timeout-flush
 style — pick whichever matches the unknown pump's observed signal
 behaviour once probed on the bench):
-- Shift bits from `SDATA1`/`SDATA2` into a `codeword_bits`-wide accumulator
-  on each `SCLK` edge.
-- On `RCLK` edge (or timeout fallback), push the completed codeword into a
-  linear capture buffer.
+- On each `SCLK` edge, shift one bit from **both** `SDATA1` and `SDATA2`
+  into their own separate `codeword_bits`-wide accumulators per channel
+  (both lines sampled on the same edge, but never mixed into one value).
+- On `RCLK` edge (or timeout fallback), push **both** lines' completed
+  codewords into their own separate linear capture buffers, advancing one
+  shared buffer index per channel (both buffers always fill in lockstep,
+  since the same `RCLK` edge latches both at once).
 - **No decoding** — no digit maps, no index-nibble scheme, no price/volume
   math. Just raw codewords.
-- **Static allocation only, no `malloc`/`free`.** The 256-byte capture
-  buffer per channel is a fixed `static uint8_t raw_buf_dis_1[256]` (etc.),
-  matching every existing pump driver's `static capture_data_t
-  capture_display_1 = {...}` pattern — nothing dynamic in the ISR or the
-  send loop. The one `xQueueCreate()` per channel at init is the same
-  FreeRTOS one-time heap allocation every existing driver already does
-  (`capture_queue = xQueueCreate(...)` in `sanki_6_digit.c` etc.) — it's
-  not libc `malloc`, it's sized once from `sdkconfig`'s FreeRTOS heap, and
-  is never freed/re-created at runtime. The only `malloc` anywhere in this
-  firmware today is in `settings.c` (one-off JSON buffer for SPIFFS
-  load/save) and the cJSON allocator hooks in `main.c` — neither is on the
-  capture/send path, and this feature doesn't add to that list.
+- **Static allocation only, no `malloc`/`free`.** Each channel has two
+  128-byte capture buffers, one per data line — fixed
+  `static uint8_t raw_buf_dis_1_l1[128]` / `raw_buf_dis_1_l2[128]` (etc.,
+  four buffers total across both channels), matching every existing pump
+  driver's `static capture_data_t capture_display_1 = {...}` pattern —
+  nothing dynamic in the ISR or the send loop. The one `xQueueCreate()`
+  per channel at init is the same FreeRTOS one-time heap allocation every
+  existing driver already does (`capture_queue = xQueueCreate(...)` in
+  `sanki_6_digit.c` etc.) — it's not libc `malloc`, it's sized once from
+  `sdkconfig`'s FreeRTOS heap, and is never freed/re-created at runtime.
+  The only `malloc` anywhere in this firmware today is in `settings.c`
+  (one-off JSON buffer for SPIFFS load/save) and the cJSON allocator hooks
+  in `main.c` — neither is on the capture/send path, and this feature
+  doesn't add to that list.
 
-Send state machine (per channel), matching the 256B/4×64B/2s spec:
+Send state machine (per channel, both data lines), matching the final
+128B/4×32B/2s spec (see §0 for how this superseded an earlier 256B/4×64B
+cut once the design moved from 2 pck_ids+`data_line` to 4 dedicated
+pck_ids):
 ```
 loop:
-  capture until buffer holds 256 bytes (disable capture ISR once full,
-    same pattern as pin_interrupt_disable_dis_1() in existing drivers)
-  for chunk_index in 0..3:
-      build raw_capture_chunk_t{ codeword_bits, total_len=256,
-                                  chunk_index, chunk_count=4, chunk_len=64,
-                                  data=buffer+chunk_index*64 }
-      xQueueSend(send_queue, ...)               // reuses existing serial_send_task
-      vTaskDelay(10ms)                          // existing inter-packet gap
+  capture until both lines' buffers hold 128 bytes each (shared buf_idx
+    per channel, since one RCLK edge always advances both together;
+    disable capture ISR once full, same pattern as
+    pin_interrupt_disable_dis_1() in existing drivers)
+  for line in [SDATA1, SDATA2]:                  // pck_id picks (channel, line):
+      pck_id = TX_ID_RAW_DIS{1,2}_L{1,2}_DATA     // e.g. TX_ID_RAW_DIS1_L1_DATA
+      for chunk_index in 0..3:
+          build raw_capture_chunk_t{ codeword_bits,
+                                      total_len=128, chunk_index,
+                                      chunk_count=4, chunk_len=32,
+                                      data=line_buffer+chunk_index*32 }
+          xQueueSend(send_queue, ...)           // reuses existing serial_send_task, pck_id set on data_packet_t
+          vTaskDelay(10ms)                      // existing inter-packet gap
   vTaskDelay(2000ms)                             // pacing delay so main/cloud can keep up
-  re-enable capture ISR, clear buffer, repeat
+  re-enable capture ISR, clear both buffers, repeat
 ```
 Each channel (DIS1/DIS2) runs its own instance of this loop independently
-— see §2 for the combined 512 B/2 s figure across both.
-This task looks structurally like `data_send_task()` in `sanki_6_digit.c`
-(capture queue → format → send via the shared `send_queue`/
-`serial_send_task`) — reuse that shape rather than inventing a new one.
+— see §2 for the combined bandwidth figure across both channels and both
+lines. This task looks structurally like `data_send_task()` in
+`sanki_6_digit.c` (capture queue → format → send via the shared
+`send_queue`/`serial_send_task`) — reuse that shape rather than inventing
+a new one.
 
 ### 5.2 Wire into `device_init()` (`components/device/device.c:72-100`)
 
 ```c
 case DIS_RAW_8BIT_V1:
-    ret = display_raw_capture_init(&send_queue, 8, TX_ID_RAW_DIS1_DATA); // + channel 2 instance
+    ret = display_raw_capture_init(&send_queue, 8);
     break;
 case DIS_RAW_12BIT_V1:
-    ret = display_raw_capture_init(&send_queue, 12, TX_ID_RAW_DIS1_DATA); // + channel 2 instance
+    ret = display_raw_capture_init(&send_queue, 12);
     break;
 ```
+(One call per type, not per channel — see §5.1's note on why the
+per-channel-instance sketch wasn't what got implemented.)
 (exact channel-2 wiring mirrors how existing drivers set up both
 `dis_1`/`dis_2` instances in one `init()` call — follow that pattern.)
 
@@ -449,19 +514,27 @@ case DIS_RAW_12BIT_V1:
 ### 6.1 New raw callbacks, parallel to the existing fuel callbacks
 ### — protocol plumbing, identical edit in both main-esp32 trees
 
-`com_distap.h`: extend `init_comms_distap()` (or add a second registration
-function, e.g. `init_comms_distap_raw()`, called optionally) with:
+`com_distap.h`: extend `init_comms_distap()` with **4** raw callback
+parameters, one per channel+line (not 2 — see §0):
 ```c
-void (*dis1_raw_cb)(const raw_capture_chunk_t *chunk);
-void (*dis2_raw_cb)(const raw_capture_chunk_t *chunk);
+void (*dis1_l1_raw_cb)(const raw_capture_chunk_t *chunk);
+void (*dis1_l2_raw_cb)(const raw_capture_chunk_t *chunk);
+void (*dis2_l1_raw_cb)(const raw_capture_chunk_t *chunk);
+void (*dis2_l2_raw_cb)(const raw_capture_chunk_t *chunk);
 ```
-`com_distap.c` `read_response()` (`com_distap.c:66-95`): add
+`com_distap.c` `read_response()`: add
 ```c
-case RX_ID_RAW_DIS1_DATA:
-    if (dis1_raw_cb) dis1_raw_cb((const raw_capture_chunk_t *)packet->ab_data);
+case RX_ID_RAW_DIS1_L1_DATA:
+    if (dis1_l1_raw_cb) dis1_l1_raw_cb((const raw_capture_chunk_t *)packet->ab_data);
     break;
-case RX_ID_RAW_DIS2_DATA:
-    if (dis2_raw_cb) dis2_raw_cb((const raw_capture_chunk_t *)packet->ab_data);
+case RX_ID_RAW_DIS1_L2_DATA:
+    if (dis1_l2_raw_cb) dis1_l2_raw_cb((const raw_capture_chunk_t *)packet->ab_data);
+    break;
+case RX_ID_RAW_DIS2_L1_DATA:
+    if (dis2_l1_raw_cb) dis2_l1_raw_cb((const raw_capture_chunk_t *)packet->ab_data);
+    break;
+case RX_ID_RAW_DIS2_L2_DATA:
+    if (dis2_l2_raw_cb) dis2_l2_raw_cb((const raw_capture_chunk_t *)packet->ab_data);
     break;
 ```
 right next to the existing `RX_ID_DIS1_DATA`/`RX_ID_DIS2_DATA` cases —
@@ -471,28 +544,30 @@ still match.
 
 ### 6.2 Production consumer (`src/app-modules/module_fuel`) — logging only
 
-A small new function (in `fuel_disptap_driver.cpp` or its own tiny
-`raw_capture_logger.cpp`) implements `dis1_raw_cb`/`dis2_raw_cb`: hex-dump
-`chunk->data[0..chunk_len)` tagged with channel, `chunk_index`/
-`chunk_count`, `codeword_bits`, through the existing logger (`MLOG`/
-`pal_logger`) so it lands wherever field logs already go (serial +
-`module_udp_log`, picked up today by `tools/serial-log-viewer` /
-`tools/cloud-udp-monitor`). It must **not** touch `ModuleFuel`, the
-`_frame_queue`, or `pump_drivers[]` — this callback's only job is to log.
-This is "the main application" referred to in §1/§2.
+Four small functions in `fuel_disptap_driver.cpp` (`_dis1_l1_raw_event`,
+`_dis1_l2_raw_event`, `_dis2_l1_raw_event`, `_dis2_l2_raw_event`) implement
+the 4 raw callbacks: hex-dump `chunk->data[0..chunk_len)` tagged with
+nozzle, line (passed in by the caller, since it's no longer a field on the
+chunk itself — see §4.2), `chunk_index`/`chunk_count`, `codeword_bits`,
+through the existing logger (`MLOG`/`pal_logger`) so it lands wherever
+field logs already go (serial + `module_udp_log`, picked up today by
+`tools/serial-log-viewer` / `tools/cloud-udp-monitor`). It must **not**
+touch `ModuleFuel`, the `_frame_queue`, or `pump_drivers[]` — these
+callbacks' only job is to log. This is "the main application" referred to
+in §1/§2.
 
 ### 6.3 Bench-harness consumer (`ESP32-display-tap-src/main-esp32`)
 
-`lib/device/device.cpp::initBoard()` (line 207) already registers
+`lib/device/device.cpp::initBoard()` already registers
 `fuel_event_display_1`/`fuel_event_display_2` via `init_comms_distap()` —
-today both are dead code (`return;` as their first line, see
-`device.cpp:52` / `device.cpp:125`). Add `raw_event_display_1`/
-`raw_event_display_2` alongside them, registered through the same
-extended `init_comms_distap()` from §6.1, doing a plain
-`Serial.printf()` hex dump of the chunk (no `pal_logger`/`MLOG` here —
-this tree is bare Arduino `Serial`, not the production logging stack).
-This gives you a way to see raw capture output directly on the bench
-without needing the full cloud-connected app running.
+today both are dead code (`return;` as their first line). Add
+`raw_event_display_1_l1`/`_l2`/`raw_event_display_2_l1`/`_l2` alongside
+them, registered through the extended (now 6-argument) `init_comms_distap()`
+from §6.1, each doing a plain `Serial.println()` hex dump of the chunk (no
+`pal_logger`/`MLOG` here — this tree is bare Arduino `Serial`, not the
+production logging stack). This gives you a way to see raw capture output
+directly on the bench without needing the full cloud-connected app
+running.
 
 ### 6.4 Display type selection — unchanged
 

@@ -3,6 +3,8 @@ build/
 
 # Release binaries
 releases/
+build_raw_capture/
+releases_raw_capture/
 
 # Generated SDK config (sdkconfig.defaults is tracked; sdkconfig is generated)
 sdkconfig

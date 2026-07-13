@@ -36,8 +36,14 @@ typedef enum
     TX_ID_KEEP_ALIVE,
     TX_ID_LOG_PRINTS,
     TX_ID_NACK,
-    TX_ID_RAW_DIS1_DATA,   // raw capture chunk, channel 1 (types >= DIS_RAW_TYPE_BASE only)
-    TX_ID_RAW_DIS2_DATA,   // raw capture chunk, channel 2 (types >= DIS_RAW_TYPE_BASE only)
+    // Raw capture chunks (types >= DIS_RAW_TYPE_BASE only) — one command
+    // per physical channel PER data line, so all four streams are fully
+    // independent at the protocol level (no shared field needed to tell
+    // them apart).
+    TX_ID_RAW_DIS1_L1_DATA, // channel 1, SDATA1
+    TX_ID_RAW_DIS1_L2_DATA, // channel 1, SDATA2
+    TX_ID_RAW_DIS2_L1_DATA, // channel 2, SDATA1
+    TX_ID_RAW_DIS2_L2_DATA, // channel 2, SDATA2
     TX_ID_SIZE
 } tx_pckt_id_t;
 
@@ -230,17 +236,21 @@ typedef struct
     uint8_t reason;
 } tx_id_nack_t;
 
-// TX_ID_RAW_DIS1_DATA / TX_ID_RAW_DIS2_DATA
-// One capture batch (256 raw bytes per channel) is sent as chunk_count
-// packets of chunk_len bytes each; the receiver logs each chunk as it
-// arrives rather than reassembling the batch first.
+// TX_ID_RAW_DIS1_L1_DATA / _L2 / TX_ID_RAW_DIS2_L1_DATA / _L2
+// SDATA1 and SDATA2 share one SCLK/RCLK per physical channel but carry
+// independent data, so each is captured and sent under its own pck_id —
+// no shared "which line" field needed in the payload, the command itself
+// says which channel+line this batch is from. One capture batch (128 raw
+// bytes per channel per line) is sent as chunk_count packets of chunk_len
+// bytes each; the receiver logs each chunk as it arrives rather than
+// reassembling the batch first.
 typedef struct __attribute__((packed))
 {
     uint8_t  codeword_bits; // 8 or 12 — self-describing capture width
-    uint16_t total_len;     // total bytes in this capture batch (256)
+    uint16_t total_len;     // total bytes in this capture batch (128)
     uint8_t  chunk_index;   // 0..(chunk_count-1)
     uint8_t  chunk_count;   // number of chunks per batch (4)
-    uint8_t  chunk_len;     // bytes in this chunk (64)
+    uint8_t  chunk_len;     // bytes in this chunk (32)
     uint8_t  data[];        // chunk_len raw bytes
 } raw_capture_chunk_t;
 

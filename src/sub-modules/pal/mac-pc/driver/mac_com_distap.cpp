@@ -4,7 +4,7 @@
  *
  * In the simulator build there is no UART / DT board.  Instead:
  *
- *   init_comms_distap()          — stores the four frame/raw callbacks, no hardware init
+ *   init_comms_distap()          — stores the 2 frame + 4 raw callbacks, no hardware init
  *   mac_distap_inject_frame()    — called from mac_driver when the Python UI
  *                                  sends a SIM_DISTAP_FRAME JSON command over TCP
  *   mac_distap_inject_raw_chunk()— same idea, for the raw-capture path
@@ -31,8 +31,10 @@
 
 static void (*s_dis1_cb)(display_type_t, uint8_t *) = nullptr;
 static void (*s_dis2_cb)(display_type_t, uint8_t *) = nullptr;
-static void (*s_dis1_raw_cb)(const raw_capture_chunk_t *) = nullptr;
-static void (*s_dis2_raw_cb)(const raw_capture_chunk_t *) = nullptr;
+static void (*s_dis1_l1_raw_cb)(const raw_capture_chunk_t *) = nullptr;
+static void (*s_dis1_l2_raw_cb)(const raw_capture_chunk_t *) = nullptr;
+static void (*s_dis2_l1_raw_cb)(const raw_capture_chunk_t *) = nullptr;
+static void (*s_dis2_l2_raw_cb)(const raw_capture_chunk_t *) = nullptr;
 
 // ---------------------------------------------------------------------------
 // com_distap.h API — simulator implementations
@@ -41,13 +43,17 @@ static void (*s_dis2_raw_cb)(const raw_capture_chunk_t *) = nullptr;
 esp_err_t init_comms_distap(
     void (*dis1_fuel_event)(display_type_t type, uint8_t *data),
     void (*dis2_fuel_event)(display_type_t type, uint8_t *data),
-    void (*dis1_raw_event)(const raw_capture_chunk_t *chunk),
-    void (*dis2_raw_event)(const raw_capture_chunk_t *chunk))
+    void (*dis1_l1_raw_event)(const raw_capture_chunk_t *chunk),
+    void (*dis1_l2_raw_event)(const raw_capture_chunk_t *chunk),
+    void (*dis2_l1_raw_event)(const raw_capture_chunk_t *chunk),
+    void (*dis2_l2_raw_event)(const raw_capture_chunk_t *chunk))
 {
     s_dis1_cb = dis1_fuel_event;
     s_dis2_cb = dis2_fuel_event;
-    s_dis1_raw_cb = dis1_raw_event;
-    s_dis2_raw_cb = dis2_raw_event;
+    s_dis1_l1_raw_cb = dis1_l1_raw_event;
+    s_dis1_l2_raw_cb = dis1_l2_raw_event;
+    s_dis2_l1_raw_cb = dis2_l1_raw_event;
+    s_dis2_l2_raw_cb = dis2_l2_raw_event;
     MLOG("init_comms_distap — callbacks stored (no UART in simulator)");
     return ESP_OK;
 }
@@ -107,6 +113,7 @@ extern "C" void mac_distap_inject_frame(uint8_t   nozzle_idx,
 // logging-only consumer without real DT board hardware.
 extern "C" void mac_distap_inject_raw_chunk(uint8_t        nozzle_idx,
                                              uint8_t        codeword_bits,
+                                             uint8_t        data_line,
                                              uint16_t       total_len,
                                              uint8_t        chunk_index,
                                              uint8_t        chunk_count,
@@ -126,11 +133,18 @@ extern "C" void mac_distap_inject_raw_chunk(uint8_t        nozzle_idx,
     }
     memcpy(chunk->data, chunk_data, chunk_len);
 
-    if (nozzle_idx == 0 && s_dis1_raw_cb) {
-        s_dis1_raw_cb(chunk);
-    } else if (nozzle_idx == 1 && s_dis2_raw_cb) {
-        s_dis2_raw_cb(chunk);
+    // data_line (1 or 2) selects which of the two per-channel raw callbacks
+    // to invoke — mirrors distap-esp32's four independent pck_id streams.
+    if (nozzle_idx == 0 && data_line == 1 && s_dis1_l1_raw_cb) {
+        s_dis1_l1_raw_cb(chunk);
+    } else if (nozzle_idx == 0 && data_line == 2 && s_dis1_l2_raw_cb) {
+        s_dis1_l2_raw_cb(chunk);
+    } else if (nozzle_idx == 1 && data_line == 1 && s_dis2_l1_raw_cb) {
+        s_dis2_l1_raw_cb(chunk);
+    } else if (nozzle_idx == 1 && data_line == 2 && s_dis2_l2_raw_cb) {
+        s_dis2_l2_raw_cb(chunk);
     } else {
-        MLOGE("inject_raw_chunk: nozzle_idx=%u out of range or no callback", (unsigned)nozzle_idx);
+        MLOGE("inject_raw_chunk: nozzle_idx=%u data_line=%u out of range or no callback",
+              (unsigned)nozzle_idx, (unsigned)data_line);
     }
 }

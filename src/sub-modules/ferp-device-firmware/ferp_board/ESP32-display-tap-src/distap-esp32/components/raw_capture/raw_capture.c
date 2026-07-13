@@ -9,17 +9,31 @@
 #include "esp_log.h"
 #include "raw_capture.h"
 
-// One capture batch per channel, sent as RAW_CHUNK_COUNT packets of
-// RAW_CHUNK_LEN bytes each, then a pacing delay before the next batch —
-// see PLAN.md for why (downstream log forwarding can't keep up with a
-// continuous stream).
-#define RAW_BATCH_SIZE  256
+// One capture batch per channel PER DATA LINE, sent as RAW_CHUNK_COUNT
+// packets of RAW_CHUNK_LEN bytes each, then a pacing delay before the next
+// batch — see PLAN.md for why (downstream log forwarding can't keep up
+// with a continuous stream). SDATA1 and SDATA2 share one SCLK/RCLK per
+// channel but carry independent data, so each line is captured into its
+// own buffer and sent under its own pck_id (TX_ID_RAW_DIS{1,2}_L{1,2}_DATA)
+// — a fully independent stream per channel+line, no shared field needed to
+// tell them apart. Batch size halved vs. an earlier single-ID-per-channel
+// revision of this driver, so total bandwidth per pacing cycle stays the
+// same now that there are 4 streams instead of 2.
+#define RAW_BATCH_SIZE  128
 #define RAW_CHUNK_COUNT 4
 #define RAW_CHUNK_LEN   (RAW_BATCH_SIZE / RAW_CHUNK_COUNT)
 #define RAW_PACING_MS   2000
 
+// Internal "which channel filled up" marker for capture_queue — distinct
+// from the wire pck_id enum, since each channel now maps to two different
+// pck_ids (one per data line) rather than one.
+#define RAW_CHAN_DIS1 0
+#define RAW_CHAN_DIS2 1
+
 #define c_pin_sdata1_read_dis_1 (bool)(gpio_get_level(D1_SDATA1))
+#define c_pin_sdata2_read_dis_1 (bool)(gpio_get_level(D1_SDATA2))
 #define c_pin_sdata1_read_dis_2 (bool)(gpio_get_level(D2_SDATA1))
+#define c_pin_sdata2_read_dis_2 (bool)(gpio_get_level(D2_SDATA2))
 
 static const char *TAG = "raw_cap";
 
@@ -30,32 +44,42 @@ static uint8_t codeword_bits_g = 8;
 static QueueHandle_t *ptr_send_que = NULL;
 static volatile QueueHandle_t capture_queue = NULL; // signals which channel filled its batch
 
-static volatile uint16_t accumulator_dis_1 = 0;
+// SDATA1 and SDATA2 are latched by the same RCLK edge, so they always
+// advance in lockstep — one shared buffer index per channel is enough,
+// covering both lines' buffers.
+static volatile uint16_t accumulator_dis_1_l1 = 0;
+static volatile uint16_t accumulator_dis_1_l2 = 0;
 static volatile uint16_t buf_idx_dis_1 = 0;
-static uint8_t raw_buf_dis_1[RAW_BATCH_SIZE];
+static uint8_t raw_buf_dis_1_l1[RAW_BATCH_SIZE];
+static uint8_t raw_buf_dis_1_l2[RAW_BATCH_SIZE];
 
-static volatile uint16_t accumulator_dis_2 = 0;
+static volatile uint16_t accumulator_dis_2_l1 = 0;
+static volatile uint16_t accumulator_dis_2_l2 = 0;
 static volatile uint16_t buf_idx_dis_2 = 0;
-static uint8_t raw_buf_dis_2[RAW_BATCH_SIZE];
+static uint8_t raw_buf_dis_2_l1[RAW_BATCH_SIZE];
+static uint8_t raw_buf_dis_2_l2[RAW_BATCH_SIZE];
 
 static void pin_interrupt_enable_dis_1(void);
 static void pin_interrupt_enable_dis_2(void);
 static void pin_interrupt_disable_dis_1(void);
 static void pin_interrupt_disable_dis_2(void);
 
-// One bit per SCLK edge, shifted into the running codeword accumulator.
+// One bit per SCLK edge, shifted into each line's running codeword
+// accumulator — both lines sampled on the same edge.
 static void IRAM_ATTR bit_read_dis_1(void *arg)
 {
-    accumulator_dis_1 = (uint16_t)((accumulator_dis_1 << 1) | (uint16_t)c_pin_sdata1_read_dis_1);
+    accumulator_dis_1_l1 = (uint16_t)((accumulator_dis_1_l1 << 1) | (uint16_t)c_pin_sdata1_read_dis_1);
+    accumulator_dis_1_l2 = (uint16_t)((accumulator_dis_1_l2 << 1) | (uint16_t)c_pin_sdata2_read_dis_1);
 }
 static void IRAM_ATTR bit_read_dis_2(void *arg)
 {
-    accumulator_dis_2 = (uint16_t)((accumulator_dis_2 << 1) | (uint16_t)c_pin_sdata1_read_dis_2);
+    accumulator_dis_2_l1 = (uint16_t)((accumulator_dis_2_l1 << 1) | (uint16_t)c_pin_sdata1_read_dis_2);
+    accumulator_dis_2_l2 = (uint16_t)((accumulator_dis_2_l2 << 1) | (uint16_t)c_pin_sdata2_read_dis_2);
 }
 
-// RCLK edge = one completed codeword (standard shift-register latch
-// behaviour: SCLK shifts bits in, RCLK/STCP copies the shift register to
-// the output latch). Whatever accumulated since the last RCLK is stored
+// RCLK edge = one completed codeword on both lines (standard shift-register
+// latch behaviour: SCLK shifts bits in, RCLK/STCP copies the shift register
+// to the output latch). Whatever accumulated since the last RCLK is stored
 // as-is — no bit-count filtering, since capturing exactly what the pump
 // sends (even if it doesn't match codeword_bits) is the point of this
 // driver.
@@ -64,17 +88,22 @@ static void IRAM_ATTR word_latch_dis_1(void *arg)
     const uint8_t bytes = (codeword_bits_g <= 8) ? 1 : 2;
     if (buf_idx_dis_1 + bytes <= RAW_BATCH_SIZE)
     {
-        raw_buf_dis_1[buf_idx_dis_1] = (uint8_t)accumulator_dis_1;
+        raw_buf_dis_1_l1[buf_idx_dis_1] = (uint8_t)accumulator_dis_1_l1;
+        raw_buf_dis_1_l2[buf_idx_dis_1] = (uint8_t)accumulator_dis_1_l2;
         if (bytes == 2)
-            raw_buf_dis_1[buf_idx_dis_1 + 1] = (uint8_t)(accumulator_dis_1 >> 8);
+        {
+            raw_buf_dis_1_l1[buf_idx_dis_1 + 1] = (uint8_t)(accumulator_dis_1_l1 >> 8);
+            raw_buf_dis_1_l2[buf_idx_dis_1 + 1] = (uint8_t)(accumulator_dis_1_l2 >> 8);
+        }
         buf_idx_dis_1 = (uint16_t)(buf_idx_dis_1 + bytes);
     }
-    accumulator_dis_1 = 0;
+    accumulator_dis_1_l1 = 0;
+    accumulator_dis_1_l2 = 0;
 
     if (buf_idx_dis_1 >= RAW_BATCH_SIZE)
     {
         pin_interrupt_disable_dis_1();
-        const uint8_t chan = TX_ID_RAW_DIS1_DATA;
+        const uint8_t chan = RAW_CHAN_DIS1;
         xQueueSendFromISR(capture_queue, &chan, NULL);
     }
 }
@@ -83,30 +112,34 @@ static void IRAM_ATTR word_latch_dis_2(void *arg)
     const uint8_t bytes = (codeword_bits_g <= 8) ? 1 : 2;
     if (buf_idx_dis_2 + bytes <= RAW_BATCH_SIZE)
     {
-        raw_buf_dis_2[buf_idx_dis_2] = (uint8_t)accumulator_dis_2;
+        raw_buf_dis_2_l1[buf_idx_dis_2] = (uint8_t)accumulator_dis_2_l1;
+        raw_buf_dis_2_l2[buf_idx_dis_2] = (uint8_t)accumulator_dis_2_l2;
         if (bytes == 2)
-            raw_buf_dis_2[buf_idx_dis_2 + 1] = (uint8_t)(accumulator_dis_2 >> 8);
+        {
+            raw_buf_dis_2_l1[buf_idx_dis_2 + 1] = (uint8_t)(accumulator_dis_2_l1 >> 8);
+            raw_buf_dis_2_l2[buf_idx_dis_2 + 1] = (uint8_t)(accumulator_dis_2_l2 >> 8);
+        }
         buf_idx_dis_2 = (uint16_t)(buf_idx_dis_2 + bytes);
     }
-    accumulator_dis_2 = 0;
+    accumulator_dis_2_l1 = 0;
+    accumulator_dis_2_l2 = 0;
 
     if (buf_idx_dis_2 >= RAW_BATCH_SIZE)
     {
         pin_interrupt_disable_dis_2();
-        const uint8_t chan = TX_ID_RAW_DIS2_DATA;
+        const uint8_t chan = RAW_CHAN_DIS2;
         xQueueSendFromISR(capture_queue, &chan, NULL);
     }
 }
 
-static void send_raw_batch(uint8_t chan_id)
+static void send_one_line_batch(tx_pckt_id_t pck_id, const uint8_t *buf)
 {
-    const uint8_t *buf = (chan_id == TX_ID_RAW_DIS1_DATA) ? raw_buf_dis_1 : raw_buf_dis_2;
     const display_type_t dtype = (codeword_bits_g <= 8) ? DIS_RAW_8BIT_V1 : DIS_RAW_12BIT_V1;
 
     for (uint8_t idx = 0; idx < RAW_CHUNK_COUNT; idx++)
     {
         data_packet_t pkt = {
-            .pck_id = chan_id,
+            .pck_id = (uint8_t)pck_id,
             .display = (uint8_t)dtype,
             .length = sizeof(raw_capture_chunk_t) + RAW_CHUNK_LEN};
         raw_capture_chunk_t *chunk = (raw_capture_chunk_t *)pkt.ab_data;
@@ -122,17 +155,33 @@ static void send_raw_batch(uint8_t chan_id)
     }
 }
 
+// Sends both data lines' batches for the channel that just filled up —
+// SDATA1 first, then SDATA2 — each under its own dedicated pck_id.
+static void send_raw_batch(uint8_t chan)
+{
+    if (chan == RAW_CHAN_DIS1)
+    {
+        send_one_line_batch(TX_ID_RAW_DIS1_L1_DATA, raw_buf_dis_1_l1);
+        send_one_line_batch(TX_ID_RAW_DIS1_L2_DATA, raw_buf_dis_1_l2);
+    }
+    else
+    {
+        send_one_line_batch(TX_ID_RAW_DIS2_L1_DATA, raw_buf_dis_2_l1);
+        send_one_line_batch(TX_ID_RAW_DIS2_L2_DATA, raw_buf_dis_2_l2);
+    }
+}
+
 static void data_send_task(void *arg)
 {
-    uint8_t chan_id;
+    uint8_t chan;
     while (1)
     {
-        if (xQueueReceive(capture_queue, &chan_id, pdMS_TO_TICKS(10)))
+        if (xQueueReceive(capture_queue, &chan, pdMS_TO_TICKS(10)))
         {
-            send_raw_batch(chan_id);
+            send_raw_batch(chan);
             vTaskDelay(pdMS_TO_TICKS(RAW_PACING_MS)); // pacing delay so main/cloud can keep up
 
-            if (chan_id == TX_ID_RAW_DIS1_DATA)
+            if (chan == RAW_CHAN_DIS1)
             {
                 buf_idx_dis_1 = 0;
                 pin_interrupt_enable_dis_1();
@@ -149,13 +198,15 @@ static void data_send_task(void *arg)
 
 static void pin_interrupt_enable_dis_1(void)
 {
-    accumulator_dis_1 = 0;
+    accumulator_dis_1_l1 = 0;
+    accumulator_dis_1_l2 = 0;
     gpio_set_intr_type(D1_SCLK, GPIO_INTR_POSEDGE);
     gpio_set_intr_type(D1_RCLK, GPIO_INTR_POSEDGE);
 }
 static void pin_interrupt_enable_dis_2(void)
 {
-    accumulator_dis_2 = 0;
+    accumulator_dis_2_l1 = 0;
+    accumulator_dis_2_l2 = 0;
     gpio_set_intr_type(D2_SCLK, GPIO_INTR_POSEDGE);
     gpio_set_intr_type(D2_RCLK, GPIO_INTR_POSEDGE);
 }
@@ -193,20 +244,11 @@ esp_err_t display_raw_capture_init(QueueHandle_t *send_queue, uint8_t codeword_b
     io_conf.pull_up_en = GPIO_PULLUP_DISABLE;
     ESP_ERROR_GOTO(ret, end, gpio_config(&io_conf));
 
-    // SDATA1 — the line this driver actually captures
+    // SDATA1 + SDATA2 — both lines are actively captured by this driver
     io_conf.intr_type = GPIO_INTR_DISABLE;
     io_conf.mode = GPIO_MODE_INPUT;
-    io_conf.pin_bit_mask = BIT64(D1_SDATA1) | BIT64(D2_SDATA1);
+    io_conf.pin_bit_mask = BIT64(D1_SDATA1) | BIT64(D1_SDATA2) | BIT64(D2_SDATA1) | BIT64(D2_SDATA2);
     io_conf.pull_down_en = GPIO_PULLDOWN_DISABLE;
-    io_conf.pull_up_en = GPIO_PULLUP_DISABLE;
-    ESP_ERROR_GOTO(ret, end, gpio_config(&io_conf));
-
-    // SDATA2 — not captured by this driver, pulled down like other drivers
-    // do for the line they don't use
-    io_conf.intr_type = GPIO_INTR_DISABLE;
-    io_conf.mode = GPIO_MODE_INPUT;
-    io_conf.pin_bit_mask = BIT64(D1_SDATA2) | BIT64(D2_SDATA2);
-    io_conf.pull_down_en = GPIO_PULLDOWN_ENABLE;
     io_conf.pull_up_en = GPIO_PULLUP_DISABLE;
     ESP_ERROR_GOTO(ret, end, gpio_config(&io_conf));
 
