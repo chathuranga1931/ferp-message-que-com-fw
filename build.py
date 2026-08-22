@@ -25,6 +25,11 @@ Actions:
   --release-dt-esp32-raw  Release the distap-esp32 raw-capture test firmware
                           (delegates to distap-esp32/build_raw_capture.py --release,
                           output under releases/dt-esp32/)
+  --release-dt-esp07      Release the distap-esp07 (DT board) firmware
+                          (delegates to distap-esp07/build.py --release,
+                          output under releases/dt-esp07/). Requires the
+                          separate ESP8266_RTOS_SDK toolchain — see that
+                          board's build.sh for one-time setup.
 
 Typically called via flash.mac.sh or flash.win.bat which supply the
 default --serial-port and --idf-path for each platform.
@@ -166,6 +171,12 @@ def parse_args() -> argparse.Namespace:
         dest="release_dt_esp32_raw",
         help="Release the distap-esp32 raw-capture test firmware",
     )
+    group.add_argument(
+        "--release-dt-esp07",
+        action="store_true",
+        dest="release_dt_esp07",
+        help="Release the distap-esp07 (DT board) firmware",
+    )
     parser.add_argument("--serial-port", help="Serial port (e.g. /dev/tty.usbserial-... or COM3)")
     parser.add_argument("--idf-path", help="Path to ESP-IDF installation")
     parser.add_argument(
@@ -210,6 +221,24 @@ def main() -> None:
         if not dt_script.is_file():
             die(f"Script not found: {dt_script}")
         out_dir = SCRIPT_DIR / "releases" / "dt-esp32"
+        cmd = [sys.executable, str(dt_script), "--release", "--out", str(out_dir)]
+        result = subprocess.run(cmd)
+        sys.exit(result.returncode)
+
+    # --release-dt-esp07 delegates to the distap-esp07 board's own build.py,
+    # which is a separate ESP8266_RTOS_SDK project requiring the xtensa-lx106-elf
+    # toolchain — entirely different from the esp32 toolchain used elsewhere in
+    # this repo. --idf-path is deliberately NOT forwarded, for the same reason
+    # as the distap-esp32 case above: this project's --idf-path always points at
+    # mainline esp-idf, which is the wrong SDK for an ESP8266 build. To point
+    # distap-esp07's release at a different SDK install, invoke its own
+    # build.sh/build.py directly with --idf-path.
+    if args.release_dt_esp07:
+        dt_dir = SCRIPT_DIR / "src/sub-modules/ferp-device-firmware/ferp_board/distap-esp07"
+        dt_script = dt_dir / "build.py"
+        if not dt_script.is_file():
+            die(f"Script not found: {dt_script}")
+        out_dir = SCRIPT_DIR / "releases" / "dt-esp07"
         cmd = [sys.executable, str(dt_script), "--release", "--out", str(out_dir)]
         result = subprocess.run(cmd)
         sys.exit(result.returncode)
