@@ -55,6 +55,13 @@
       "mac": "f8b3b73b9fa4",
       "uuid": "",
       "group": "default"
+    },
+    {
+      "label": "TestDevice2404",
+      "ip": "192.168.4.1",
+      "mac": "0c8b95f143cc",
+      "uuid": "",
+      "group": "default"
     }
   ],
   "ota_targets": {
