@@ -42,7 +42,7 @@ idf_component_register(
         "${D_MODS}/module_timemgr/module_timemgr.cpp"
         "${D_MODS}/module_ota/OtaModule.cpp"
         "${D_MODS}/module_ota/targets/ota_driver_esp32_main.c"
-        "${D_MODS}/module_ota/targets/ota_driver_esp32_dt.c"
+        "${D_MODS}/module_ota/targets/ota_driver_esp07_dt.c"
 
         # ── Device info module ────────────────────────────────────────────
         "${D_MODS}/module_device_info/module_device_info.cpp"

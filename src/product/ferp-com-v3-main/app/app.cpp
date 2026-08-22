@@ -539,6 +539,24 @@ static const ota_target_desc_t k_ota_targets[] = {
 };
 
 // ============================================================================
+// Stale SPIFFS files to purge on boot
+//
+// This is an esp32 (2602) build.  A device upgraded from the esp07/v2 (2404)
+// firmware via an app-only OTA keeps the previous product's DispTap binaries
+// under esp07/ in SPIFFS — the app OTA never touches the SPIFFS partition.
+// Those would combine with the incoming esp32 binaries and overflow the
+// 512 KB spiffs partition on the next DispTap OTA, so purge them right after
+// mount.  Missing files are ignored (clean device / factory esp32 unit).
+// Wired to ModuleSpiffs in app_init() via ModuleSpiffs::set_stale_files().
+// ============================================================================
+
+static const char *const k_spiffs_stale_files[] = {
+    "esp07/bootloader.bin",
+    "esp07/partitions_table.bin",
+    "esp07/rtos_dis_tap_esp07.bin",
+};
+
+// ============================================================================
 // MQTT OTA target name table
 //
 // Maps wire-protocol target name strings (from ota_start "target" field) to
@@ -884,6 +902,11 @@ extern "C" void app_init(void)
     // Wire OTA target name table to ModuleMqtt.
     ModuleMqtt::instance()->set_ota_targets(
         k_mqtt_ota_targets, (uint8_t)(sizeof(k_mqtt_ota_targets) / sizeof(k_mqtt_ota_targets[0])));
+
+    // Wire stale-file purge list to ModuleSpiffs (removes the previous esp07/v2
+    // product's DispTap binaries after mount so the esp32 OTA can't overflow SPIFFS).
+    ModuleSpiffs::instance()->set_stale_files(
+        k_spiffs_stale_files, (uint8_t)(sizeof(k_spiffs_stale_files) / sizeof(k_spiffs_stale_files[0])));
 
     // 1. Config — load defaults and initialise the config handle
     app_config_init();

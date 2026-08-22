@@ -10,7 +10,7 @@ set(ROOT       "${CMAKE_CURRENT_SOURCE_DIR}/../../..")   # src/
 set(APP_MSGS   "${ROOT}/app-messages")
 set(APP_MODS   "${ROOT}/app-modules")
 set(APP_PHR    "${ROOT}/app-pheripherals")
-set(APP        "${ROOT}/product/ferp-com-main/app")
+set(APP        "${ROOT}/product/ferp-com-v3-main/app")
 
 set(ARDUINOJSON "${ROOT}/managed_components/bblanchon__arduinojson")
 

@@ -23,7 +23,8 @@
 
 # ── macOS defaults (edit as needed) ──────────────────────────────────────────
 IDF_PATH="/Users/chathuranga/.espressif/v6.0.1/esp-idf"
-DEFAULT_PORT="/dev/tty.usbserial-548B0018381"
+# DEFAULT_PORT="/dev/tty.usbserial-548B0018381"
+DEFAULT_PORT="/dev/tty.usbserial-A5069RR4"
 
 # ── Parse --serial-port override; forward everything else to flash.py ────────
 SERIAL_PORT="$DEFAULT_PORT"

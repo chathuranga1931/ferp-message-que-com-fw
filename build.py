@@ -15,8 +15,9 @@ Actions:
                     Requires --serial-port and --bin-path.
   --console        Open serial monitor
   --release        Full release workflow (delegates to release.py).
-                    Output defaults to releases/main-esp32/<version>/ — pass
-                    --out <dir> to override.
+                    Output defaults to releases/<product>-esp32/<version>/ —
+                    pass --out <dir> to override. --product selects v3
+                    (default) or v2.
   --create-bundle  Create OTA bundle from existing build artifacts (delegates to release.py)
   --release-dt-esp32      Release the distap-esp32 (DT board) production firmware
                           (delegates to distap-esp32/build.py --release,
@@ -39,7 +40,17 @@ import sys
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-PROJECT_DIR = SCRIPT_DIR / "src/product/ferp-com-main/ferp-com-esp32-idf"
+
+# ── Product selection ────────────────────────────────────────────────────────
+#   v3 : ferp-com-v3-main       (esp32<>esp32, HW 2602)
+#   v2 : ferp-com-v2-main       (esp32<>esp07, HW 2404)
+PRODUCTS = {
+    "v3": "src/product/ferp-com-v3-main/ferp-com-v3-esp32-idf",
+    "v2": "src/product/ferp-com-v2-main/ferp-com-v2-esp32-idf",
+}
+
+# Defaults to "v3" for backward compatibility; overridden in main() via --product.
+PROJECT_DIR = SCRIPT_DIR / PRODUCTS["v3"]
 BAUD_RATE = 230400
 # Matches releases/flash-factory-bin.sh — factory images are flashed directly
 # with esptool (not idf.py) at a higher baud since there's no app-partition
@@ -158,9 +169,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--serial-port", help="Serial port (e.g. /dev/tty.usbserial-... or COM3)")
     parser.add_argument("--idf-path", help="Path to ESP-IDF installation")
     parser.add_argument(
+        "--product",
+        default="v3",
+        choices=list(PRODUCTS),
+        help="Which product to build/flash/release (default: v3)",
+    )
+    parser.add_argument(
         "--out",
         dest="out_dir",
-        help="With --release, output dir override (default: releases/main-esp32)",
+        help="With --release, output dir override (default: releases/<product>-esp32)",
     )
     parser.add_argument(
         "--bin-path",
@@ -172,6 +189,9 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
+
+    global PROJECT_DIR
+    PROJECT_DIR = SCRIPT_DIR / PRODUCTS[args.product]
 
     # --release-dt-esp32 and --release-dt-esp32-raw delegate to the
     # distap-esp32 board's own build.py / build_raw_capture.py, which is a
@@ -201,6 +221,7 @@ def main() -> None:
             die(f"release.py not found at: {release_py}")
         cmd = [sys.executable, str(release_py)]
         cmd.append("--release" if args.release else "--create-bundle")
+        cmd += ["--product", args.product]
         if args.idf_path:
             cmd += ["--idf-path", args.idf_path]
         if args.release and args.out_dir:

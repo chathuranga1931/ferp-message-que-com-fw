@@ -48,6 +48,13 @@
       "mac": "f8b3b73b0af8",
       "uuid": "",
       "group": "default"
+    },
+    {
+      "label": "FERP-65-Dambulla-01",
+      "ip": "",
+      "mac": "f8b3b73b9fa4",
+      "uuid": "",
+      "group": "default"
     }
   ],
   "ota_targets": {

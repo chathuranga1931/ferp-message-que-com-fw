@@ -4,9 +4,10 @@
 Modes:
   --release        Full release: git checks → odd build → commit+tag+push →
                    even build → factory image → tar.gz → GitHub release.
-                   Output defaults to releases/main-esp32/<version>/ — pass
-                   --out <dir> to override (relative paths resolve against
-                   the invocation directory).
+                   Output defaults to releases/<product>-esp32/<version>/ —
+                   pass --out <dir> to override (relative paths resolve
+                   against the invocation directory). --product selects v3
+                   (default) or v2.
   --create-bundle  Bundle only from existing build artifacts (no build, no git).
                    Bundle version is (255-V1).V2.V3.V4 of current version.h.
                    Output goes to the build directory.
@@ -24,14 +25,48 @@ import tarfile
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-PROJECT_DIR = SCRIPT_DIR / "src/product/ferp-com-main/ferp-com-esp32-idf"
-VERSION_FILE = SCRIPT_DIR / "src/product/ferp-com-main/app/version.h"
-USER_CONFIG_FILE = SCRIPT_DIR / "src/product/ferp-com-main/app/user_config.h"
-BUILD_DIR = PROJECT_DIR / "build"
-BUILD_BIN = BUILD_DIR / "ferp-com.bin"
-BUILD_ELF = BUILD_DIR / "ferp-com.elf"
-RELEASES_DIR = SCRIPT_DIR / "releases" / "main-esp32"
+
+# ── Product selection ────────────────────────────────────────────────────────
+# Both products share the same main-ESP32 app bundle format and 4 MB factory
+# layout (partitions.csv is identical); only the source tree paths differ.
+#   v3 : ferp-com-v3-main       (esp32<>esp32, HW 2602)
+#   v2 : ferp-com-v2-main       (esp32<>esp07, HW 2404)
+PRODUCTS = {
+    "v3": {
+        "project":  "src/product/ferp-com-v3-main/ferp-com-v3-esp32-idf",
+        "app":      "src/product/ferp-com-v3-main/app",
+        "releases": "v3-esp32",
+    },
+    "v2": {
+        "project":  "src/product/ferp-com-v2-main/ferp-com-v2-esp32-idf",
+        "app":      "src/product/ferp-com-v2-main/app",
+        "releases": "v2-esp32",
+    },
+}
+
+# Product-specific paths — set by configure_product(); default to "v3" so that
+# running/importing without an explicit product preserves the original behaviour.
+PROJECT_DIR = VERSION_FILE = USER_CONFIG_FILE = None
+BUILD_DIR = BUILD_BIN = BUILD_ELF = RELEASES_DIR = None
+
+# Shared across products — the main-ESP32 bundle tool (target "esp32-main").
 BUNDLE_TOOL = SCRIPT_DIR / "tools/ota-bundle-tools/OtaBundleCreate-MainESP32.py"
+
+
+def configure_product(product: str) -> None:
+    """Point the module-level paths at the selected product tree."""
+    global PROJECT_DIR, VERSION_FILE, USER_CONFIG_FILE
+    global BUILD_DIR, BUILD_BIN, BUILD_ELF, RELEASES_DIR
+    if product not in PRODUCTS:
+        die(f"Unknown product '{product}' (choices: {', '.join(PRODUCTS)})")
+    cfg = PRODUCTS[product]
+    PROJECT_DIR = SCRIPT_DIR / cfg["project"]
+    VERSION_FILE = SCRIPT_DIR / cfg["app"] / "version.h"
+    USER_CONFIG_FILE = SCRIPT_DIR / cfg["app"] / "user_config.h"
+    BUILD_DIR = PROJECT_DIR / "build"
+    BUILD_BIN = BUILD_DIR / "ferp-com.bin"
+    BUILD_ELF = BUILD_DIR / "ferp-com.elf"
+    RELEASES_DIR = SCRIPT_DIR / "releases" / cfg["releases"]
 
 
 def die(msg: str) -> None:
@@ -431,16 +466,23 @@ def parse_args() -> "argparse.Namespace":
     )
     parser.add_argument("--idf-path", default="", help="Path to ESP-IDF installation")
     parser.add_argument(
+        "--product",
+        default="v3",
+        choices=list(PRODUCTS),
+        help="Which product to release (default: v3)",
+    )
+    parser.add_argument(
         "--out",
         dest="out_dir",
         default="",
-        help="With --release, output dir override (default: releases/main-esp32)",
+        help="With --release, output dir override (default: releases/<product>)",
     )
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
+    configure_product(args.product)
     if args.create_bundle:
         mode_create_bundle()
     else:
