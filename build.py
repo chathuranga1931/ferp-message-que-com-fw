@@ -196,6 +196,12 @@ def parse_args() -> argparse.Namespace:
         dest="bin_path",
         help="Path to the release factory .bin file (required for --release-flash)",
     )
+    parser.add_argument(
+        "release_flash_args",
+        nargs="*",
+        metavar="ARGS",
+        help="With --release-flash: <port> <bin-path> positionally, instead of --serial-port/--bin-path",
+    )
     return parser.parse_args()
 
 
