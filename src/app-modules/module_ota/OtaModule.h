@@ -10,6 +10,13 @@
 //   ABORTING ──► IDLE   (after ferase + MsgOtaEvent(SESSION_ABORTED))
 //   COMPLETE ──► IDLE   (after MsgOtaEvent(COMPLETE) + pal_power_reset() if needs_reboot)
 //
+// Boot confirmation (independent of the session state machine above):
+// on the first MsgMqttStatus(connected=true) seen this boot, calls
+// pal_fw_update_mark_valid() to cancel any pending OTA rollback — a
+// freshly-OTA'd image that crashes again before this fires gets reverted
+// by the bootloader to the previous firmware on next boot. MQTT connect is
+// used as the "this image actually works" signal rather than WiFi alone.
+//
 // Binary data NEVER enters the message pool.  Only small control messages
 // cross the HSYS bus.  The source calls the ota_fs_driver_t function pointers
 // directly with raw binary chunks.
@@ -107,6 +114,9 @@ private:
     uint64_t                 _session_start_ts = 0;   ///< timestamp when PENDING entered (ms)
     char                     _active_version[32] = {};
 
+    // ── Boot confirmation ───────────────────────────────────────────────────────
+    bool _ota_confirmed = false;   ///< true once pal_fw_update_mark_valid() has run this boot
+
     // ── Helpers ───────────────────────────────────────────────────────────────
     const ota_source_desc_t *_find_source(hsys_module_id_t module_id) const;
     const ota_target_desc_t *_find_target(uint8_t target_idx) const;
@@ -117,6 +127,7 @@ private:
     void _handle_complete_notify(const hsys_msg_t &msg);
     void _handle_progress(const hsys_msg_t &msg);
     void _handle_tick();
+    void _handle_mqtt_status(const hsys_msg_t &msg);
 
     void _enter_aborting(const char *reason);
     void _enter_complete();

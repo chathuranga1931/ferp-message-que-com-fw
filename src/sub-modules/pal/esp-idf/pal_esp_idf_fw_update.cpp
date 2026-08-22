@@ -227,6 +227,28 @@ int32_t pal_fw_update_get_status(pal_fw_update_status_t* status)
 }
 
 /*===========================================================================*/
+/*                          BOOT CONFIRMATION                                */
+/*===========================================================================*/
+
+int32_t pal_fw_update_mark_valid(void)
+{
+    esp_err_t err = esp_ota_mark_app_valid_cancel_rollback();
+    if (err == ESP_OK) {
+        LOG_MSG_INFO(FWUP_INFO_LOG_EN, "app image marked valid — OTA rollback cancelled");
+        return PAL_OK;
+    }
+    if (err == ESP_ERR_NOT_SUPPORTED) {
+        /* Rollback isn't enabled in this build's bootloader (e.g. a device
+         * freshly flashed over serial with our own rollback-disabled config)
+         * — nothing to confirm, not an error. */
+        return PAL_OK;
+    }
+    LOG_MSG_ERROR(FWUP_ERROR_LOG_EN,
+                  "esp_ota_mark_app_valid_cancel_rollback failed: %s", esp_err_to_name(err));
+    return PAL_ERROR;
+}
+
+/*===========================================================================*/
 /*                         BINARY INFO QUERIES                               */
 /*===========================================================================*/
 

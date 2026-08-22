@@ -13,9 +13,11 @@
 #include "msg_ota_event.h"
 #include "msg_ota_progress.h"
 #include "msg_tick_1000ms.h"
+#include "msg_mqtt_status.h"
 #include "pal_logger.h"
 #include "pal_time.h"
 #include "pal_power.h"
+#include "pal_fw_update.h"
 #include <new>
 #include <string.h>
 
@@ -66,6 +68,7 @@ void OtaModule::init()
     subscribe(MsgOtaCompleteNotify::ID);
     subscribe(MsgOtaProgress::ID);
     subscribe(MSG_ID_TICK_1000MS);   // used to check inactivity / PENDING deadline
+    subscribe(MsgMqttStatus::ID);    // used for one-time post-boot rollback confirmation
 
     LOG_MSG_INFO(OTA_LOG_EN, "init — state=IDLE sources=%u targets=%u",
                  (unsigned)_source_count, (unsigned)_target_count);
@@ -99,6 +102,10 @@ void OtaModule::on_msg_received(const hsys_msg_t &msg)
 
         case MSG_ID_TICK_1000MS:
             _handle_tick();
+            break;
+
+        case MsgMqttStatus::ID:
+            _handle_mqtt_status(msg);
             break;
 
         default:
@@ -280,6 +287,21 @@ void OtaModule::_handle_tick()
         default:
             break;
     }
+}
+
+void OtaModule::_handle_mqtt_status(const hsys_msg_t &msg)
+{
+    if (_ota_confirmed) return;
+
+    auto p = MsgMqttStatus::deserialize(msg);
+    if (!p.connected) return;
+
+    // First successful MQTT connection this boot confirms the running image
+    // can actually do its job — cancel any pending OTA rollback so a later,
+    // unrelated crash/reset doesn't revert the device to its previous
+    // firmware. See pal_fw_update_mark_valid() for why this is needed.
+    _ota_confirmed = true;
+    pal_fw_update_mark_valid();
 }
 
 // ── State transitions ─────────────────────────────────────────────────────────

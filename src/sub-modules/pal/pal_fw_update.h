@@ -179,6 +179,31 @@ int32_t pal_fw_update_abort(pal_fw_update_handle_t handle);
 int32_t pal_fw_update_get_status(pal_fw_update_status_t* status);
 
 /*===========================================================================*/
+/*                          BOOT CONFIRMATION                                */
+/*===========================================================================*/
+
+/**
+ * @brief Confirm the currently running app image as valid, cancelling any
+ *        pending OTA rollback.
+ *
+ * ESP-IDF's bootloader-level app rollback marks a freshly OTA'd image as
+ * "pending verify" on first boot. If that image resets/crashes again before
+ * this function is called, the bootloader treats it as bad and permanently
+ * reverts to the previous OTA slot on every subsequent boot — regardless of
+ * whether the actual cause of the reset was unrelated to the new firmware.
+ *
+ * Call this once, after boot reaches a point you're confident represents a
+ * genuinely working device (e.g. MQTT connected) — not merely "did not crash
+ * yet". Safe to call unconditionally/repeatedly: a no-op once already
+ * confirmed, and a no-op on platforms without rollback support (e.g. the
+ * simulator, or a bootloader built with rollback disabled).
+ *
+ * @return PAL_OK if confirmed (or already confirmed / not applicable).
+ *         PAL_ERROR on platform-reported failure.
+ */
+int32_t pal_fw_update_mark_valid(void);
+
+/*===========================================================================*/
 /*                          FLASH WRITER DRIVER                              */
 /*===========================================================================*/
 

@@ -217,3 +217,9 @@ int32_t pal_fw_update_get_status(pal_fw_update_status_t *status)
     return PAL_OK;
 }
 
+int32_t pal_fw_update_mark_valid(void)
+{
+    /* No OTA rollback concept on the simulator — always a no-op success. */
+    return PAL_OK;
+}
+
