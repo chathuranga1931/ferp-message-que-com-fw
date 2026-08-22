@@ -111,6 +111,33 @@ def patch_apple_silicon_platform_map(idf_path: str) -> None:
         print("Patched idf_tools.py: added Darwin-arm64 -> macOS platform mapping")
 
 
+def find_windows_venv_scripts_dir(idf_path: str) -> str:
+    """
+    This SDK release's export.sh calls bare `python` (via
+    check_python_dependencies.py, and internally within idf_tools.py) without
+    ever adding its own dedicated venv's Scripts dir to PATH — unlike mainline
+    ESP-IDF's newer export scripts. On a dev machine with some *other* Python
+    already resolving on PATH (PlatformIO's env, a pyenv shim, etc.), that
+    means export.sh silently checks/uses the WRONG interpreter — one that
+    was never `pip install -r requirements.txt`'d for this SDK at all.
+
+    The venv itself (created by install.sh) is real and correctly populated;
+    it just needs to be put in front of PATH ourselves. Its location follows
+    idf_tools.py's own get_python_env_path() naming:
+        <IDF_TOOLS_PATH>/python_env/rtos<sdk_ver>_py<major.minor>_env/Scripts
+    where <IDF_TOOLS_PATH> defaults to ~/.espressif but is commonly
+    overridden globally (e.g. the official ESP-IDF Windows installer sets it
+    to C:\\Espressif) — so read the env var rather than assuming the default.
+    Rather than re-deriving the exact venv name (which depends on whichever
+    Python happened to run install.sh), just glob for any "rtos*_env" venv
+    under python_env — mainline ESP-IDF's own venvs are named "idf<ver>_..."
+    so this can't accidentally pick one of those instead.
+    """
+    tools_path = os.environ.get("IDF_TOOLS_PATH") or os.path.expanduser(os.path.join("~", ".espressif"))
+    matches = sorted(Path(tools_path).glob("python_env/rtos*_env/Scripts"))
+    return str(matches[-1]) if matches else ""
+
+
 def setup_idf(idf_path: str) -> None:
     if shutil.which("idf.py"):
         return
@@ -127,6 +154,22 @@ def setup_idf(idf_path: str) -> None:
     env = os.environ.copy()
     if shim_dir:
         env["PATH"] = shim_dir + os.pathsep + env.get("PATH", "")
+
+    if platform.system() == "Windows":
+        venv_scripts_dir = find_windows_venv_scripts_dir(idf_path)
+        if venv_scripts_dir:
+            env["PATH"] = venv_scripts_dir + os.pathsep + env.get("PATH", "")
+
+        # This SDK's tools/idf.py re-execs itself under `winpty` whenever
+        # MSYSTEM is set (MSYS2/Git Bash), for proper Ctrl+C handling — but
+        # winpty needs a real attached console and refuses (prints just
+        # "stdin is not a tty" and exits 1) when run from anything that
+        # isn't one: piped/redirected output, a script runner, some IDE
+        # terminals. idf.py itself already honors WINPTY as an explicit
+        # "skip the winpty re-exec" escape hatch — set it globally here
+        # (not just for the export.sh subprocess) since it also has to
+        # cover every later `idf.py` invocation from idf() below.
+        os.environ["WINPTY"] = "1"
 
     print("Setting up ESP8266_RTOS_SDK environment...")
     cmd = (
@@ -150,7 +193,12 @@ def idf(*args: str, port: str = "", baud: int = 0) -> None:
     if baud:
         cmd += ["-b", str(baud)]
     cmd += list(args)
-    result = subprocess.run(cmd, cwd=str(PROJECT_DIR))
+    # idf.py is a Python script, not a native executable — CreateProcess()
+    # can't launch it directly on Windows (WinError 193), only cmd.exe's
+    # associated-file-type handling can, so route through the shell there.
+    # Matches the same shell=... pattern already used by the root build.py's
+    # idf() for the esp32 products.
+    result = subprocess.run(cmd, cwd=str(PROJECT_DIR), shell=(platform.system() == "Windows"))
     if result.returncode != 0:
         sys.exit(result.returncode)
 
@@ -318,7 +366,7 @@ def main() -> None:
 
         print(f"--- Building even version ({even_ver}) ---")
         shutil.rmtree(build_dir, ignore_errors=True)
-        result = subprocess.run(["idf.py", "build"], cwd=str(PROJECT_DIR))
+        result = subprocess.run(["idf.py", "build"], cwd=str(PROJECT_DIR), shell=(platform.system() == "Windows"))
         if result.returncode != 0:
             print(f"ERROR: Build failed for even version {even_ver}")
             set_version(sdkconfig_defaults, sdkconfig_file, current_ver)
@@ -332,7 +380,7 @@ def main() -> None:
 
         print(f"--- Building odd version ({odd_ver}) ---")
         shutil.rmtree(build_dir, ignore_errors=True)
-        result = subprocess.run(["idf.py", "build"], cwd=str(PROJECT_DIR))
+        result = subprocess.run(["idf.py", "build"], cwd=str(PROJECT_DIR), shell=(platform.system() == "Windows"))
         if result.returncode != 0:
             print(f"ERROR: Build failed for odd version {odd_ver}")
             sys.exit(1)
@@ -341,10 +389,14 @@ def main() -> None:
         print()
         print(f"=== Release complete: {odd_ver} ===")
         print(f"  Output: {release_dir}/")
-        print(f"    ferp_dt_esp07_v{even_ver}/bin/    ← firmware, bootloader, partition-table .bin")
-        print(f"    ferp_dt_esp07_v{even_ver}/bundle/ ← OTA .bdl bundles (flash to test OTA upgrade)")
-        print(f"    ferp_dt_esp07_v{odd_ver}/bin/     ← firmware, bootloader, partition-table .bin")
-        print(f"    ferp_dt_esp07_v{odd_ver}/bundle/  ← OTA .bdl bundles (production)")
+        # Plain ASCII arrows, not "->" the box/pretty kind — Windows' console
+        # defaults to a legacy codepage (e.g. cp1252) that can't encode most
+        # Unicode arrow glyphs, and print() crashes with UnicodeEncodeError
+        # rather than falling back.
+        print(f"    ferp_dt_esp07_v{even_ver}/bin/    -> firmware, bootloader, partition-table .bin")
+        print(f"    ferp_dt_esp07_v{even_ver}/bundle/ -> OTA .bdl bundles (flash to test OTA upgrade)")
+        print(f"    ferp_dt_esp07_v{odd_ver}/bin/     -> firmware, bootloader, partition-table .bin")
+        print(f"    ferp_dt_esp07_v{odd_ver}/bundle/  -> OTA .bdl bundles (production)")
         print()
         print(f"  sdkconfig.defaults left at: {odd_ver}")
 

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""flash.py — Build and flash helper for ferp-com-esp32-idf
+"""build.py — Build and flash helper for ferp-com-esp32-idf
 
 Usage:
-    python3 flash.py --<action> [--serial-port PORT] [--idf-path PATH]
+    python3 build.py --<action> [--serial-port PORT] [--idf-path PATH]
 
 Actions:
   --cleanall       Remove build directory only (no build, no flash)
@@ -12,7 +12,8 @@ Actions:
   --flashspiffs    Build + flash SPIFFS partition only
   --flashapp       Build (no clean) + flash app partition only
   --release-flash  Flash a pre-built release factory image (0x0) — no build step.
-                    Requires --serial-port and --bin-path.
+                    Requires --serial-port and --bin-path (or positionally:
+                    --release-flash <port> <bin-path>).
   --console        Open serial monitor
   --release        Full release workflow (delegates to release.py).
                     Output defaults to releases/<product>-esp32/<version>/ —
@@ -31,8 +32,8 @@ Actions:
                           separate ESP8266_RTOS_SDK toolchain — see that
                           board's build.sh for one-time setup.
 
-Typically called via flash.mac.sh or flash.win.bat which supply the
-default --serial-port and --idf-path for each platform.
+Typically called via build-v3.mac.sh / build-v2.mac.sh or build.win.bat which
+supply the default --serial-port and --idf-path for each platform.
 """
 
 import argparse
@@ -260,6 +261,16 @@ def main() -> None:
 
     serial_port = args.serial_port or ""
     idf_path = args.idf_path or ""
+    bin_path_arg = args.bin_path
+
+    if args.release_flash_args:
+        if not args.release_flash:
+            die(f"Unexpected arguments: {' '.join(args.release_flash_args)}")
+        if len(args.release_flash_args) > 2:
+            die("Too many arguments for --release-flash. Usage: --release-flash <port> <bin-path>")
+        serial_port = args.release_flash_args[0]
+        if len(args.release_flash_args) == 2:
+            bin_path_arg = args.release_flash_args[1]
 
     setup_idf(idf_path)
 
@@ -321,9 +332,9 @@ def main() -> None:
     elif args.release_flash:
         if not serial_port:
             die("--serial-port is required for --release-flash")
-        if not args.bin_path:
+        if not bin_path_arg:
             die("--bin-path is required for --release-flash")
-        bin_path = Path(args.bin_path).expanduser().resolve()
+        bin_path = Path(bin_path_arg).expanduser().resolve()
         if not bin_path.is_file():
             die(f"Release bin file not found: {bin_path}")
         print(f"=== Flashing release image {bin_path.name} to {serial_port} ===")

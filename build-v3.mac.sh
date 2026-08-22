@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# flash.mac.sh — macOS wrapper for flash.py
+# build-v3.mac.sh — macOS wrapper for build.py
 #
 # Sets macOS-specific defaults for the serial port and IDF path, then
-# delegates all work to flash.py.
+# delegates all work to build.py.
 #
 # Usage:
-#   ./flash.mac.sh [--serial-port /dev/tty.usbserial-XXXXX] <action>
+#   ./build-v3.mac.sh [--serial-port /dev/tty.usbserial-XXXXX] <action>
 #
 # Actions:
 #   --cleanall       Remove build directory only
@@ -19,14 +19,14 @@
 #   --create-bundle  Create OTA bundle from existing build artifacts
 #
 # Override the serial port at runtime:
-#   ./flash.mac.sh --serial-port /dev/tty.usbserial-YYYYYY --flashapp
+#   ./build-v3.mac.sh --serial-port /dev/tty.usbserial-YYYYYY --flashapp
 
 # ── macOS defaults (edit as needed) ──────────────────────────────────────────
 IDF_PATH="/Users/chathuranga/.espressif/v6.0.1/esp-idf"
 # DEFAULT_PORT="/dev/tty.usbserial-548B0018381"
 DEFAULT_PORT="/dev/tty.usbserial-A5069RR4"
 
-# ── Parse --serial-port override; forward everything else to flash.py ────────
+# ── Parse --serial-port override; forward everything else to build.py ────────
 SERIAL_PORT="$DEFAULT_PORT"
 PASS_ARGS=()
 
