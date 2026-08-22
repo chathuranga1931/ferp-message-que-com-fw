@@ -10,15 +10,17 @@ Actions:
   --flashall  Build without clean, flash everything
   --flashapp  Build without clean, flash app partition only
   --console   Open serial monitor (idf.py monitor)
-  --release   Build paired release binaries (even=OTA-test, odd=production).
-              Reads CONFIG_APP_PROJECT_VER from sdkconfig.defaults, computes
-              the next odd build number (production) and even = odd+1 (test),
-              does a fullclean+build for each, copies firmware + bootloader +
-              partition-table binaries into releases/<odd-version>/, creates
-              OTA bundles for all three binary types for both versions, then
-              leaves sdkconfig.defaults at the odd (production) version.
+  --release   Build a release from the CURRENT CONFIG_APP_PROJECT_VER in
+              sdkconfig.defaults — no odd/even version pair, just the one
+              version as configured. Copies firmware + bootloader +
+              partition-table binaries into releases/<version>/ and creates
+              OTA bundles for all three. If a git tag "dt-esp07-v<version>"
+              already exists (this version has been released before), warns
+              and asks for y/n confirmation before continuing WITHOUT
+              creating a duplicate tag; otherwise tags the release locally
+              after a successful build (not pushed — push manually).
 
-  --out <dir> Only meaningful with --release: write the releases/<odd-version>/
+  --out <dir> Only meaningful with --release: write the releases/<version>/
               output tree into <dir> instead of the default releases/ next to
               this script. Relative paths are resolved against the directory
               this script was invoked from.
@@ -47,6 +49,10 @@ from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 PROJECT_DIR = SCRIPT_DIR
+# distap-esp07 lives at:
+#   ferp-message-library/src/sub-modules/ferp-device-firmware/ferp_board/distap-esp07
+# — part of the same monorepo/git repo (no separate submodule), 5 levels up.
+REPO_ROOT = SCRIPT_DIR.parents[4]
 DEFAULT_COMPORT = "/dev/tty.usbserial-A5069RR4"
 DEFAULT_IDF_PATH = "/Users/chathuranga/DATA/esp/ESP8266_RTOS_SDK"
 MONITOR_BAUD = 115200
@@ -187,7 +193,17 @@ def setup_idf(idf_path: str) -> None:
 
 
 def idf(*args: str, port: str = "", baud: int = 0) -> None:
-    cmd = ["idf.py"]
+    # -D PROJECT_VER=... : this SDK's CMake build (unlike its legacy Make
+    # build) does NOT honor CONFIG_APP_PROJECT_VER_FROM_CONFIG/
+    # CONFIG_APP_PROJECT_VER at all — see project.cmake's __project_get_revision(),
+    # which only checks version.txt then falls back to `git describe` of
+    # whatever repo happens to contain this directory (the outer monorepo,
+    # since distap-esp07 has no .git of its own), producing a garbage version
+    # string embedded in esp_app_desc_t. Passing PROJECT_VER explicitly here
+    # short-circuits that fallback chain (project.cmake only computes its own
+    # value `if(NOT DEFINED PROJECT_VER)`), keeping sdkconfig.defaults as the
+    # single source of truth with no extra version file needed.
+    cmd = ["idf.py", "-D", f"PROJECT_VER={read_version(PROJECT_DIR / 'sdkconfig.defaults')}"]
     if port:
         cmd += ["-p", port]
     if baud:
@@ -211,17 +227,15 @@ def read_version(defaults_file: Path) -> str:
     return m.group(1)
 
 
-def set_version(defaults_file: Path, sdkconfig_file: Path, ver: str) -> None:
-    for f in (defaults_file, sdkconfig_file):
-        if f.is_file():
-            text = f.read_text()
-            text = re.sub(
-                r'^CONFIG_APP_PROJECT_VER=.*$',
-                f'CONFIG_APP_PROJECT_VER="{ver}"',
-                text,
-                flags=re.MULTILINE,
-            )
-            f.write_text(text)
+def git_tag_exists(repo_root: Path, tag: str) -> bool:
+    result = subprocess.run(
+        ["git", "tag", "-l", tag], cwd=str(repo_root), capture_output=True, text=True
+    )
+    return bool(result.stdout.strip())
+
+
+def git_create_tag(repo_root: Path, tag: str) -> None:
+    subprocess.run(["git", "tag", tag], cwd=str(repo_root), check=True)
 
 
 def copy_and_bundle(ver: str, build_fw: Path, build_boot: Path, build_part: Path,
@@ -267,7 +281,7 @@ def parse_args() -> argparse.Namespace:
     group.add_argument("--flashall", action="store_true", help="Build (no clean), flash all")
     group.add_argument("--flashapp", action="store_true", help="Build (no clean) + flash app partition only")
     group.add_argument("--console", action="store_true", help="Open serial monitor")
-    group.add_argument("--release", action="store_true", help="Build paired release: even (OTA-test) + odd (production)")
+    group.add_argument("--release", action="store_true", help="Build a release from the current CONFIG_APP_PROJECT_VER")
     parser.add_argument("--out", dest="out_dir", help="With --release, write output tree here instead of releases/")
     parser.add_argument("--serial-port", default=DEFAULT_COMPORT, help="Serial port")
     parser.add_argument("--idf-path", default=DEFAULT_IDF_PATH, help="Path to ESP8266_RTOS_SDK installation")
@@ -322,7 +336,6 @@ def main() -> None:
 
     elif args.release:
         sdkconfig_defaults = PROJECT_DIR / "sdkconfig.defaults"
-        sdkconfig_file = PROJECT_DIR / "sdkconfig"
         build_dir = PROJECT_DIR / "build"
         # Verified against an actual `idf.py build` output tree: the app binary
         # is flat under build/, but the partition table binary lands under
@@ -335,70 +348,48 @@ def main() -> None:
         releases_dir = out_dir if out_dir else PROJECT_DIR / "releases"
         ota_tools = PROJECT_DIR / "tools" / "ota-bundle-tools"
 
-        current_ver = read_version(sdkconfig_defaults)
-        print(f"Current CONFIG_APP_PROJECT_VER: {current_ver}")
+        version = read_version(sdkconfig_defaults)
+        print(f"Release version (CONFIG_APP_PROJECT_VER): {version}")
 
-        parts = current_ver.split(".")
-        if len(parts) != 4:
-            die(f"CONFIG_APP_PROJECT_VER must be in X.Y.Z.N format (got '{current_ver}')")
-        v1, v2, v3, v4 = parts[0], parts[1], parts[2], int(parts[3])
+        tag = f"dt-esp07-v{version}"
+        create_tag = True
+        if git_tag_exists(REPO_ROOT, tag):
+            print(f"WARNING: tag '{tag}' already exists — this version has already been released.")
+            answer = input("Continue building WITHOUT creating a new tag? [y/N]: ").strip().lower()
+            if answer != "y":
+                die("Aborted. Bump CONFIG_APP_PROJECT_VER in sdkconfig.defaults before releasing again.")
+            create_tag = False
 
-        # Compute next odd build number (production) and even = odd+1 (OTA-test)
-        odd_v4 = v4 + 1 if v4 % 2 == 0 else v4 + 2
-        even_v4 = odd_v4 + 1
-
-        even_ver = f"{v1}.{v2}.{v3}.{even_v4}"
-        odd_ver = f"{v1}.{v2}.{v3}.{odd_v4}"
-
-        release_dir = releases_dir / odd_ver
+        release_dir = releases_dir / version
         release_dir.mkdir(parents=True, exist_ok=True)
 
         print()
         print("=== Release plan ===")
-        print(f"  Even (OTA-test):   {even_ver}")
-        print(f"  Odd  (production): {odd_ver}")
-        print(f"  Output dir:        {release_dir}")
+        print(f"  Version:    {version}")
+        print(f"  Output dir: {release_dir}")
         print()
 
-        # ── Build 1: even version (OTA-test) ─────────────────────────────
-        print(f"--- Setting CONFIG_APP_PROJECT_VER to {even_ver} ---")
-        set_version(sdkconfig_defaults, sdkconfig_file, even_ver)
-
-        print(f"--- Building even version ({even_ver}) ---")
+        print(f"--- Building {version} ---")
         shutil.rmtree(build_dir, ignore_errors=True)
-        result = subprocess.run(["idf.py", "build"], cwd=str(PROJECT_DIR), shell=(platform.system() == "Windows"))
+        result = subprocess.run(["idf.py", "-D", f"PROJECT_VER={version}", "build"],
+                                cwd=str(PROJECT_DIR), shell=(platform.system() == "Windows"))
         if result.returncode != 0:
-            print(f"ERROR: Build failed for even version {even_ver}")
-            set_version(sdkconfig_defaults, sdkconfig_file, current_ver)
-            sys.exit(1)
-        copy_and_bundle(even_ver, build_fw, build_boot, build_part, release_dir, ota_tools)
+            die(f"Build failed for version {version}")
+        copy_and_bundle(version, build_fw, build_boot, build_part, release_dir, ota_tools)
 
-        # ── Build 2: odd version (production) ────────────────────────────
-        print()
-        print(f"--- Setting CONFIG_APP_PROJECT_VER to {odd_ver} ---")
-        set_version(sdkconfig_defaults, sdkconfig_file, odd_ver)
-
-        print(f"--- Building odd version ({odd_ver}) ---")
-        shutil.rmtree(build_dir, ignore_errors=True)
-        result = subprocess.run(["idf.py", "build"], cwd=str(PROJECT_DIR), shell=(platform.system() == "Windows"))
-        if result.returncode != 0:
-            print(f"ERROR: Build failed for odd version {odd_ver}")
-            sys.exit(1)
-        copy_and_bundle(odd_ver, build_fw, build_boot, build_part, release_dir, ota_tools)
+        if create_tag:
+            git_create_tag(REPO_ROOT, tag)
+            print(f"Tagged: {tag} (local only — push manually: git push origin {tag})")
 
         print()
-        print(f"=== Release complete: {odd_ver} ===")
+        print(f"=== Release complete: {version} ===")
         print(f"  Output: {release_dir}/")
         # Plain ASCII arrows, not "->" the box/pretty kind — Windows' console
         # defaults to a legacy codepage (e.g. cp1252) that can't encode most
         # Unicode arrow glyphs, and print() crashes with UnicodeEncodeError
         # rather than falling back.
-        print(f"    ferp_dt_esp07_v{even_ver}/bin/    -> firmware, bootloader, partition-table .bin")
-        print(f"    ferp_dt_esp07_v{even_ver}/bundle/ -> OTA .bdl bundles (flash to test OTA upgrade)")
-        print(f"    ferp_dt_esp07_v{odd_ver}/bin/     -> firmware, bootloader, partition-table .bin")
-        print(f"    ferp_dt_esp07_v{odd_ver}/bundle/  -> OTA .bdl bundles (production)")
-        print()
-        print(f"  sdkconfig.defaults left at: {odd_ver}")
+        print(f"    ferp_dt_esp07_v{version}/bin/    -> firmware, bootloader, partition-table .bin")
+        print(f"    ferp_dt_esp07_v{version}/bundle/ -> OTA .bdl bundles")
 
 
 if __name__ == "__main__":
