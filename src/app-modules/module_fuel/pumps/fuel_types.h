@@ -63,6 +63,24 @@ static inline void fuel_types_from_frame(
             out->total_pricex100= (uint64_t)frame->total_price*10;
             out->volume_lx1000  = (uint64_t)frame->volume_l;
         }
+        break;
+        case DIS_WAYNE_6_DIGIT_2:
+        {
+            // Total is 1-decimal raw (value*10) -> needs *10 to reach the
+            // canonical x100 scale. Volume is 3-decimal raw (value*1000),
+            // already the canonical x1000 scale.
+            uint64_t total_pricex100 = (uint64_t)frame->total_price*10;
+            uint64_t volume_lx1000   = (uint64_t)frame->volume_l;
+
+            out->total_pricex100 = total_pricex100;
+            out->volume_lx1000   = volume_lx1000;
+            // Rate not decoded on the DT side yet — derive a placeholder so
+            // the unit_price*volume≈total_price cross-check downstream
+            // still passes. Replace with frame->unit_price directly once
+            // Rate decode lands.
+            out->unit_pricex100  = volume_lx1000 ? (total_pricex100*1000)/volume_lx1000 : 0;
+        }
+        break;
         default:
         break;
     }

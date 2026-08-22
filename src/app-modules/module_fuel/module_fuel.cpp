@@ -402,6 +402,13 @@ const pump_driver_t pump_drivers[DIS_SIZE] = {
         (fp_pump_data_validate *)longfeng8_data_validate,
         (fp_pump_totalizer_data *)process_totalizer_data
     },
+    /* DIS_WAYNE_6_DIGIT_2  [8] */ {
+        (fp_pump_get_event_t *)wayne6_get_event,
+        (fp_pump_process_data_t *)wayne6_process_data,
+        (fp_pump_process_state_machine_t *)wayne6_process_state_machine,
+        (fp_pump_data_validate *)wayne6_data_validate,
+        (fp_pump_totalizer_data *)process_totalizer_data
+    },
 };
 
 

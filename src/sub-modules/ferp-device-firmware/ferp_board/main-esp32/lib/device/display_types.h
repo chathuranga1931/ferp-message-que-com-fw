@@ -18,6 +18,7 @@ typedef enum
     DIS_WAYNE_6_DIGIT,          //5
     DIS_SANKI_6_DIGIT,          //6
     DIS_LONGFENG_8_DIGIT,       //7
+    DIS_WAYNE_6_DIGIT_2,        //8
     DIS_SIZE,
 
     // Raw capture types for reverse-engineering unknown pumps (not real

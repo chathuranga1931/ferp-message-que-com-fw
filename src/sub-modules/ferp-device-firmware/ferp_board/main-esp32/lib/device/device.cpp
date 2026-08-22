@@ -115,6 +115,12 @@ void fuel_event_display_1(display_type_t type, uint8_t *data)
         }
     }
     break;
+    case DIS_WAYNE_6_DIGIT_2:
+    {
+        // Rate not decoded yet — unit_price is always 0 on this raw frame.
+        Serial.println("wayne 6 (v2) display 1 = " + String(dis->unit_price / 100.0, 2) + ", " + String(dis->total_price / 10.0, 1) + ", " + String(dis->volume_l / 1000.0, 3) + ", " + "p=" + (dis->flags.bits.select_p ? "1" : "0") + " l=" + (dis->flags.bits.select_l ? "1" : "0"));
+    }
+    break;
     default:
         Serial.println("Display:" + String(type));
         break;
@@ -183,6 +189,12 @@ void fuel_event_display_2(display_type_t type, uint8_t *data)
             const int64_t gap = (((uint64_t)dis->unit_price * (uint64_t)dis->volume_l) / 1000) - (uint64_t)dis->total_price;
             Serial.println("longfeng 8 display 2 = " + String(dis->unit_price / 100.0, 2) + ", " + String(dis->total_price / 100.0, 2) + ", " + String(dis->volume_l / 1000.0, 3) + ", " + (dis->flags.bits.start_stop ? "start" : "stop") + ", p=" + (dis->flags.bits.select_p ? "1" : "0") + " l=" + (dis->flags.bits.select_l ? "1" : "0") + " err_byte=" + String(*(uint8_t*)&dis->error) + " err_price=" + (dis->error.bits.price_gap ? "1" : "0") + "  price gap = " + String(gap));
         }
+    }
+    break;
+    case DIS_WAYNE_6_DIGIT_2:
+    {
+        // Rate not decoded yet — unit_price is always 0 on this raw frame.
+        Serial.println("wayne 6 (v2) display 2 = " + String(dis->unit_price / 100.0, 2) + ", " + String(dis->total_price / 10.0, 1) + ", " + String(dis->volume_l / 1000.0, 3) + ", " + "p=" + (dis->flags.bits.select_p ? "1" : "0") + " l=" + (dis->flags.bits.select_l ? "1" : "0"));
     }
     break;
     default:

@@ -21,6 +21,7 @@
 #include "longfeng_8_digit.h"
 #include "sanki_6_digit.h"
 #include "wayn_6_digit.h"
+#include "wayn_6_digit_2.h"
 #endif // !CONFIG_DISTAP_RAW_CAPTURE_ONLY
 
 #define UART0_BUFF 256 + 1
@@ -98,6 +99,9 @@ esp_err_t device_init()
         break;
     case DIS_LONGFENG_8_DIGIT:
         ret = display_longfeng_8_digit_init(&send_queue);
+        break;
+    case DIS_WAYNE_6_DIGIT_2:
+        ret = display_wayne_6_digit_2_init(&send_queue);
         break;
 #endif // !CONFIG_DISTAP_RAW_CAPTURE_ONLY
     case DIS_RAW_8BIT_V1:
