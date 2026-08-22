@@ -12,7 +12,8 @@ Actions:
   --flashspiffs    Build + flash SPIFFS partition only
   --flashapp       Build (no clean) + flash app partition only
   --release-flash  Flash a pre-built release factory image (0x0) — no build step.
-                    Requires --serial-port and --bin-path.
+                    Requires --serial-port and --bin-path (or positionally:
+                    --release-flash <port> <bin-path>).
   --console        Open serial monitor
   --release        Full release workflow (delegates to release.py)
   --create-bundle  Create OTA bundle from existing build artifacts (delegates to release.py)
@@ -142,6 +143,12 @@ def parse_args() -> argparse.Namespace:
         dest="bin_path",
         help="Path to the release factory .bin file (required for --release-flash)",
     )
+    parser.add_argument(
+        "release_flash_args",
+        nargs="*",
+        metavar="PORT BIN_PATH",
+        help="Shorthand for --release-flash: '--release-flash <port> <bin-path>'",
+    )
     return parser.parse_args()
 
 
@@ -162,6 +169,16 @@ def main() -> None:
 
     serial_port = args.serial_port or ""
     idf_path = args.idf_path or ""
+    bin_path_arg = args.bin_path
+
+    if args.release_flash_args:
+        if not args.release_flash:
+            die(f"Unexpected arguments: {' '.join(args.release_flash_args)}")
+        if len(args.release_flash_args) > 2:
+            die("Too many arguments for --release-flash. Usage: --release-flash <port> <bin-path>")
+        serial_port = args.release_flash_args[0]
+        if len(args.release_flash_args) == 2:
+            bin_path_arg = args.release_flash_args[1]
 
     setup_idf(idf_path)
 
@@ -223,9 +240,9 @@ def main() -> None:
     elif args.release_flash:
         if not serial_port:
             die("--serial-port is required for --release-flash")
-        if not args.bin_path:
+        if not bin_path_arg:
             die("--bin-path is required for --release-flash")
-        bin_path = Path(args.bin_path).expanduser().resolve()
+        bin_path = Path(bin_path_arg).expanduser().resolve()
         if not bin_path.is_file():
             die(f"Release bin file not found: {bin_path}")
         print(f"=== Flashing release image {bin_path.name} to {serial_port} ===")

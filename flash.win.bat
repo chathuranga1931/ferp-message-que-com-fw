@@ -29,6 +29,11 @@
 set IDF_PATH=D:\esp\v6.0.1\esp-idf
 set DEFAULT_PORT=COM3
 
+:: Capture the script's own directory before any "shift" runs — plain "shift"
+:: (no /1) shifts %0 too, so if this were read after the arg-parsing loop it
+:: would end up pointing at the last CLI argument instead of this file.
+set SCRIPT_DIR=%~dp0
+
 :: ── Activate IDF environment so idf.py is in PATH before flash.py runs ───────
 if not exist "%IDF_PATH%\export.bat" (
     echo ERROR: IDF not found at %IDF_PATH%
@@ -63,5 +68,4 @@ shift
 goto parse_args
 
 :run
-set SCRIPT_DIR=%~dp0
 python "%SCRIPT_DIR%flash.py" --serial-port %SERIAL_PORT% --idf-path "%IDF_PATH%" %PASS_ARGS%
