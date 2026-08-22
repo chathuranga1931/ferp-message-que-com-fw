@@ -23,14 +23,6 @@ static ModuleSpiffs s_instance;
 
 ModuleSpiffs *ModuleSpiffs::instance() { return &s_instance; }
 
-// ── Configuration (set before init) ─────────────────────────────────────────────
-
-void ModuleSpiffs::set_stale_files(const char *const *paths, uint8_t count)
-{
-    _stale_files = paths;
-    _stale_count = count;
-}
-
 // ── Lifecycle ─────────────────────────────────────────────────────────────────
 
 void ModuleSpiffs::pre_init()
@@ -46,50 +38,6 @@ void ModuleSpiffs::pre_init()
 
     _mounted = true;
     LOG_MSG_INFO(MOD_SPIFFS_LOG_EN, "SPIFFS mounted OK");
-
-    // Reclaim space from the other product's stale files before anyone
-    // (config loader, OTA) touches the filesystem.
-    _purge_stale_files();
-}
-
-// ── Stale-file purge ───────────────────────────────────────────────────────────
-
-void ModuleSpiffs::_purge_stale_files()
-{
-    if (!_stale_files || _stale_count == 0) return;
-
-    app_spiffs_info_t before = {};
-    (void)app_spiffs_get_info(&before);
-
-    uint8_t deleted = 0;
-    for (uint8_t i = 0; i < _stale_count; i++) {
-        const char *path = _stale_files[i];
-        if (!path) continue;
-
-        bool exists = false;
-        if (app_spiffs_file_exists(path, &exists, 5000) != APP_SPIFFS_OK || !exists)
-            continue;
-
-        int32_t rc = app_spiffs_delete_file(path, 5000);
-        if (rc == APP_SPIFFS_OK) {
-            deleted++;
-            LOG_MSG_INFO(MOD_SPIFFS_LOG_EN, "purged stale file: %s", path);
-        } else {
-            LOG_MSG_ERROR(MOD_SPIFFS_LOG_EN,
-                          "failed to purge %s (rc=%ld)", path, (long)rc);
-        }
-    }
-
-    if (deleted == 0) {
-        LOG_MSG_INFO(MOD_SPIFFS_LOG_EN, "stale-file purge: nothing to remove");
-        return;
-    }
-
-    app_spiffs_info_t after = {};
-    (void)app_spiffs_get_info(&after);
-    LOG_MSG_INFO(MOD_SPIFFS_LOG_EN,
-                 "stale-file purge: removed %u file(s), free %zu -> %zu bytes",
-                 (unsigned)deleted, before.free_bytes, after.free_bytes);
 }
 
 void ModuleSpiffs::post_init()
