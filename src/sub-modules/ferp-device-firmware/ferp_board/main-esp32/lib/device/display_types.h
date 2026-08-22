@@ -10,7 +10,7 @@ extern "C"
 
 typedef enum
 {
-    DIS_NONE = 0,       
+    DIS_NONE = 0,
     DIS_CENSTAR_6_DIGIT,        //1
     DIS_CENSTAR_7_DIGIT,        //2
     DIS_CENSTAR_7_DIGIT_CS,     //3
@@ -18,8 +18,26 @@ typedef enum
     DIS_WAYNE_6_DIGIT,          //5
     DIS_SANKI_6_DIGIT,          //6
     DIS_LONGFENG_8_DIGIT,       //7
-    DIS_SIZE
+    DIS_SIZE,
+
+    // Raw capture types for reverse-engineering unknown pumps (not real
+    // pumps — the DT board only captures + forwards raw codewords, no
+    // decoding; main only logs them). Explicit values kept as a separate
+    // numeric range above DIS_SIZE, listed after it here, so DIS_SIZE
+    // itself stays 8 and DIS_SIZE-sized tables (e.g. pump_drivers[] in
+    // module_fuel) never need to grow to accommodate them. Must be real
+    // enumerators (not #defines) so any switch(display_type_t) doesn't
+    // trip -Werror=switch, and must match distap-esp32's device.h exactly.
+    DIS_RAW_8BIT_V1 = 90,  // 8-bit-per-codeword capture
+    DIS_RAW_12BIT_V1 = 91, // 12-bit-per-codeword capture
 }display_type_t; // 5-bit number, can add upto 31 display types
+
+#define DIS_RAW_TYPE_BASE 90
+
+static inline bool is_raw_capture_type(uint8_t display)
+{
+    return display >= DIS_RAW_TYPE_BASE;
+}
 
 typedef union
 {

@@ -7,6 +7,7 @@
 #include "serial_flasher.h"
 #endif
 #include "pal_logger.h"
+#include <stdio.h>
 #include <string.h>
 #include "pal_time.h"
 
@@ -38,9 +39,48 @@ void FuelDispTapDriver::_dis1_event(display_type_t type, uint8_t *data)
 void FuelDispTapDriver::_dis2_event(display_type_t type, uint8_t *data)
 {
     const display_data_t *dis = (const display_data_t *)data;
-    // MLOG("DIS2 event: type=%d, Vol=%.03f, Unit=%.02f, Tot=%.02f", 
+    // MLOG("DIS2 event: type=%d, Vol=%.03f, Unit=%.02f, Tot=%.02f",
     //     (int)type, dis->volume_l/1000.0, dis->unit_price/100.0, dis->total_price/100.0);
     if (_on_frame_cb) _on_frame_cb(1, type, data);
+}
+
+// ---------------------------------------------------------------------------
+// Raw-capture callbacks (display types >= DIS_RAW_TYPE_BASE) — logging only.
+// Never touches ModuleFuel/_on_frame_cb: raw chunks aren't display_data_t
+// shaped, so they must never enter the fuel pipeline.
+// ---------------------------------------------------------------------------
+
+static void _log_raw_chunk(uint8_t nozzle_idx, uint8_t data_line, const raw_capture_chunk_t *chunk)
+{
+    char hex[3 * MAX_DATA + 1] = {};
+    size_t pos = 0;
+    for (uint8_t i = 0; i < chunk->chunk_len && pos + 3 < sizeof(hex); i++) {
+        pos += snprintf(hex + pos, sizeof(hex) - pos, "%02X ", chunk->data[i]);
+    }
+    MLOG("RAW nozzle=%u line=%u bits=%u chunk=%u/%u total=%uB: %s",
+         (unsigned)nozzle_idx + 1, (unsigned)data_line, (unsigned)chunk->codeword_bits,
+         (unsigned)chunk->chunk_index + 1, (unsigned)chunk->chunk_count,
+         (unsigned)chunk->total_len, hex);
+}
+
+void FuelDispTapDriver::_dis1_l1_raw_event(const raw_capture_chunk_t *chunk)
+{
+    _log_raw_chunk(0, 1, chunk);
+}
+
+void FuelDispTapDriver::_dis1_l2_raw_event(const raw_capture_chunk_t *chunk)
+{
+    _log_raw_chunk(0, 2, chunk);
+}
+
+void FuelDispTapDriver::_dis2_l1_raw_event(const raw_capture_chunk_t *chunk)
+{
+    _log_raw_chunk(1, 1, chunk);
+}
+
+void FuelDispTapDriver::_dis2_l2_raw_event(const raw_capture_chunk_t *chunk)
+{
+    _log_raw_chunk(1, 2, chunk);
 }
 
 // ---------------------------------------------------------------------------
@@ -56,7 +96,9 @@ void FuelDispTapDriver::start(display_type_t display_type, frame_cb_t on_frame,
 
     // ── Start UART comms receive task FIRST — must be running before any
     //    distap_* command is issued, otherwise responses time out (no reader). ──
-    esp_err_t rc = init_comms_distap(_dis1_event, _dis2_event);
+    esp_err_t rc = init_comms_distap(_dis1_event, _dis2_event,
+                                      _dis1_l1_raw_event, _dis1_l2_raw_event,
+                                      _dis2_l1_raw_event, _dis2_l2_raw_event);
     if (rc != ESP_OK) {
         MLOGE("init_comms_distap failed (%d)", rc);
         return;

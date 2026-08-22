@@ -21,6 +21,7 @@
 
 #include <stddef.h>
 #include "fuel_pump_types.h"   // display_type_t, display_data_t
+#include "com_distap.h"        // raw_capture_chunk_t
 
 class FuelDispTapDriver
 {
@@ -60,4 +61,15 @@ private:
     // Route to the stored frame_cb_t with the nozzle index injected.
     static void _dis1_event(display_type_t type, uint8_t *data);
     static void _dis2_event(display_type_t type, uint8_t *data);
+
+    // Raw-capture callbacks (display types >= DIS_RAW_TYPE_BASE only) —
+    // logging only, deliberately self-contained here rather than routed
+    // through frame_cb_t: raw chunks are not display_data_t-shaped and
+    // must never reach ModuleFuel's fuel pipeline. One per physical
+    // channel per data line (SDATA1/SDATA2 are independent streams, each
+    // under its own pck_id — see com_distap.h).
+    static void _dis1_l1_raw_event(const raw_capture_chunk_t *chunk);
+    static void _dis1_l2_raw_event(const raw_capture_chunk_t *chunk);
+    static void _dis2_l1_raw_event(const raw_capture_chunk_t *chunk);
+    static void _dis2_l2_raw_event(const raw_capture_chunk_t *chunk);
 };

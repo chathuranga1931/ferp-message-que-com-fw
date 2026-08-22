@@ -1,0 +1,5 @@
+# Force LF line endings for shell scripts regardless of core.autocrlf —
+# these are executed directly by bash (MSYS2/Git Bash on Windows, or a real
+# shell on macOS/Linux); CRLF line endings break them (stray \r embedded in
+# variable values, "$'\r': command not found").
+*.sh text eol=lf

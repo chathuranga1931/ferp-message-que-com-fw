@@ -1,0 +1,37 @@
+# sdkconfig.defaults — project-level overrides applied on top of Kconfig defaults.
+# These settings ensure multiple concurrent TLS contexts (MQTT + HTTP) fit in heap.
+
+# Use system heap for mbedTLS instead of the fixed ~100 KB internal pool.
+# With INTERNAL_MEM_ALLOC, MQTT TLS (~50 KB) + HTTP TLS (~50 KB) exceeds the pool.
+CONFIG_MBEDTLS_DEFAULT_MEM_ALLOC=y
+
+# Allocate TLS record I/O buffers (16 KB IN + 4 KB OUT) only during active
+# send/receive, not held statically for the lifetime of the connection.
+# Requires CONFIG_ESP_TLS_DYN_BUF_STRATEGY_SUPPORTED=y (already set).
+CONFIG_MBEDTLS_DYNAMIC_BUFFER=y
+
+# WiFi buffers: reduce from defaults (static=10, dynamic=32 each) to cut heap
+# fragmentation. MQTT + HTTPS TLS cert allocations (~4-6 KB contiguous each)
+# fail when 10×1600-byte static RX islands fragment the heap at boot.
+# 3 static + 8 dynamic: the 3→4 reduction frees 1600 bytes of DMA-DRAM so
+# phy_init can allocate the ~1200-byte RF calibration struct without abort.
+CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM=3
+CONFIG_ESP_WIFI_DYNAMIC_RX_BUFFER_NUM=8
+CONFIG_ESP_WIFI_DYNAMIC_TX_BUFFER_NUM=8
+
+# HTTP server: automatically evict the oldest half-open connection when the
+# socket pool is full, instead of rejecting new connections.
+# Prevents the httpd from locking up after a burst of timed-out requests.
+CONFIG_HTTPD_PURGE_CONNECTIONS=y
+
+# Task watchdog: escalate to panic (and reset) when a task fails to reset the
+# WDT in time. Without this the TWDT only prints a warning and continues, so
+# a stuck task never triggers a crash report or a clean reset.
+CONFIG_ESP_TASK_WDT_PANIC=y
+
+# Bootloader WDT: disabled so that a hardware RESET_RTC cannot wipe RTC SRAM
+# during the boot phase after a crash.  The bootloader second-stage is ROM-based
+# and reliable; the RWDT there is not needed for normal field operation and its
+# WDT_STAGE_ACTION_RESET_RTC action destroys crash data written by the panic
+# handler before the app has a chance to read it.
+CONFIG_BOOTLOADER_WDT_ENABLE=n

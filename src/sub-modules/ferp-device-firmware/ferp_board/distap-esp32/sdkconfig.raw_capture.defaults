@@ -1,0 +1,9 @@
+# Overrides layered on top of sdkconfig.defaults (see build_raw_capture.sh /
+# flash_raw_capture.sh) to produce the raw-capture-only test firmware:
+#  - version marker 99.x.y.z so main can tell a raw-capture test board
+#    apart from a production one by its reported firmware version
+#  - excludes the real pump decoder components to shrink flash usage
+#    (see components/device/Kconfig, components/device/CMakeLists.txt)
+CONFIG_APP_PROJECT_VER_FROM_CONFIG=y
+CONFIG_APP_PROJECT_VER="99.0.0.11"
+CONFIG_DISTAP_RAW_CAPTURE_ONLY=y

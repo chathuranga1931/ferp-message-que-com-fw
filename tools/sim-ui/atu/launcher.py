@@ -2,7 +2,7 @@
 launcher.py — SimLauncher: start and stop the ferp-com-simulator C++ binary.
 
 The simulator binary is expected at:
-    {repo_root}/src/product/ferp-com-main/ferp-com-simulator/build/ferp-com-simulator
+    {repo_root}/src/product/ferp-com-v3-main/ferp-com-simulator/build/ferp-com-simulator
 
 Where repo_root is auto-detected by walking up from this file's location until
 a directory containing "src/product" is found.
@@ -54,11 +54,11 @@ class SimLauncher:
     """
 
     _DEFAULT_REL = os.path.join(
-        "src", "product", "ferp-com-main",
+        "src", "product", "ferp-com-v3-main",
         "ferp-com-simulator", "build", "ferp-com-simulator",
     )
     _DEFAULT_CWD_REL = os.path.join(
-        "src", "product", "ferp-com-main", "ferp-com-simulator",
+        "src", "product", "ferp-com-v3-main", "ferp-com-simulator",
     )
 
     def __init__(

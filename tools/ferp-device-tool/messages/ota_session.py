@@ -81,7 +81,12 @@ class OtaSession:
     version               : firmware version string (informational)
     chunk_size            : bytes per chunk (default 4096)
     ctrl_timeout          : seconds to wait for ctrl responses (default 15)
-    chunk_timeout         : seconds to wait for chunk ack (default 10)
+    chunk_timeout         : seconds to wait for chunk ack (default 15). The
+                            device now keeps an OTA session alive across a
+                            transient MQTT drop instead of aborting it, so
+                            this needs enough headroom for the device's own
+                            MQTT client to reconnect (observed up to ~13s)
+                            and redeliver the ack before we give up and retry.
     max_retries           : max chunk retries before abort (default 3)
     on_log(msg: str)      : called with status/log messages
     on_progress(pct: int) : called with 0-100 progress
@@ -100,7 +105,7 @@ class OtaSession:
         version: str = "unknown",
         chunk_size: int = 4096,
         ctrl_timeout: float = 15.0,
-        chunk_timeout: float = 10.0,
+        chunk_timeout: float = 15.0,
         max_retries: int = 3,
         on_log=None,
         on_progress=None,

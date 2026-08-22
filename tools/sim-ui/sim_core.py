@@ -67,6 +67,15 @@ DT_WAYNE_6    = 5
 DT_SANKI_6    = 6
 DT_LONGFENG   = 7
 
+# ── SIM_DISTAP_FRAME "flags" bits ─────────────────────────────────────────────
+# Mirrors data_flags_t in display_types.h. mac_com_distap.cpp passes this byte
+# through unchanged into app_display_data_t, so setting FLAG_SELECT_LL here is
+# what puts a nozzle into totalizer mode on the firmware side.
+FLAG_START_STOP = 0x01   # nozzle UP / pumping active
+FLAG_SELECT_P   = 0x02
+FLAG_SELECT_L   = 0x04
+FLAG_SELECT_LL  = 0x08   # totalizer display mode — volume_l is the lifetime totalizer
+
 # ── Pump ramp constants ───────────────────────────────────────────────────────
 # Every transaction has a ramp-up zone (first _RAMP_VOL_ML mL) and a ramp-down
 # zone (last _RAMP_VOL_ML mL) that run at _RAMP_FRACTION of the full pump rate.
@@ -548,6 +557,37 @@ class PumpEmulator:
         finally:
             self._client.unsubscribe("MSG_FUEL_PUMPED", on_pumped)
             self._client.unsubscribe("_SIM_DISCONNECTED", _on_disc_tx)
+
+    def send_totalizer_frame(
+        self,
+        display_type: int,
+        vol_lx1000:   int,
+        nozzle_up:    bool = False,
+    ) -> None:
+        """
+        Send one SIM_DISTAP_FRAME with FLAG_SELECT_LL set, i.e. simulate the
+        DT board showing its lifetime totalizer reading for this nozzle.
+
+        unit_price/total_price are always sent as 0 — a totalizer frame
+        carries only a volume reading, matching what process_totalizer_data()
+        on the firmware expects (see module_fuel.cpp).
+
+        Call repeatedly with the same vol_lx1000 (e.g. on a timer) to hold the
+        nozzle in totalizer mode long enough for the firmware's tot_dur/tot_cnt
+        debounce to fire; call once with select_ll cleared (nozzle_up as
+        needed) to simulate leaving totalizer mode.
+        """
+        flags = FLAG_SELECT_LL | (FLAG_START_STOP if nozzle_up else 0)
+        self._client.send({
+            "cmd":          "SIM_DISTAP_FRAME",
+            "nozzle":       self._nozzle_idx,
+            "display_type": display_type,
+            "flags":        flags,
+            "error":        0,
+            "unit_price":   0,
+            "total_price":  0,
+            "volume_l":     vol_lx1000,
+        })
 
     # ── Internal ──────────────────────────────────────────────────────────────
 

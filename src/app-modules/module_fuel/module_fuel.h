@@ -39,12 +39,14 @@ typedef bool fp_pump_get_event_t(nozzle_event_t * ne, uint8_t idx);
 typedef bool fp_pump_process_data_t(app_display_data_t * display_data);
 typedef bool fp_pump_process_state_machine_t(app_display_data_t * display_data, uint8_t nozzle_id, pumping_state_t * state);
 typedef void fp_pump_data_validate(const app_display_data_t * display_data, uint8_t nozzle_id);
+typedef bool fp_pump_totalizer_data(const app_display_data_t * display_data, uint8_t nozzle_id, uint64_t * tot_value);
 
 typedef struct {
     fp_pump_get_event_t * get_event;
     fp_pump_process_data_t * process_data;
     fp_pump_process_state_machine_t * process_state_machine;
     fp_pump_data_validate * data_validate;
+    fp_pump_totalizer_data * process_totalizer_data;
 } pump_driver_t;
 
 class ModuleFuel : public HsysModule
@@ -103,6 +105,7 @@ private:
 
     void _publish_nozzle_state(uint8_t nozzle_idx, nozzle_state_t state);
     void _publish_fuel_pumped (uint8_t nozzle_idx, const nozzle_event_t &ev);
+    void _publish_totalizer_event(uint32_t nozzle_idx, uint64_t totalizer_value);
     void _stop_tick_timer();
     void _start_tick_timer();
 

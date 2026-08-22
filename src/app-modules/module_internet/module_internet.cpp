@@ -135,11 +135,14 @@ void ModuleInternet::_on_ota_event(const hsys_msg_t &msg)
     _ota_in_progress = false;
     LOG_MSG_INFO(INT_LOG, "OTA session ended (event=%d) — resuming internet ping checks", (int)p.event);
 
-    // Re-check right away instead of waiting for the next scheduled tick,
-    // so a real connectivity change during the OTA is still caught promptly.
-    if (_state == STATE_CHECKING) {
-        _run_ping_and_publish();
-    }
+    // Deliberately do NOT re-check immediately here. ModuleInternet shares
+    // network_task with ModuleMqtt and OtaModule; pal_network_ping() blocks
+    // that task for up to MODULE_INTERNET_PING_TIMEOUT_MS (2s). Calling it
+    // inline from this notification handler delayed ModuleMqtt's delivery of
+    // this very same MsgOtaEvent (and OtaModule's own reboot-countdown tick)
+    // by that long, which pushed the ota_complete MQTT ack out past the
+    // device's OTA_REBOOT_DELAY_MS reboot window — the host never received
+    // it. Just let the next periodic timer tick (up to 60s) run the check.
 }
 
 // ---------------------------------------------------------------------------

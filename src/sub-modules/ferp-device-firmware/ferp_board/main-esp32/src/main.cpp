@@ -5,7 +5,7 @@
 #include "device.h"
 #include "com_distap.h"
 #include "production_test.h"
-#include "board_inf.h"
+#include "board.h"
 #include "serial_flasher.h"
 #include "cmd_distap.h"
 #include "udp_terminal.h"

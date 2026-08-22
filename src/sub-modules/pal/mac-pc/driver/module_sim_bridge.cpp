@@ -42,6 +42,7 @@
 #include "msg_printer_btn.h"
 #include "msg_nozzle_state.h"
 #include "msg_fuel_pumped.h"
+#include "msg_fuel_totalizer.h"
 // ── System reboot ──
 #include "msg_system_reboot.h"
 // ── Connectivity ──
@@ -93,6 +94,7 @@ void ModuleSimBridge::init()
     _sub(MSG_ID_PRINTER_BTN);
     _sub(MSG_ID_NOZZLE_STATE);
     _sub(MSG_ID_FUEL_PUMPED);
+    _sub(MSG_ID_FUEL_TOTALIZER);
     // ── System reboot ──
     _sub(MSG_ID_SYSTEM_REBOOT);
     // ── Connectivity ──
@@ -326,6 +328,18 @@ void ModuleSimBridge::on_msg_received(const hsys_msg_t &msg)
                      (unsigned long)p.unit_pricex100,
                      (unsigned long)p.total_pricex100);
             _send_json("MSG_FUEL_PUMPED", data);
+            break;
+        }
+
+        case MSG_ID_FUEL_TOTALIZER: {
+            auto p = MsgFuelTotalizer::deserialize(msg);
+            // vol_lx1000 is uint64 — encode as a string to avoid JSON overflow
+            snprintf(data, sizeof(data),
+                     "{\"idx\":%u,\"vol_lx1000\":\"%llu\",\"time_stamp\":%lu}",
+                     (unsigned)p.nozzle_idx,
+                     (unsigned long long)p.vol_lx1000,
+                     (unsigned long)p.time_stamp);
+            _send_json("MSG_FUEL_TOTALIZER", data);
             break;
         }
 

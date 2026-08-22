@@ -30,6 +30,7 @@
 #include "list_manager.h"
 #include "hsys_queue.h"
 #include "msg_fuel_pumped.h"
+#include "msg_fuel_totalizer.h"  // MsgFuelTotalizer — best-effort lifetime totalizer reading
 #include "msg_nozzle_state.h"    // MsgNozzleState — pump-start trigger
 #include "msg_fuel_print_status.h"  // MsgFuelPrintStatus — print status trigger
 #include "app_module_ids.h"
@@ -163,6 +164,7 @@ private:
         EVT_PRINT_OK,       ///< app.fuel/printok — receipt printed successfully
         EVT_STATUS_UPDATE,
         EVT_CRASH,          ///< core/crash — panic/watchdog crash report from previous boot
+        EVT_TOTALIZED,      ///< app.fuel/totalized — best-effort, never retransmitted (see MsgFuelTotalizer)
     } evt_type_t;
 
     cs_state_t        _state        = STATE_WAIT_FOR_INTERNET;
@@ -217,6 +219,12 @@ private:
     bool _pump_start_sent[CS_NO_NOZZLES]    = {}; ///< pump-start already dispatched for this session
                                                    ///<   cleared on PUMPED or IDLE, set when EVT_PUMP_START is dequeued
 
+    // Totalizer: fire-and-forget, one pending reading per nozzle (a newer
+    // reading overwrites an older unsent one — no queue, no retransmission).
+    bool     _pending_totalizer[CS_NO_NOZZLES]     = {};
+    uint64_t _pending_totalizer_vol[CS_NO_NOZZLES] = {};
+    uint32_t _pending_totalizer_ts[CS_NO_NOZZLES]  = {};
+
     uint32_t _hb_interval_ms   = MODULE_CUBESPHERE_DEFAULT_HB_INTERVAL_MS;
     bool     _hb_enabled        = true;
 
@@ -260,6 +268,10 @@ private:
     time_t   _last_pumped_ts_epoch     = 0;
     uint64_t _last_pumped_ne_id        = 0;
     uint32_t _last_pumped_event_id     = 0;
+    // Totalizer: dequeued from _pending_totalizer[] before HTTP send
+    uint8_t  _totalizer_nozzle_idx     = 0;
+    uint64_t _totalizer_vol_lx1000     = 0;
+    time_t   _totalizer_ts_epoch       = 0;
 
     // ── CubeSphere cloud credentials ──────────────────────────────────────────
     static const char   _cs_key[];
@@ -276,6 +288,7 @@ private:
     void _on_wifi_event(const hsys_msg_t &msg);
     void _on_internet_status(const hsys_msg_t &msg);
     void _on_fuel_pumped(const hsys_msg_t &msg);
+    void _on_fuel_totalizer(const hsys_msg_t &msg);  ///< best-effort, no retransmission
     void _on_nozzle_state(const hsys_msg_t &msg);    ///< pump-start trigger
     void _on_fuel_print_ok(const hsys_msg_t &msg);   ///< printok trigger
     void _on_timer_alarm();
