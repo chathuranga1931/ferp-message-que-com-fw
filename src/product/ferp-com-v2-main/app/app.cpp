@@ -43,7 +43,6 @@
 #include "module_spiffs.h"
 #include "module_config.h"
 #include "module_timer.h"
-#include "module_leds.h"
 #include "module_default_btn.h"
 #include "module_print_btn.h"
 #include "module_printing.h"
@@ -539,6 +538,24 @@ static const ota_target_desc_t k_ota_targets[] = {
 };
 
 // ============================================================================
+// Stale SPIFFS files to purge on boot
+//
+// This is an esp07 (2404) build.  A device upgraded from the esp32/v3 (2602)
+// firmware via an app-only OTA keeps the previous product's DispTap binaries
+// under esp32/ in SPIFFS — the app OTA never touches the SPIFFS partition.
+// Those ~317 KB would combine with the incoming esp07 binaries and overflow
+// the 512 KB spiffs partition on the next DispTap OTA, so purge them right
+// after mount.  Missing files are ignored (clean device / factory esp07 unit).
+// Wired to ModuleSpiffs in app_init() via ModuleSpiffs::set_stale_files().
+// ============================================================================
+
+static const char *const k_spiffs_stale_files[] = {
+    "esp32/bootloader.bin",
+    "esp32/partition_table.bin",
+    "esp32/distap_esp32.bin",
+};
+
+// ============================================================================
 // MQTT OTA target name table
 //
 // Maps wire-protocol target name strings (from ota_start "target" field) to
@@ -716,7 +733,6 @@ static HsysModule *k_module_table[] = {
     ModuleSpiffs::instance(),
     ModuleConfig::instance(),
     ModuleTimer::instance(),
-    ModuleLeds::instance(),
     ModuleDefaultBtn::instance(),
     ModulePrintBtn::instance(),
     ModuleFuel::instance(),
@@ -766,7 +782,7 @@ static const hsys_task_desc_t k_task_table[] = {
     //   http_task      : ModuleHttp owns all TLS for CubeSphere sessions → 10 KB.
     { "storage_task",     6*1024,  5,  0,   { MODULE_SPIFFS_ID,      MODULE_SD_ID,             MODULE_CONFIG_ID,     MODULE_DEVICE_INFO_ID,  MODULE_PLOG_ID, 0 } },
     { "timing_task",      3*1024,  4,  0,   { TICKER_MODULE_ID,      MODULE_TIMER_ID,          MODULE_TIMEMGR_ID,                            0 } },
-    { "indicator_task",   2*1024,  4,  0,   { MODULE_SYSMON_ID,      MODULE_LEDS_ID,           MODULE_BUZZER_ID,                             0 } },
+    { "indicator_task",   2*1024,  4,  0,   { MODULE_SYSMON_ID,      MODULE_BUZZER_ID,                                                        0 } },
     { "btn_task",         5*1024,  5,  0,   { MODULE_PRINT_BTN_ID,   MODULE_DEFAULT_BTN_ID,    MODULE_PRINTING_ID,                           0 } },
     { "fuel_task",        4*1024,  5,  0,   { MODULE_FUEL_ID,                                                                                0 } },
     { "network_task" ,   10*1024,  5, 32,   { MODULE_WIFI_ID,        MODULE_INTERNET_ID,       MODULE_MQTT_ID,
@@ -884,6 +900,11 @@ extern "C" void app_init(void)
     // Wire OTA target name table to ModuleMqtt.
     ModuleMqtt::instance()->set_ota_targets(
         k_mqtt_ota_targets, (uint8_t)(sizeof(k_mqtt_ota_targets) / sizeof(k_mqtt_ota_targets[0])));
+
+    // Wire stale-file purge list to ModuleSpiffs (removes the previous esp32/v3
+    // product's DispTap binaries after mount so the esp07 OTA can't overflow SPIFFS).
+    ModuleSpiffs::instance()->set_stale_files(
+        k_spiffs_stale_files, (uint8_t)(sizeof(k_spiffs_stale_files) / sizeof(k_spiffs_stale_files[0])));
 
     // 1. Config — load defaults and initialise the config handle
     app_config_init();
