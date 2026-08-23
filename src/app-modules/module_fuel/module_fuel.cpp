@@ -21,6 +21,7 @@
 #include "censtar_6_digit_1.h"
 #include "censtar_7_digit_1.h"
 #include "wayne_6_digit_1.h"
+#include "wayne_6_digit_2.h"
 #include "hongyang_8_digit_1.h"
 #include "longfeng_8_digit_1.h"
 #include "app.h"          // app_config_get() — kept for other potential uses
@@ -403,10 +404,10 @@ const pump_driver_t pump_drivers[DIS_SIZE] = {
         (fp_pump_totalizer_data *)process_totalizer_data
     },
     /* DIS_WAYNE_6_DIGIT_2  [8] */ {
-        (fp_pump_get_event_t *)wayne6_get_event,
-        (fp_pump_process_data_t *)wayne6_process_data,
-        (fp_pump_process_state_machine_t *)wayne6_process_state_machine,
-        (fp_pump_data_validate *)wayne6_data_validate,
+        (fp_pump_get_event_t *)wayne62_get_event,
+        (fp_pump_process_data_t *)wayne62_process_data,
+        (fp_pump_process_state_machine_t *)wayne62_process_state_machine,
+        (fp_pump_data_validate *)wayne62_data_validate,
         (fp_pump_totalizer_data *)process_totalizer_data
     },
 };

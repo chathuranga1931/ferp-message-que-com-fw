@@ -274,6 +274,7 @@ add_library(app_modules STATIC
     ${APP_MODS}/module_fuel/pumps/censtar/censtar_6_digit_1.cpp
     ${APP_MODS}/module_fuel/pumps/censtar/censtar_7_digit_1.cpp
     ${APP_MODS}/module_fuel/pumps/wayne/wayne_6_digit_1.cpp
+    ${APP_MODS}/module_fuel/pumps/wayne/wayne_6_digit_2.cpp
     ${APP_MODS}/module_fuel/pumps/longfeng/longfeng_8_digit_1.cpp
     ${APP_MODS}/module_fuel/pumps/hongyang/hongyang_8_digit_1.cpp
     # Buzzer module
