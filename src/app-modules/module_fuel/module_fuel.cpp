@@ -535,6 +535,7 @@ void ModuleFuel::_process_queues()
                 case DIS_CENSTAR_7_DIGIT_CS:
                 case DIS_CENSTAR_7_DIGIT:
                 case DIS_WAYNE_6_DIGIT:
+                case DIS_WAYNE_6_DIGIT_2:
                 case DIS_SANKI_6_DIGIT:
                 {
                     display_data[idx].start_stop = _nozzle_state[idx];  

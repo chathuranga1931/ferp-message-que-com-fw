@@ -17,52 +17,95 @@
 // Unlike the older wayn_6_digit.c (edge-counted GPIO bit-bang, MSB-first,
 // single continuous 16-byte burst), this pump uses a real CS-framed,
 // LSB-first, 95-byte-per-refresh-cycle protocol captured via hardware SPI
-// slave — modeled directly on censtar_7cs_digit.c's proven pattern: the
-// pump has no real CS line, so an RCLK-silence timer synthesizes one via
-// the board's D1_OUT_CS -> D1_IN_CS loopback.
+// slave — modeled on censtar_7cs_digit.c's proven pattern: the pump has no
+// real CS line, so an RCLK-silence timer synthesizes one via the board's
+// D1_OUT_CS -> D1_IN_CS loopback.
 //
-// Only the leading 15-byte block (2-byte 0xFF 0xFF sync + 13-byte payload:
-// Volume[0:6] + Total[6:12] + 1 unknown byte) is decoded. The remaining
-// ~80 bytes of each 95-byte cycle (two addressed groups believed to carry
-// unit price / rate) are captured but not decoded yet — deferred until a
-// rate-varying capture is available to reverse-engineer them.
+// A full cycle is ~95 bytes but we only need the first ~22:
+//   bytes  0-1   : 0xFF 0xFF sync
+//   bytes  2-7    : Volume digits (main table, LSB-first)
+//   bytes  8-13   : Total digits (main table, LSB-first)
+//   byte   14     : unknown constant (0x20)
+//   byte   15     : Group-A address (0x10, first of six repeated addr+payload
+//                   pairs carrying Rate — always 0x10 since we only ever
+//                   capture the FIRST occurrence)
+//   bytes  16-21  : Rate payload — a DIFFERENT segment table (bit7 = DP,
+//                   standard 7-seg hex codes) from Volume/Total's table.
+//                   Only the first 4 bytes (16-19) are meaningful digits
+//                   (Rate is a 4-digit, 1-decimal value); bytes 20-21 don't
+//                   match this table and are not yet understood — not
+//                   needed since Rate's 4 digits are already captured.
+//
+// Rather than capturing the whole ~95-byte cycle (bounding the SPI
+// transaction on the pump's own end-of-cycle silence, like Censtar does),
+// we fix the transaction length to CAPTURE_LEN_BYTES so it completes on
+// its own the moment that many bytes are clocked in — well before the
+// pump reaches the parts of the cycle we don't care about (rest of Group
+// A, Group B, tail). CS is then explicitly raised by us (not by the
+// pump's silence, since the pump keeps clocking well past this point) to
+// cleanly end the transaction before waiting for the next genuine
+// inter-cycle gap to re-arm.
 
 #define D1_SPI_HOST SPI2_HOST
 #define D2_SPI_HOST SPI3_HOST
 
-#define RECVBUF_SIZE      128 // comfortably above one full 95-byte cycle
-#define DIGIT_GROUP_LEN   6
-#define MIN_CAPTURE_BYTES 15  // 2 sync + 13 payload bytes we need
+#define CAPTURE_LEN_BYTES 32  // main block (15B) + Group-A addr+payload (7B) + margin
+#define DIGIT_GROUP_LEN   6   // Volume/Total digit count
+#define RATE_DIGIT_LEN    4   // Rate significant-digit count (tenths..hundreds)
+
+#define RATE_ADDR_OFFSET    15
+#define RATE_PAYLOAD_OFFSET 16
+#define RATE_ADDR_EXPECTED  0x10
 
 // Measured on Wayne Type02 ground-truth captures: intra-frame gaps stay
 // under ~1ms, inter-frame (cycle boundary) gaps are 50-109ms — 10ms sits
 // with ~10x margin on both sides.
-#define TIMER_TOUT_US         (10 * 1000)  // RCLK-silence -> synthesize CS edge
-#define TIMER_TOUT_CAPTURE_US (150 * 1000) // overall capture watchdog
+#define TIMER_TOUT_US         (10 * 1000)  // RCLK-silence -> safe to arm
+#define TIMER_TOUT_CAPTURE_US (150 * 1000) // watchdog if the pump never clocks the window
+
+typedef struct
+{
+    spi_host_device_t   spi_host;
+    gpio_num_t           out_cs_pin;
+    tx_pckt_id_t         tx_pck_id;
+    const char          *tag;
+
+    uint8_t             *recvbuf;
+    esp_timer_handle_t   silence_timer;
+    esp_timer_handle_t   watchdog_timer;
+    volatile bool        cs_level; // set true by RCLK-silence timer -> safe to arm
+    volatile bool        cs_tout;  // set true by watchdog timer -> capture stuck
+
+    uint32_t             n_attempts;
+    uint32_t             n_cstout;
+    uint32_t             n_short;
+    uint32_t             n_sync_fail;
+    uint32_t             n_digit_fail;
+    uint32_t             n_ok;
+} wayn2_line_ctx_t;
+
+WORD_ALIGNED_ATTR static uint8_t dis1_recvbuf[CAPTURE_LEN_BYTES] = {};
+WORD_ALIGNED_ATTR static uint8_t dis2_recvbuf[CAPTURE_LEN_BYTES] = {};
+
+static esp_timer_handle_t dis1_timer = NULL, dis1_timer_cs = NULL;
+static esp_timer_handle_t dis2_timer = NULL, dis2_timer_cs = NULL;
+
+static wayn2_line_ctx_t ctx_dis1;
+static wayn2_line_ctx_t ctx_dis2;
 
 static QueueHandle_t *ptr_send_que = NULL;
 
-WORD_ALIGNED_ATTR static uint8_t dis1_recvbuf[RECVBUF_SIZE] = {};
-static esp_timer_handle_t dis1_timer = NULL, dis1_timer_cs = NULL;
-static volatile bool dis1_cs_level, dis1_cs_tout;
-
-WORD_ALIGNED_ATTR static uint8_t dis2_recvbuf[RECVBUF_SIZE] = {};
-static esp_timer_handle_t dis2_timer = NULL, dis2_timer_cs = NULL;
-static volatile bool dis2_cs_level, dis2_cs_tout;
-
-static const char *TAG = "wayn2";
-
-static void task_spi_data(void *arg);
+static void task_line_capture(void *arg);
 
 IRAM_ATTR static void timer_cs_tout_dis1(void *arg)
 {
     gpio_set_level(D1_OUT_CS, true);
-    dis1_cs_tout = true;
+    ctx_dis1.cs_tout = true;
 }
 IRAM_ATTR static void timer_rclk_tout_dis1(void *arg)
 {
     gpio_set_level(D1_OUT_CS, true);
-    dis1_cs_level = true;
+    ctx_dis1.cs_level = true;
 }
 IRAM_ATTR static void gpio_rclk_done_dis1(void *arg)
 {
@@ -75,12 +118,12 @@ IRAM_ATTR static void gpio_rclk_done_dis1(void *arg)
 IRAM_ATTR static void timer_cs_tout_dis2(void *arg)
 {
     gpio_set_level(D2_OUT_CS, true);
-    dis2_cs_tout = true;
+    ctx_dis2.cs_tout = true;
 }
 IRAM_ATTR static void timer_rclk_tout_dis2(void *arg)
 {
     gpio_set_level(D2_OUT_CS, true);
-    dis2_cs_level = true;
+    ctx_dis2.cs_level = true;
 }
 IRAM_ATTR static void gpio_rclk_done_dis2(void *arg)
 {
@@ -90,13 +133,11 @@ IRAM_ATTR static void gpio_rclk_done_dis2(void *arg)
         esp_timer_start_once(dis2_timer, TIMER_TOUT_US);
 }
 
-// Maps a raw segment byte (decimal-point bit masked off) to its digit 0-9.
-// 0x00 is a blanked/unused leading-zero position, valued as digit 0.
-// Digits 4/5/6 are carried over from the old wayn_6_digit.c table —
-// UNVERIFIED against real Type02 captures (never appeared in either
-// ground-truth dataset). Digit 9 (0xE6) differs from the old table's 0xF6
-// and IS confirmed for this display (bottom segment off).
-static bool segment_to_digit(uint8_t raw, uint8_t *digit)
+// Table 1 — Volume/Total digit strip. Decimal point is bit0.
+// Digits 4/5/6 carried over from the old wayn_6_digit.c table — UNVERIFIED
+// against real Type02 captures. Digit 9 (0xE6) is confirmed for Type02
+// (differs from the old table's 0xF6).
+static bool segment_to_digit_main(uint8_t raw, uint8_t *digit)
 {
     switch (raw & 0xFE)
     {
@@ -115,20 +156,42 @@ static bool segment_to_digit(uint8_t raw, uint8_t *digit)
     }
 }
 
-// Decodes one LSB-first 6-byte digit group into a raw natural-scale value
-// (the plain 6-digit integer the display shows, decimal point stripped —
-// e.g. Volume "000.127" -> 127, Total "039.8" -> 398). Deliberately NOT
-// rescaled to the canonical x100/x1000 convention here — per the existing
-// pattern in this codebase (see DIS_CENSTAR_6_DIGIT), that correction
-// belongs in fuel_types_from_frame() on the main-esp32 side.
-static bool decode_digit_group(const uint8_t *group, uint32_t *value)
+// Table 2 — Rate sub-display (Group A payload). Different physical
+// element from Volume/Total, using the industry-standard 7-segment hex
+// codes with decimal point on bit7. Confirmed against a live capture:
+// 0x3F,0xCF,0x06,0x4F -> 0,3.,1,3 -> 313.0.
+static bool segment_to_digit_rate(uint8_t raw, uint8_t *digit)
 {
-    uint32_t v = 0;
-    uint32_t weight = 1;
-    for (uint8_t i = 0; i < DIGIT_GROUP_LEN; i++)
+    switch (raw & 0x7F)
+    {
+        case 0x3F: *digit = 0; return true;
+        case 0x06: *digit = 1; return true;
+        case 0x5B: *digit = 2; return true;
+        case 0x4F: *digit = 3; return true;
+        case 0x66: *digit = 4; return true;
+        case 0x6D: *digit = 5; return true;
+        case 0x7D: *digit = 6; return true;
+        case 0x07: *digit = 7; return true;
+        case 0x7F: *digit = 8; return true;
+        case 0x6F: *digit = 9; return true;
+        default:   return false;
+    }
+}
+
+// Decodes `len` LSB-first digit bytes into a raw natural-scale value (the
+// plain integer the display shows, decimal point stripped — e.g. Volume
+// "000.127" -> 127, Rate "313.0" -> 3130). Deliberately NOT rescaled to
+// the canonical x100/x1000 convention here — per the existing pattern in
+// this codebase (see DIS_CENSTAR_6_DIGIT), that correction belongs in
+// fuel_types_from_frame() on the main-esp32 side.
+static bool decode_digit_group(const uint8_t *group, uint8_t len,
+                                bool (*lut)(uint8_t, uint8_t *), uint32_t *value)
+{
+    uint32_t v = 0, weight = 1;
+    for (uint8_t i = 0; i < len; i++)
     {
         uint8_t digit;
-        if (!segment_to_digit(group[i], &digit))
+        if (!lut(group[i], &digit))
             return false;
         v += (uint32_t)digit * weight;
         weight *= 10;
@@ -137,146 +200,133 @@ static bool decode_digit_group(const uint8_t *group, uint32_t *value)
     return true;
 }
 
-static bool decode_main_block(const uint8_t *buf, display_data_t *dd)
+// -1 = sync/address mismatch, 0 = digit decode failure, 1 = ok
+static int decode_frame(const uint8_t *buf, display_data_t *dd)
 {
     if (buf[0] != 0xFF || buf[1] != 0xFF)
-        return false;
+        return -1;
+    if (buf[RATE_ADDR_OFFSET] != RATE_ADDR_EXPECTED)
+        return -1;
 
-    uint32_t volume, total;
-    if (!decode_digit_group(&buf[2], &volume))
-        return false;
-    if (!decode_digit_group(&buf[8], &total))
-        return false;
+    uint32_t volume, total, rate;
+    if (!decode_digit_group(&buf[2], DIGIT_GROUP_LEN, segment_to_digit_main, &volume))
+        return 0;
+    if (!decode_digit_group(&buf[8], DIGIT_GROUP_LEN, segment_to_digit_main, &total))
+        return 0;
+    if (!decode_digit_group(&buf[RATE_PAYLOAD_OFFSET], RATE_DIGIT_LEN, segment_to_digit_rate, &rate))
+        return 0;
 
     memset(dd, 0, sizeof(*dd));
     dd->volume_l    = volume;
     dd->total_price = total;
-    dd->unit_price  = 0; // not decoded yet — see fuel_types_from_frame()
-    return true;
+    dd->unit_price  = rate; // raw natural scale, 1 decimal — same convention as total_price
+    return 1;
 }
 
-static void task_spi_data(void *arg)
+static void log_hexdump(const char *tag, const uint8_t *buf, size_t len)
 {
-    esp_err_t ret = ESP_OK;
-    TickType_t ticks_now;
+    char line[3 * CAPTURE_LEN_BYTES + 1] = {0};
+    size_t n = len < CAPTURE_LEN_BYTES ? len : CAPTURE_LEN_BYTES;
+    for (size_t i = 0; i < n; i++)
+        sprintf(&line[i * 3], "%02X ", buf[i]);
+    ESP_LOGW(tag, "%u bytes: %s", (unsigned)n, line);
+}
+
+static void task_line_capture(void *arg)
+{
+    wayn2_line_ctx_t *c = (wayn2_line_ctx_t *)arg;
+    esp_err_t ret;
     display_data_t capture_now = {};
+    display_data_t cap_data = {};
     data_packet_t display_data = {
         .display = DIS_WAYNE_6_DIGIT_2,
         .length = sizeof(display_data_t)};
+    TickType_t ticks_last = xTaskGetTickCount();
+    TickType_t ticks_last_stats = xTaskGetTickCount();
 
-    spi_slave_transaction_t spi_data_dis1 = {
-        .length = sizeof(dis1_recvbuf) * 8,
-        .rx_buffer = dis1_recvbuf,
+    spi_slave_transaction_t trans = {
+        .length = CAPTURE_LEN_BYTES * 8,
+        .rx_buffer = c->recvbuf,
     };
-    display_data_t cap_data_dis1 = {};
-    TickType_t ticks_last_dis1 = xTaskGetTickCount();
-    memset(dis1_recvbuf, 0, sizeof(dis1_recvbuf));
-    gpio_set_level(D1_OUT_CS, false); // start capturing
-    dis1_cs_level = false;
 
-    spi_slave_transaction_t spi_data_dis2 = {
-        .length = sizeof(dis2_recvbuf) * 8,
-        .rx_buffer = dis2_recvbuf,
-    };
-    display_data_t cap_data_dis2 = {};
-    TickType_t ticks_last_dis2 = xTaskGetTickCount();
-    memset(dis2_recvbuf, 0, sizeof(dis2_recvbuf));
-    gpio_set_level(D2_OUT_CS, false); // start capturing
-    dis2_cs_level = false;
+    gpio_set_level(c->out_cs_pin, true); // idle — not listening yet
+    c->cs_level = false;
 
     while (1)
     {
-        /* Capture data from display 1 */
-        if (dis1_cs_level)
+        if (!c->cs_level)
         {
-            dis1_cs_tout = false;
-            memset(dis1_recvbuf, 0, sizeof(dis1_recvbuf));
-            spi_data_dis1.trans_len = 0;
-            esp_timer_stop(dis1_timer);
-            gpio_set_level(D1_OUT_CS, false); // reassert CS, arm next capture
-            esp_timer_start_once(dis1_timer_cs, TIMER_TOUT_CAPTURE_US);
-            ret = spi_slave_transmit(D1_SPI_HOST, &spi_data_dis1, pdMS_TO_TICKS(2 * 1000));
-            esp_timer_stop(dis1_timer_cs);
-            esp_timer_stop(dis1_timer);
-            if (dis1_cs_tout || ret != ESP_OK || (spi_data_dis1.trans_len / 8) < MIN_CAPTURE_BYTES)
-            {
-                ESP_LOGI(TAG, "dis1 cstout:%d, fail:0x%.2x len:%d", dis1_cs_tout, ret, spi_data_dis1.trans_len / 8);
-                goto end_dis1;
-            }
+            vTaskDelay(1);
+            goto stats_and_resend;
+        }
 
-            if (!decode_main_block(dis1_recvbuf, &capture_now))
-            {
-                ESP_LOGE(TAG, "dis1 decode error");
-                goto end_dis1;
-            }
+        c->cs_tout = false;
+        trans.trans_len = 0;
+        esp_timer_stop(c->silence_timer);
+        gpio_set_level(c->out_cs_pin, false); // arm — confirmed fresh cycle boundary
+        esp_timer_start_once(c->watchdog_timer, TIMER_TOUT_CAPTURE_US);
 
-            ticks_now = xTaskGetTickCount();
-            if (ticks_now - ticks_last_dis1 > pdMS_TO_TICKS(DIFF_PCKT_SEND_MS) || memcmp(&cap_data_dis1, &capture_now, sizeof(display_data_t)))
+        ret = spi_slave_transmit(c->spi_host, &trans, pdMS_TO_TICKS(2 * 1000));
+
+        esp_timer_stop(c->watchdog_timer);
+        gpio_set_level(c->out_cs_pin, true); // done — explicit clean end, ignore rest of cycle
+        c->cs_level = false;
+
+        c->n_attempts++;
+
+        {
+            size_t got_bytes = trans.trans_len / 8;
+            if (c->cs_tout || ret != ESP_OK || got_bytes < CAPTURE_LEN_BYTES)
             {
-                ticks_last_dis1 = ticks_now;
-                display_data.pck_id = TX_ID_DIS1_DATA;
+                if (c->cs_tout) c->n_cstout++;
+                else c->n_short++;
+                ESP_LOGI(c->tag, "cstout:%d fail:0x%.2x len:%u", c->cs_tout, ret, (unsigned)got_bytes);
+                goto stats_and_resend;
+            }
+        }
+
+        {
+            int r = decode_frame(c->recvbuf, &capture_now);
+            if (r <= 0)
+            {
+                if (r == -1) { c->n_sync_fail++; ESP_LOGW(c->tag, "sync/addr mismatch"); }
+                else         { c->n_digit_fail++; ESP_LOGW(c->tag, "digit decode error"); }
+                log_hexdump(c->tag, c->recvbuf, CAPTURE_LEN_BYTES);
+                goto stats_and_resend;
+            }
+        }
+
+        c->n_ok++;
+        {
+            TickType_t ticks_now = xTaskGetTickCount();
+            if (ticks_now - ticks_last > pdMS_TO_TICKS(DIFF_PCKT_SEND_MS) || memcmp(&cap_data, &capture_now, sizeof(display_data_t)))
+            {
+                ticks_last = ticks_now;
+                display_data.pck_id = c->tx_pck_id;
                 memcpy(display_data.ab_data, &capture_now, sizeof(display_data_t));
-                memcpy(&cap_data_dis1, &capture_now, sizeof(display_data_t));
+                memcpy(&cap_data, &capture_now, sizeof(display_data_t));
                 xQueueSend(*ptr_send_que, (void *)&display_data, pdMS_TO_TICKS(10));
             }
-        end_dis1:
-            dis1_cs_level = false;
         }
 
-        /* Capture data from display 2 */
-        if (dis2_cs_level)
+    stats_and_resend:
         {
-            dis2_cs_tout = false;
-            memset(dis2_recvbuf, 0, sizeof(dis2_recvbuf));
-            spi_data_dis2.trans_len = 0;
-            esp_timer_stop(dis2_timer);
-            gpio_set_level(D2_OUT_CS, false); // reassert CS, arm next capture
-            esp_timer_start_once(dis2_timer_cs, TIMER_TOUT_CAPTURE_US);
-            ret = spi_slave_transmit(D2_SPI_HOST, &spi_data_dis2, pdMS_TO_TICKS(2 * 1000));
-            esp_timer_stop(dis2_timer_cs);
-            esp_timer_stop(dis2_timer);
-            if (dis2_cs_tout || ret != ESP_OK || (spi_data_dis2.trans_len / 8) < MIN_CAPTURE_BYTES)
+            TickType_t ticks_now = xTaskGetTickCount();
+            if ((ticks_now - ticks_last) > pdMS_TO_TICKS(SAME_PCKT_SEND_MS))
             {
-                ESP_LOGI(TAG, "dis2 cstout:%d, fail:0x%.2x len:%d", dis2_cs_tout, ret, spi_data_dis2.trans_len / 8);
-                goto end_dis2;
-            }
-
-            if (!decode_main_block(dis2_recvbuf, &capture_now))
-            {
-                ESP_LOGE(TAG, "dis2 decode error");
-                goto end_dis2;
-            }
-
-            ticks_now = xTaskGetTickCount();
-            if (ticks_now - ticks_last_dis2 > pdMS_TO_TICKS(DIFF_PCKT_SEND_MS) || memcmp(&cap_data_dis2, &capture_now, sizeof(display_data_t)))
-            {
-                ticks_last_dis2 = ticks_now;
-                display_data.pck_id = TX_ID_DIS2_DATA;
-                memcpy(display_data.ab_data, &capture_now, sizeof(display_data_t));
-                memcpy(&cap_data_dis2, &capture_now, sizeof(display_data_t));
+                ticks_last = ticks_now;
+                display_data.pck_id = c->tx_pck_id;
+                memcpy(display_data.ab_data, &cap_data, sizeof(display_data_t));
                 xQueueSend(*ptr_send_que, (void *)&display_data, pdMS_TO_TICKS(10));
             }
-        end_dis2:
-            dis2_cs_level = false;
+            if ((ticks_now - ticks_last_stats) > pdMS_TO_TICKS(5000))
+            {
+                ticks_last_stats = ticks_now;
+                ESP_LOGI(c->tag, "stats: attempts=%lu ok=%lu cstout=%lu short=%lu sync_fail=%lu digit_fail=%lu",
+                          (unsigned long)c->n_attempts, (unsigned long)c->n_ok, (unsigned long)c->n_cstout,
+                          (unsigned long)c->n_short, (unsigned long)c->n_sync_fail, (unsigned long)c->n_digit_fail);
+            }
         }
-
-        /* Periodic resend of last-known-good value even if unchanged */
-        ticks_now = xTaskGetTickCount();
-        if ((ticks_now - ticks_last_dis1) > pdMS_TO_TICKS(SAME_PCKT_SEND_MS))
-        {
-            ticks_last_dis1 = ticks_now;
-            display_data.pck_id = TX_ID_DIS1_DATA;
-            memcpy(display_data.ab_data, &cap_data_dis1, sizeof(display_data_t));
-            xQueueSend(*ptr_send_que, (void *)&display_data, pdMS_TO_TICKS(10));
-        }
-        if ((ticks_now - ticks_last_dis2) > pdMS_TO_TICKS(SAME_PCKT_SEND_MS))
-        {
-            ticks_last_dis2 = ticks_now;
-            display_data.pck_id = TX_ID_DIS2_DATA;
-            memcpy(display_data.ab_data, &cap_data_dis2, sizeof(display_data_t));
-            xQueueSend(*ptr_send_que, (void *)&display_data, pdMS_TO_TICKS(10));
-        }
-        vTaskDelay(1);
     }
     vTaskDelete(NULL);
 }
@@ -295,9 +345,10 @@ esp_err_t display_wayne_6_digit_2_init(QueueHandle_t *send_queue)
     io_conf.pull_up_en = GPIO_PULLUP_DISABLE;
     ESP_ERROR_GOTO(ret, end, gpio_config(&io_conf));
 
-    // RCLK inputs — posedge interrupt used only for silence timing, never
-    // wired directly into the SPI hardware
-    io_conf.intr_type = GPIO_INTR_POSEDGE;
+    // RCLK inputs — used only for silence timing, never wired directly
+    // into the SPI hardware. ANYEDGE so the "still active" detector works
+    // regardless of the bus's actual idle polarity.
+    io_conf.intr_type = GPIO_INTR_ANYEDGE;
     io_conf.mode = GPIO_MODE_INPUT;
     io_conf.pin_bit_mask = BIT64(D1_RCLK) | BIT64(D2_RCLK);
     io_conf.pull_down_en = GPIO_PULLDOWN_DISABLE;
@@ -370,14 +421,30 @@ esp_err_t display_wayne_6_digit_2_init(QueueHandle_t *send_queue)
 
     ptr_send_que = send_queue;
 
-    if (xTaskCreate(task_spi_data, "task_wayn2_spi", 8 * 1024, NULL, 8, NULL) == pdFALSE)
+    ctx_dis1 = (wayn2_line_ctx_t){
+        .spi_host = D1_SPI_HOST, .out_cs_pin = D1_OUT_CS,
+        .tx_pck_id = TX_ID_DIS1_DATA, .tag = "wayn2.d1",
+        .recvbuf = dis1_recvbuf, .silence_timer = dis1_timer, .watchdog_timer = dis1_timer_cs,
+    };
+    ctx_dis2 = (wayn2_line_ctx_t){
+        .spi_host = D2_SPI_HOST, .out_cs_pin = D2_OUT_CS,
+        .tx_pck_id = TX_ID_DIS2_DATA, .tag = "wayn2.d2",
+        .recvbuf = dis2_recvbuf, .silence_timer = dis2_timer, .watchdog_timer = dis2_timer_cs,
+    };
+
+    if (xTaskCreate(task_line_capture, "task_wayn2_d1", 8 * 1024, &ctx_dis1, 8, NULL) == pdFALSE)
+    {
+        ret = ESP_FAIL;
+        goto end;
+    }
+    if (xTaskCreate(task_line_capture, "task_wayn2_d2", 8 * 1024, &ctx_dis2, 8, NULL) == pdFALSE)
     {
         ret = ESP_FAIL;
         goto end;
     }
 
     gpio_set_level(DIS_ENB, true);
-    ESP_LOGI(TAG, "Starting Wayne Type02 display capture\r\n");
+    ESP_LOGI("wayn2", "Starting Wayne Type02 display capture\r\n");
 end:
     return ret;
 }
