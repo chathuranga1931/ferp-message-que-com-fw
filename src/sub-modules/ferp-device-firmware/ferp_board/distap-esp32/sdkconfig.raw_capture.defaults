@@ -5,5 +5,5 @@
 #  - excludes the real pump decoder components to shrink flash usage
 #    (see components/device/Kconfig, components/device/CMakeLists.txt)
 CONFIG_APP_PROJECT_VER_FROM_CONFIG=y
-CONFIG_APP_PROJECT_VER="99.0.0.17"
+CONFIG_APP_PROJECT_VER="99.0.0.20"
 CONFIG_DISTAP_RAW_CAPTURE_ONLY=y
