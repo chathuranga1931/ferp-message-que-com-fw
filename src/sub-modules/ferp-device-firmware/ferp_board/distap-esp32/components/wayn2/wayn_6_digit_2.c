@@ -21,35 +21,40 @@
 // real CS line, so an RCLK-silence timer synthesizes one via the board's
 // D1_OUT_CS -> D1_IN_CS loopback.
 //
-// A full cycle is ~95 bytes but we only need the first ~22:
-//   bytes  0-1   : 0xFF 0xFF sync
-//   bytes  2-7    : Volume digits (main table, LSB-first)
-//   bytes  8-13   : Total digits (main table, LSB-first)
-//   byte   14     : unknown constant (0x20)
-//   byte   15     : Group-A address (0x10, first of six repeated addr+payload
-//                   pairs carrying Rate — always 0x10 since we only ever
-//                   capture the FIRST occurrence)
-//   bytes  16-21  : Rate payload — a DIFFERENT segment table (bit7 = DP,
-//                   standard 7-seg hex codes) from Volume/Total's table.
-//                   Only the first 4 bytes (16-19) are meaningful digits
-//                   (Rate is a 4-digit, 1-decimal value); bytes 20-21 don't
-//                   match this table and are not yet understood — not
-//                   needed since Rate's 4 digits are already captured.
+// IMPORTANT (learned the hard way): on classic ESP32, a SPI-slave
+// transaction only completes when the (synthesized) CS line actually goes
+// high — NOT when `.length` bits have been received. `.length` is only a
+// buffer-size cap. So the capture buffer MUST be sized for the whole
+// ~95-byte cycle (CS genuinely only goes high at the pump's real
+// end-of-cycle silence); trying to force early completion with a small
+// buffer/length leaves the peripheral still expecting more bits than the
+// buffer can hold for the rest of that cycle. We capture the full cycle
+// safely and simply ignore/discard everything past the bytes we need.
 //
-// Rather than capturing the whole ~95-byte cycle (bounding the SPI
-// transaction on the pump's own end-of-cycle silence, like Censtar does),
-// we fix the transaction length to CAPTURE_LEN_BYTES so it completes on
-// its own the moment that many bytes are clocked in — well before the
-// pump reaches the parts of the cycle we don't care about (rest of Group
-// A, Group B, tail). CS is then explicitly raised by us (not by the
-// pump's silence, since the pump keeps clocking well past this point) to
-// cleanly end the transaction before waiting for the next genuine
-// inter-cycle gap to re-arm.
+// Frame layout (bytes 0-21 of the captured buffer are all we decode):
+//   bytes  0-1   : 0xFF 0xFF sync
+//   bytes  2-7   : Volume digits (main table, LSB-first)
+//   bytes  8-13  : Total digits (main table, LSB-first)
+//   byte   14    : unknown constant (0x20)
+//   byte   15    : Group-A address (0x10, first of six repeated addr+payload
+//                  pairs carrying Rate — always 0x10 since this is always
+//                  the first occurrence right after the main block)
+//   bytes  16-21 : Rate payload — a DIFFERENT segment table (bit7 = DP,
+//                  standard 7-seg hex codes) from Volume/Total's table.
+//                  Only the first 4 bytes (16-19) are meaningful digits
+//                  (Rate is a 4-digit, 1-decimal value); bytes 20-21 don't
+//                  match this table and are not yet understood.
+//
+// One dedicated task per display line, running a tight capture loop: each
+// spi_slave_transmit() blocks until the RCLK-silence timer ends the
+// synthesized CS (or the watchdog fires), then CS is re-armed IMMEDIATELY
+// — before decoding/sending — so the very next frame is never missed.
 
 #define D1_SPI_HOST SPI2_HOST
 #define D2_SPI_HOST SPI3_HOST
 
-#define CAPTURE_LEN_BYTES 32  // main block (15B) + Group-A addr+payload (7B) + margin
+#define RECVBUF_SIZE      128 // comfortably above one full ~95-byte cycle
+#define MIN_CAPTURE_BYTES 22  // main block (15B) + Group-A addr+payload (7B)
 #define DIGIT_GROUP_LEN   6   // Volume/Total digit count
 #define RATE_DIGIT_LEN    4   // Rate significant-digit count (tenths..hundreds)
 
@@ -60,8 +65,8 @@
 // Measured on Wayne Type02 ground-truth captures: intra-frame gaps stay
 // under ~1ms, inter-frame (cycle boundary) gaps are 50-109ms — 10ms sits
 // with ~10x margin on both sides.
-#define TIMER_TOUT_US         (10 * 1000)  // RCLK-silence -> safe to arm
-#define TIMER_TOUT_CAPTURE_US (150 * 1000) // watchdog if the pump never clocks the window
+#define TIMER_TOUT_US         (10 * 1000)  // RCLK-silence -> synthesize CS edge
+#define TIMER_TOUT_CAPTURE_US (150 * 1000) // overall capture watchdog
 
 typedef struct
 {
@@ -73,8 +78,7 @@ typedef struct
     uint8_t             *recvbuf;
     esp_timer_handle_t   silence_timer;
     esp_timer_handle_t   watchdog_timer;
-    volatile bool        cs_level; // set true by RCLK-silence timer -> safe to arm
-    volatile bool        cs_tout;  // set true by watchdog timer -> capture stuck
+    volatile bool        cs_tout; // set true by watchdog timer -> capture stuck
 
     uint32_t             n_attempts;
     uint32_t             n_cstout;
@@ -84,8 +88,8 @@ typedef struct
     uint32_t             n_ok;
 } wayn2_line_ctx_t;
 
-WORD_ALIGNED_ATTR static uint8_t dis1_recvbuf[CAPTURE_LEN_BYTES] = {};
-WORD_ALIGNED_ATTR static uint8_t dis2_recvbuf[CAPTURE_LEN_BYTES] = {};
+WORD_ALIGNED_ATTR static uint8_t dis1_recvbuf[RECVBUF_SIZE] = {};
+WORD_ALIGNED_ATTR static uint8_t dis2_recvbuf[RECVBUF_SIZE] = {};
 
 static esp_timer_handle_t dis1_timer = NULL, dis1_timer_cs = NULL;
 static esp_timer_handle_t dis2_timer = NULL, dis2_timer_cs = NULL;
@@ -105,7 +109,6 @@ IRAM_ATTR static void timer_cs_tout_dis1(void *arg)
 IRAM_ATTR static void timer_rclk_tout_dis1(void *arg)
 {
     gpio_set_level(D1_OUT_CS, true);
-    ctx_dis1.cs_level = true;
 }
 IRAM_ATTR static void gpio_rclk_done_dis1(void *arg)
 {
@@ -123,7 +126,6 @@ IRAM_ATTR static void timer_cs_tout_dis2(void *arg)
 IRAM_ATTR static void timer_rclk_tout_dis2(void *arg)
 {
     gpio_set_level(D2_OUT_CS, true);
-    ctx_dis2.cs_level = true;
 }
 IRAM_ATTR static void gpio_rclk_done_dis2(void *arg)
 {
@@ -223,13 +225,17 @@ static int decode_frame(const uint8_t *buf, display_data_t *dd)
     return 1;
 }
 
-static void log_hexdump(const char *tag, const uint8_t *buf, size_t len)
+// Remote-visible diagnostics: this DT board is often unreachable directly
+// (no local console access), so failures are relayed to main-esp32 via
+// LOG_PRINT (TX_ID_LOG_PRINTS) in addition to the local ESP_LOG* output.
+static void log_hexdump_remote(const char *tag, const uint8_t *buf, size_t len)
 {
-    char line[3 * CAPTURE_LEN_BYTES + 1] = {0};
-    size_t n = len < CAPTURE_LEN_BYTES ? len : CAPTURE_LEN_BYTES;
+    char line[3 * MIN_CAPTURE_BYTES + 1] = {0};
+    size_t n = len < MIN_CAPTURE_BYTES ? len : MIN_CAPTURE_BYTES;
     for (size_t i = 0; i < n; i++)
         sprintf(&line[i * 3], "%02X ", buf[i]);
     ESP_LOGW(tag, "%u bytes: %s", (unsigned)n, line);
+    LOG_PRINT("%s %u bytes: %s\r\n", tag, (unsigned)n, line);
 }
 
 static void task_line_capture(void *arg)
@@ -245,44 +251,38 @@ static void task_line_capture(void *arg)
     TickType_t ticks_last_stats = xTaskGetTickCount();
 
     spi_slave_transaction_t trans = {
-        .length = CAPTURE_LEN_BYTES * 8,
+        .length = RECVBUF_SIZE * 8,
         .rx_buffer = c->recvbuf,
     };
 
-    gpio_set_level(c->out_cs_pin, true); // idle — not listening yet
-    c->cs_level = false;
+    memset(c->recvbuf, 0, RECVBUF_SIZE);
+    gpio_set_level(c->out_cs_pin, false); // arm — start listening
 
     while (1)
     {
-        if (!c->cs_level)
-        {
-            vTaskDelay(1);
-            goto stats_and_resend;
-        }
-
         c->cs_tout = false;
         trans.trans_len = 0;
-        esp_timer_stop(c->silence_timer);
-        gpio_set_level(c->out_cs_pin, false); // arm — confirmed fresh cycle boundary
         esp_timer_start_once(c->watchdog_timer, TIMER_TOUT_CAPTURE_US);
 
         ret = spi_slave_transmit(c->spi_host, &trans, pdMS_TO_TICKS(2 * 1000));
 
         esp_timer_stop(c->watchdog_timer);
-        gpio_set_level(c->out_cs_pin, true); // done — explicit clean end, ignore rest of cycle
-        c->cs_level = false;
+        esp_timer_stop(c->silence_timer);
+
+        // Re-arm IMMEDIATELY, before decoding/sending, so the very next
+        // frame is captured regardless of how long processing below takes.
+        gpio_set_level(c->out_cs_pin, false);
 
         c->n_attempts++;
 
+        size_t got_bytes = trans.trans_len / 8;
+        if (c->cs_tout || ret != ESP_OK || got_bytes < MIN_CAPTURE_BYTES)
         {
-            size_t got_bytes = trans.trans_len / 8;
-            if (c->cs_tout || ret != ESP_OK || got_bytes < CAPTURE_LEN_BYTES)
-            {
-                if (c->cs_tout) c->n_cstout++;
-                else c->n_short++;
-                ESP_LOGI(c->tag, "cstout:%d fail:0x%.2x len:%u", c->cs_tout, ret, (unsigned)got_bytes);
-                goto stats_and_resend;
-            }
+            if (c->cs_tout) c->n_cstout++;
+            else c->n_short++;
+            ESP_LOGI(c->tag, "cstout:%d fail:0x%.2x len:%u", c->cs_tout, ret, (unsigned)got_bytes);
+            LOG_PRINT("%s cstout:%d fail:0x%.2x len:%u\r\n", c->tag, c->cs_tout, ret, (unsigned)got_bytes);
+            goto next;
         }
 
         {
@@ -291,8 +291,8 @@ static void task_line_capture(void *arg)
             {
                 if (r == -1) { c->n_sync_fail++; ESP_LOGW(c->tag, "sync/addr mismatch"); }
                 else         { c->n_digit_fail++; ESP_LOGW(c->tag, "digit decode error"); }
-                log_hexdump(c->tag, c->recvbuf, CAPTURE_LEN_BYTES);
-                goto stats_and_resend;
+                log_hexdump_remote(c->tag, c->recvbuf, got_bytes);
+                goto next;
             }
         }
 
@@ -309,7 +309,7 @@ static void task_line_capture(void *arg)
             }
         }
 
-    stats_and_resend:
+    next:
         {
             TickType_t ticks_now = xTaskGetTickCount();
             if ((ticks_now - ticks_last) > pdMS_TO_TICKS(SAME_PCKT_SEND_MS))
@@ -325,6 +325,9 @@ static void task_line_capture(void *arg)
                 ESP_LOGI(c->tag, "stats: attempts=%lu ok=%lu cstout=%lu short=%lu sync_fail=%lu digit_fail=%lu",
                           (unsigned long)c->n_attempts, (unsigned long)c->n_ok, (unsigned long)c->n_cstout,
                           (unsigned long)c->n_short, (unsigned long)c->n_sync_fail, (unsigned long)c->n_digit_fail);
+                LOG_PRINT("%s stats: att=%lu ok=%lu cstout=%lu short=%lu sync=%lu dig=%lu\r\n",
+                          c->tag, (unsigned long)c->n_attempts, (unsigned long)c->n_ok, (unsigned long)c->n_cstout,
+                          (unsigned long)c->n_short, (unsigned long)c->n_sync_fail, (unsigned long)c->n_digit_fail);
             }
         }
     }
@@ -335,6 +338,19 @@ esp_err_t display_wayne_6_digit_2_init(QueueHandle_t *send_queue)
 {
     esp_err_t ret = ESP_OK;
     gpio_config_t io_conf;
+
+    // Populate contexts BEFORE installing the RCLK ISR / creating timers,
+    // so a stray RCLK edge during setup can never touch an unpopulated ctx.
+    ctx_dis1 = (wayn2_line_ctx_t){
+        .spi_host = D1_SPI_HOST, .out_cs_pin = D1_OUT_CS,
+        .tx_pck_id = TX_ID_DIS1_DATA, .tag = "wayn2.d1",
+        .recvbuf = dis1_recvbuf,
+    };
+    ctx_dis2 = (wayn2_line_ctx_t){
+        .spi_host = D2_SPI_HOST, .out_cs_pin = D2_OUT_CS,
+        .tx_pck_id = TX_ID_DIS2_DATA, .tag = "wayn2.d2",
+        .recvbuf = dis2_recvbuf,
+    };
 
     // display enable + synthesized CS outputs (D1_OUT_CS/D2_OUT_CS are
     // wired back to D1_IN_CS/D2_IN_CS on this board — see censtar_7cs_digit.c)
@@ -419,18 +435,12 @@ esp_err_t display_wayne_6_digit_2_init(QueueHandle_t *send_queue)
     }, &dis2_timer_cs));
     ESP_ERROR_GOTO(ret, end, gpio_isr_handler_add(D2_RCLK, gpio_rclk_done_dis2, NULL));
 
-    ptr_send_que = send_queue;
+    ctx_dis1.silence_timer = dis1_timer;
+    ctx_dis1.watchdog_timer = dis1_timer_cs;
+    ctx_dis2.silence_timer = dis2_timer;
+    ctx_dis2.watchdog_timer = dis2_timer_cs;
 
-    ctx_dis1 = (wayn2_line_ctx_t){
-        .spi_host = D1_SPI_HOST, .out_cs_pin = D1_OUT_CS,
-        .tx_pck_id = TX_ID_DIS1_DATA, .tag = "wayn2.d1",
-        .recvbuf = dis1_recvbuf, .silence_timer = dis1_timer, .watchdog_timer = dis1_timer_cs,
-    };
-    ctx_dis2 = (wayn2_line_ctx_t){
-        .spi_host = D2_SPI_HOST, .out_cs_pin = D2_OUT_CS,
-        .tx_pck_id = TX_ID_DIS2_DATA, .tag = "wayn2.d2",
-        .recvbuf = dis2_recvbuf, .silence_timer = dis2_timer, .watchdog_timer = dis2_timer_cs,
-    };
+    ptr_send_que = send_queue;
 
     if (xTaskCreate(task_line_capture, "task_wayn2_d1", 8 * 1024, &ctx_dis1, 8, NULL) == pdFALSE)
     {
@@ -445,6 +455,7 @@ esp_err_t display_wayne_6_digit_2_init(QueueHandle_t *send_queue)
 
     gpio_set_level(DIS_ENB, true);
     ESP_LOGI("wayn2", "Starting Wayne Type02 display capture\r\n");
+    LOG_PRINT("wayn2 starting\r\n");
 end:
     return ret;
 }
