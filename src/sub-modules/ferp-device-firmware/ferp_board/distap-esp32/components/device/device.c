@@ -13,6 +13,7 @@
 #include "settings.h"
 #include "production_io.h"
 #include "raw_capture.h"
+#include "raw_capture_spi.h"
 #if !CONFIG_DISTAP_RAW_CAPTURE_ONLY
 #include "censtar_6_digit.h"
 #include "censtar_7_digit.h"
@@ -109,6 +110,9 @@ esp_err_t device_init()
         break;
     case DIS_RAW_12BIT_V1:
         ret = display_raw_capture_init(&send_queue, 12);
+        break;
+    case DIS_RAW_SPI_V1:
+        ret = display_raw_capture_spi_init(&send_queue);
         break;
     default:
         break;

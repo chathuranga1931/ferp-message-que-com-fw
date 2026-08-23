@@ -70,6 +70,7 @@ typedef enum
     // display_type_t-typed — doesn't trip -Werror=switch.
     DIS_RAW_8BIT_V1 = 90,  // 8-bit-per-codeword capture
     DIS_RAW_12BIT_V1 = 91, // 12-bit-per-codeword capture
+    DIS_RAW_SPI_V1 = 92,   // SPI-slave + CS-timed raw byte capture
 } display_type_t;
 
 #define DIS_RAW_TYPE_BASE 90

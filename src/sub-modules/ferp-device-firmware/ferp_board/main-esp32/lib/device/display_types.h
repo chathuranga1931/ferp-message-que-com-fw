@@ -31,6 +31,7 @@ typedef enum
     // trip -Werror=switch, and must match distap-esp32's device.h exactly.
     DIS_RAW_8BIT_V1 = 90,  // 8-bit-per-codeword capture
     DIS_RAW_12BIT_V1 = 91, // 12-bit-per-codeword capture
+    DIS_RAW_SPI_V1 = 92,   // SPI-slave + CS-timed raw byte capture
 }display_type_t; // 5-bit number, can add upto 31 display types
 
 #define DIS_RAW_TYPE_BASE 90

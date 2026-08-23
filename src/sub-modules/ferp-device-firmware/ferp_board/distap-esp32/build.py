@@ -39,6 +39,7 @@ from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 PROJECT_DIR = SCRIPT_DIR
+REPO_ROOT = SCRIPT_DIR.parents[4]
 DEFAULT_COMPORT = "/dev/tty.usbserial-A5069RR4"
 DEFAULT_IDF_PATH = "/Users/chathuranga/DATA/esp/v5.5.3/esp-idf"
 MONITOR_BAUD = 115200
@@ -105,6 +106,17 @@ def set_version(defaults_file: Path, sdkconfig_file: Path, ver: str) -> None:
                 flags=re.MULTILINE,
             )
             f.write_text(text)
+
+
+def git_tag_exists(repo_root: Path, tag: str) -> bool:
+    result = subprocess.run(
+        ["git", "tag", "-l", tag], cwd=str(repo_root), capture_output=True, text=True
+    )
+    return bool(result.stdout.strip())
+
+
+def git_create_tag(repo_root: Path, tag: str) -> None:
+    subprocess.run(["git", "tag", tag], cwd=str(repo_root), check=True)
 
 
 def copy_and_bundle(ver: str, build_fw: Path, build_boot: Path, build_part: Path,
@@ -228,6 +240,15 @@ def main() -> None:
         even_ver = f"{v1}.{v2}.{v3}.{even_v4}"
         odd_ver = f"{v1}.{v2}.{v3}.{odd_v4}"
 
+        tag = f"esp32-dt-v{odd_ver}"
+        create_tag = True
+        if git_tag_exists(REPO_ROOT, tag):
+            print(f"WARNING: tag '{tag}' already exists — this version has already been released.")
+            answer = input("Continue building WITHOUT creating a new tag? [y/N]: ").strip().lower()
+            if answer != "y":
+                die("Aborted. Bump CONFIG_APP_PROJECT_VER in sdkconfig.defaults before releasing again.")
+            create_tag = False
+
         release_dir = releases_dir / odd_ver
         release_dir.mkdir(parents=True, exist_ok=True)
 
@@ -263,6 +284,10 @@ def main() -> None:
             print(f"ERROR: Build failed for odd version {odd_ver}")
             sys.exit(1)
         copy_and_bundle(odd_ver, build_fw, build_boot, build_part, release_dir, ota_tools)
+
+        if create_tag:
+            git_create_tag(REPO_ROOT, tag)
+            print(f"Tagged: {tag} (local only — push manually: git push origin {tag})")
 
         print()
         print(f"=== Release complete: {odd_ver} ===")
