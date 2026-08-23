@@ -5,6 +5,7 @@
 #include "ModuleUdpLog.h"
 
 #include "msg_config_ready.h"
+#include "msg_config_updated.h"
 #include "msg_wifi_event.h"
 #include "app.h"             // app_config_get()
 #include "app_config.h"
@@ -42,6 +43,7 @@ void ModuleUdpLog::init()
 {
     log("init");
     subscribe(MsgConfigReady::ID);
+    subscribe(MsgConfigUpdated::ID);
     subscribe(MsgWifiEvent::ID);
 }
 
@@ -75,6 +77,27 @@ void ModuleUdpLog::on_msg_received(const hsys_msg_t &msg)
 
         // WiFi may already be up (e.g. after a live config change).
         if (m_wifi_up) _try_start();
+        break;
+    }
+
+    case MsgConfigUpdated::ID: {
+        uint16_t key = MsgConfigUpdated::get_key(msg);
+        if (key != CFG_KEY_LOG_UDP_ENABLED) break;
+
+        const app_config_t *cfg = app_config_get();
+        if (!cfg) break;
+
+        m_udp_enabled = cfg->log_udp_enabled;
+        LOG_MSG_DEBUG(true, "config updated: enabled=%d", m_udp_enabled);
+
+        if (m_udp_enabled) {
+            if (!m_sink_active) {
+                pal_udp_log_init(m_ip, m_port, m_mac[0] ? m_mac : nullptr, udp_log_wake);
+                if (m_wifi_up) _try_start();
+            }
+        } else {
+            _stop();
+        }
         break;
     }
 
