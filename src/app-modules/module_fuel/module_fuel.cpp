@@ -639,20 +639,31 @@ void ModuleFuel::_process_queues()
             pumping_state_t state;
             bool pumped = pump_drivers[dtype].process_state_machine(&display_data[idx], idx, &state);
 
-            if (pumped) 
+            if (pumped)
             {
                 nozzle_event_t ev{};
                 pump_drivers[dtype].get_event(&ev, idx);
 
-                MLOG("========");
-                MLOG("========>     nozzle[%u] PUMPED  vol=%lu  unit=%lu  total=%lu",
-                    (unsigned)idx,
-                    (unsigned long)ev.volume_lx1000,
-                    (unsigned long)ev.unit_pricex100,
-                    (unsigned long)(uint32_t)ev.total_pricex100);
-                MLOG("========");
+                // A real transaction always has both a non-zero volume and a
+                // non-zero total. If either is zero, nothing was actually
+                // dispensed (e.g. nozzle lifted and returned without pumping),
+                // so there is nothing to register — skip the cloud event.
+                if (ev.volume_lx1000 == 0 || ev.total_pricex100 == 0)
+                {
+                    // nothing pumped — no event
+                }
+                else
+                {
+                    MLOG("========");
+                    MLOG("========>     nozzle[%u] PUMPED  vol=%lu  unit=%lu  total=%lu",
+                        (unsigned)idx,
+                        (unsigned long)ev.volume_lx1000,
+                        (unsigned long)ev.unit_pricex100,
+                        (unsigned long)(uint32_t)ev.total_pricex100);
+                    MLOG("========");
 
-                _publish_fuel_pumped(idx, ev);
+                    _publish_fuel_pumped(idx, ev);
+                }
             }
 
             if(state_prev[idx] != state)
