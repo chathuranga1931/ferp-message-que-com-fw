@@ -62,6 +62,13 @@
       "mac": "0c8b95f143cc",
       "uuid": "",
       "group": "default"
+    },
+    {
+      "label": "Pinnaduwa-P01-0043",
+      "ip": "192.168.4.1",
+      "mac": "78421C23D164",
+      "uuid": "",
+      "group": "default"
     }
   ],
   "ota_targets": {

@@ -1057,7 +1057,7 @@ bool ModuleCubeSphere::_build_event_json(evt_type_t evt)
             e0["event"]     = (evt == EVT_STARTUP) ? "core/startup" : "core/status-updated";
             JsonObject body = e0["body"].to<JsonObject>();
             body["hw_type"]       = "ferp-com";
-            body["hw_version"]    = "2602";
+            body["hw_version"]    = HW_VERSION;
             body["sw_version"]    = FW_VERSION;
             body["local_ip"]      = _wifi_ip;
             body["mac"]           = _wifi_mac;
@@ -1487,8 +1487,8 @@ cs_startup_info_t ModuleCubeSphere::_build_startup_info() const
     strncpy(s.ip_address,     _wifi_ip,      sizeof(s.ip_address)     - 1);
     strncpy(s.mac_address_str,_wifi_mac,     sizeof(s.mac_address_str)- 1);
     strncpy(s.fw_version,     "1.0.0",       sizeof(s.fw_version)     - 1);
-    strncpy(s.hw_version,     "2602",        sizeof(s.hw_version)     - 1);
-    strncpy(s.board_version,  "2602",        sizeof(s.board_version)  - 1);
+    strncpy(s.hw_version,     HW_VERSION,    sizeof(s.hw_version)     - 1);
+    strncpy(s.board_version,  HW_VERSION,    sizeof(s.board_version)  - 1);
     strncpy(s.device_type,    "ferp-com",    sizeof(s.device_type)    - 1);
     strncpy(s.sd_card_status, "unknown",     sizeof(s.sd_card_status) - 1);
     s.rssi               = _wifi_rssi;
