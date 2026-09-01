@@ -345,16 +345,11 @@ bool sanki6_process_state_machine(const app_display_data_t * display_data, uint8
 
         case Pumping_State_Stopped_Waiting:
 
-            if(
-                (pumping_state_value_based[nozzle_id] == Pumping_State_Pumping_Waiting) &&
-                ((ts - pumping_state_ts[nozzle_id]) > 100)
-            )
-            {
-                pumping_state_nozzle_based[nozzle_id] = Pumping_State_Stopped;
-                pumping_state_nozzle_ts[nozzle_id] = ts;
-                LOG_MSG_INFO(SAN6_INFO_LOG_EN, "[Nozzle] State [%d] : Stopped-Waiting --> Stopped ", nozzle_id);
-            }            
-            else if((ts - pumping_state_nozzle_ts[nozzle_id]) > 700)
+            // Hold for (PUMP_STABILIZE_BASE_MS + g_pump_stabilize_delay_ms) after
+            // nozzle DOWN so a late-settling display value is captured before the
+            // pumped event is finalized. Non-blocking: frames keep arriving and
+            // sanki6_update_data() commits the latest reading each pass.
+            if((ts - pumping_state_nozzle_ts[nozzle_id]) > (unsigned long)(PUMP_STABILIZE_BASE_MS + g_pump_stabilize_delay_ms))
             {
                 pumping_state_nozzle_based[nozzle_id] = Pumping_State_Stopped;
                 pumping_state_nozzle_ts[nozzle_id] = ts;

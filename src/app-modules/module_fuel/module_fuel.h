@@ -99,6 +99,7 @@ private:
     // (60 000 / rate) ms between consecutive log lines.
     uint32_t              _dt_log_rate   = 0;
     uint64_t              _last_log_ms   = 0;
+    uint32_t              _stabilize_delay_ms = 500;  // display-settle wait; see wayne62_set_stabilize_delay_ms
 
     void _start(const hsys_msg_t &cfg_msg);
     void _process_queues();

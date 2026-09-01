@@ -343,16 +343,15 @@ bool wayne62_process_state_machine(const app_display_data_t * display_data, uint
 
         case Pumping_State_Stopped_Waiting:
 
-            if(
-                (pumping_state_value_based[nozzle_id] == Pumping_State_Pumping_Waiting) &&
-                ((ts - pumping_state_ts[nozzle_id]) > 100)
-            )
-            {
-                pumping_state_nozzle_based[nozzle_id] = Pumping_State_Stopped;
-                pumping_state_nozzle_ts[nozzle_id] = ts;
-                LOG_MSG_INFO(WNE62_INFO_LOG_EN, "[Nozzle] State [%d] : Stopped-Waiting --> Stopped ", nozzle_id);
-            }
-            else if((ts - pumping_state_nozzle_ts[nozzle_id]) > 700)
+            // Hold here for (STABILIZE_BASE_MS + s_stabilize_delay_ms) after
+            // nozzle DOWN (pumping_state_nozzle_ts was set at DOWN). On this
+            // Wayne Type02 pump the display keeps settling (e.g. 29.996 ->
+            // 30.000) for up to ~1s AFTER the motor-stop signal, so finalizing
+            // as soon as the value stops incrementing captures a low value.
+            // This is a non-blocking, state-based wait: frames keep arriving
+            // and wayne62_update_data() commits the latest reading each pass,
+            // so the settled final value is picked up before the event fires.
+            if((ts - pumping_state_nozzle_ts[nozzle_id]) > (unsigned long)(PUMP_STABILIZE_BASE_MS + g_pump_stabilize_delay_ms))
             {
                 pumping_state_nozzle_based[nozzle_id] = Pumping_State_Stopped;
                 pumping_state_nozzle_ts[nozzle_id] = ts;

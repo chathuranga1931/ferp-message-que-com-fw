@@ -198,6 +198,14 @@ void ModuleFuel::on_msg_received(const hsys_msg_t &msg)
                     MLOG("dt_log_rate updated: %lu", (unsigned long)_dt_log_rate);
                 }
             }
+            else if (key == CFG_KEY_STABILIZE_DELAY_MS) {
+                const app_config_t *cfg = app_config_get();
+                if (cfg) {
+                    _stabilize_delay_ms = cfg->stabilize_delay_ms;
+                    g_pump_stabilize_delay_ms = _stabilize_delay_ms;
+                    MLOG("stabilize_delay_ms updated: %lu", (unsigned long)_stabilize_delay_ms);
+                }
+            }
             break;
         }
 
@@ -295,6 +303,10 @@ void ModuleFuel::_start(const hsys_msg_t &cfg_msg)
     MLOG("starting  display_type=%d  nozzles=%d",
          (int)_display_type, (int)FUEL_MAX_NOZZLES);
 
+    // Apply the display-stabilize delay shared by every pump state machine.
+    _stabilize_delay_ms = p.stabilize_delay_ms;
+    g_pump_stabilize_delay_ms = _stabilize_delay_ms;
+
     char dt_version[24] = {};
     _driver.start(_display_type, _distap_frame_cb, dt_version, sizeof(dt_version));
     _started = true;
@@ -347,6 +359,11 @@ void ModuleFuel::_on_distap_frame(uint8_t nozzle_idx, display_type_t type,
 // ---------------------------------------------------------------------------
 // _process_queues — drain all nozzle queues and run the sanki6 pipeline
 // ---------------------------------------------------------------------------
+
+// Shared display-settle delay (ms), read by every pump's Stopped-Waiting
+// state (see pumping_types.h). Set from stabilize_delay_ms config by
+// ModuleFuel; default matches the config default until config arrives.
+uint32_t g_pump_stabilize_delay_ms = 500;
 
 // Forward declaration — shared by every pump type in pump_drivers[] below;
 // defined further down this file.
