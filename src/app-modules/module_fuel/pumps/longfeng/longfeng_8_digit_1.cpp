@@ -212,7 +212,16 @@ bool longfeng8_process_data(app_display_data_t * display_data){
 void longfeng8_data_validate(const app_display_data_t * display_data, uint8_t nozzle_id){
     
     do{ 
-        if(display_data->total_pricex100 > 0 && display_data->volume_lx1000 > 0){
+        // process_data() has already rejected any half-zero frame (exactly one
+        // of volume/total zero), so a frame reaching here is either both-positive
+        // (a live reading) or both-zero. BOTH are valid and must update the
+        // tracked value: a both-zero reading is a genuine reset (e.g. a fresh
+        // nozzle-up), and recording it stops a stale non-zero reading from a
+        // previous sale lingering and being re-published as a phantom event.
+        // See documents/wayne62-stale-reading-fix.md.
+        const bool both_zero     = (display_data->total_pricex100 == 0) && (display_data->volume_lx1000 == 0);
+        const bool both_positive = (display_data->total_pricex100 > 0)  && (display_data->volume_lx1000 > 0);
+        if(both_positive || both_zero){
 
             stabilizer(
                 display_data->unit_pricex100,

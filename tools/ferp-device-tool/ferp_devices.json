@@ -22,14 +22,14 @@
       "group": "default"
     },
     {
-      "label": "FERP-61-YAKKALA-P01-CEN7-CS",
+      "label": "FERP-61-V3-YAKKALA-P01-CEN7-CS",
       "ip": "",
       "mac": "f8b3b739978c",
       "uuid": "",
       "group": "default"
     },
     {
-      "label": "FERP-63-YAKKALA-D01-HY",
+      "label": "FERP-63-V3-YAKKALA-D01-HY",
       "ip": "",
       "mac": "f8b3b7398b74",
       "uuid": "",
@@ -43,14 +43,14 @@
       "group": "default"
     },
     {
-      "label": "FERP-69-YAKKALA-D02-CEN7-CS",
+      "label": "FERP-69-V3-YAKKALA-D02-CEN7-CS",
       "ip": "",
       "mac": "f8b3b73b0af8",
       "uuid": "",
       "group": "default"
     },
     {
-      "label": "FERP-65-Dambulla-01",
+      "label": "FERP-65-V3-Dambulla-01",
       "ip": "",
       "mac": "f8b3b73b9fa4",
       "uuid": "",
@@ -58,14 +58,14 @@
     },
     {
       "label": "TestDevice2404",
-      "ip": "192.168.4.1",
+      "ip": "",
       "mac": "0c8b95f143cc",
       "uuid": "",
       "group": "default"
     },
     {
-      "label": "Pinnaduwa-P01-0043",
-      "ip": "192.168.4.1",
+      "label": "FERP-43-V2-Pinnaduwa-P01-CEN7",
+      "ip": "",
       "mac": "78421c23d164",
       "uuid": "",
       "group": "default"

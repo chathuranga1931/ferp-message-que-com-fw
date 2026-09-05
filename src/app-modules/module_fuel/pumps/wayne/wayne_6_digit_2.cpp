@@ -28,6 +28,14 @@
 
 #define DISPLAY_SAME_COUNT_FOR_STABILIZE_UNIT_PRICE     (10)
 
+// False-start guard: a nozzle UP->DOWN cycle is only treated as a real sale
+// if it either lasted at least WNE62_MIN_PUMP_TIME_MS OR saw at least
+// WNE62_MIN_INCREMENT_COUNT value-increments. A cycle that was BOTH shorter
+// than the time AND had fewer increments is discarded as a false start (e.g.
+// the nozzle bumped and returned). Tunable — change here as needed.
+#define WNE62_MIN_PUMP_TIME_MS      (3000)
+#define WNE62_MIN_INCREMENT_COUNT   (4)
+
 static app_display_data_t display_data_validated[NO_NOZZELS];
 static app_display_data_t display_data_commited[NO_NOZZELS];
 static app_display_data_t display_value_validated_prev[NO_NOZZELS];
@@ -214,7 +222,16 @@ bool wayne62_process_data(app_display_data_t * display_data){
 void wayne62_data_validate(const app_display_data_t * display_data, uint8_t nozzle_id){
 
     do{
-        if(display_data->total_pricex100 > 0 && display_data->volume_lx1000 > 0){
+        // process_data() has already rejected any half-zero frame (exactly one
+        // of volume/total zero), so a frame reaching here is either both-positive
+        // (a live reading) or both-zero. BOTH are valid and must update the
+        // tracked value: a both-zero reading is a genuine reset (e.g. a fresh
+        // nozzle-up), and recording it is what stops a stale non-zero reading
+        // from a previous sale lingering and being re-published as a phantom
+        // event. See documents/wayne62-stale-reading-fix.md.
+        const bool both_zero     = (display_data->total_pricex100 == 0) && (display_data->volume_lx1000 == 0);
+        const bool both_positive = (display_data->total_pricex100 > 0)  && (display_data->volume_lx1000 > 0);
+        if(both_positive || both_zero){
 
             stabilizer(
                 display_data->unit_pricex100,
@@ -323,8 +340,8 @@ bool wayne62_process_state_machine(const app_display_data_t * display_data, uint
             if(!(display_data->start_stop))
             {
                 if(
-                    ((ts - pumping_state_nozzle_ts[nozzle_id]) < 4000) &&
-                    (pumping_increment_count[nozzle_id] < 10 )
+                    ((ts - pumping_state_nozzle_ts[nozzle_id]) < WNE62_MIN_PUMP_TIME_MS) &&
+                    (pumping_increment_count[nozzle_id] < WNE62_MIN_INCREMENT_COUNT )
                 )
                 {
                     pumping_state_nozzle_ts[nozzle_id] = ts;
