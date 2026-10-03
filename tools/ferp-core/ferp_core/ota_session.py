@@ -1,7 +1,7 @@
 """
 ota_session.py — Shared OTA firmware-update session logic.
 
-Used by both ferp_mqtt_ota.py (CLI) and ferp_mqtt_gui.py (GUI OTA tab).
+Used by mqtt_ota.py (CLI + Tk tool) and the ferp-device-web backend.
 
 Protocol topics:
     .../ota/ctrl  — JSON control commands  (ota_start, ota_abort, ota_complete)
@@ -88,6 +88,7 @@ class OtaSession:
                             MQTT client to reconnect (observed up to ~13s)
                             and redeliver the ack before we give up and retry.
     max_retries           : max chunk retries before abort (default 3)
+    username, password    : optional MQTT broker credentials
     on_log(msg: str)      : called with status/log messages
     on_progress(pct: int) : called with 0-100 progress
     on_done(ok: bool)     : called when session ends (True = success)
@@ -107,6 +108,8 @@ class OtaSession:
         ctrl_timeout: float = 15.0,
         chunk_timeout: float = 15.0,
         max_retries: int = 3,
+        username: str | None = None,
+        password: str | None = None,
         on_log=None,
         on_progress=None,
         on_done=None,
@@ -121,6 +124,8 @@ class OtaSession:
         self.ctrl_timeout  = ctrl_timeout
         self.chunk_timeout = chunk_timeout
         self.max_retries   = max_retries
+        self.username      = username
+        self.password      = password
 
         self.on_log      = on_log      or (lambda m: None)
         self.on_progress = on_progress or (lambda p: None)
@@ -250,6 +255,8 @@ class OtaSession:
         self._client.on_connect   = self._on_connect
         self._client.on_subscribe = self._on_subscribe
         self._client.on_message   = self._on_message
+        if self.username:
+            self._client.username_pw_set(self.username, self.password or None)
 
         self.on_log(f"Connecting to {self.broker}:{self.port} ...")
         try:

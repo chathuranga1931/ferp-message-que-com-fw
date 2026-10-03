@@ -1,0 +1,74 @@
+{
+  "devices": [
+    {
+      "label": "Test Device, Chathuranga",
+      "ip": "192.168.8.100",
+      "mac": "112233445566",
+      "uuid": "",
+      "group": "default"
+    },
+    {
+      "label": "Pump 02 — Station A",
+      "ip": "192.168.8.101",
+      "mac": "112233445566",
+      "uuid": "",
+      "group": "default"
+    },
+    {
+      "label": "TestingDeviceOriginalMac",
+      "ip": "192.168.4.1",
+      "mac": "f8b3b73988c8",
+      "uuid": "",
+      "group": "default"
+    },
+    {
+      "label": "FERP-61-V3-YAKKALA-P01-CEN7-CS",
+      "ip": "",
+      "mac": "f8b3b739978c",
+      "uuid": "",
+      "group": "default"
+    },
+    {
+      "label": "FERP-63-V3-YAKKALA-D01-HY",
+      "ip": "",
+      "mac": "f8b3b7398b74",
+      "uuid": "",
+      "group": "default"
+    },
+    {
+      "label": "FERP-64-YAKKALA-P03-HY-ADAPTER",
+      "ip": "",
+      "mac": "f8b3b739aa10",
+      "uuid": "",
+      "group": "default"
+    },
+    {
+      "label": "FERP-69-V3-YAKKALA-D02-CEN7-CS",
+      "ip": "",
+      "mac": "f8b3b73b0af8",
+      "uuid": "",
+      "group": "default"
+    },
+    {
+      "label": "FERP-65-V3-Dambulla-01",
+      "ip": "",
+      "mac": "f8b3b73b9fa4",
+      "uuid": "",
+      "group": "default"
+    },
+    {
+      "label": "TestDevice2404",
+      "ip": "",
+      "mac": "0c8b95f143cc",
+      "uuid": "",
+      "group": "default"
+    },
+    {
+      "label": "FERP-43-V2-Pinnaduwa-P01-CEN7",
+      "ip": "",
+      "mac": "78421c23d164",
+      "uuid": "",
+      "group": "default"
+    }
+  ]
+}

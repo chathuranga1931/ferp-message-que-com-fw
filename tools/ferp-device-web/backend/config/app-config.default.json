@@ -1,0 +1,16 @@
+{
+  "mqtt": {
+    "host": "localhost",
+    "port": 1883,
+    "username": "",
+    "password": "",
+    "client_id": "",
+    "keepalive": 60,
+    "dev_type": "ferp-com",
+    "auto_connect": true,
+    "brokers": ["localhost", "broker.emqx.io"]
+  },
+  "device": { "response_timeout_s": 5.0, "verify_writes": true },
+  "ota": { "chunk_size": 4096 },
+  "console": { "buffer_lines": 2000 }
+}

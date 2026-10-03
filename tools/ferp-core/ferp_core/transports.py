@@ -13,7 +13,7 @@ is a lower-level wrapper used by the MessageTree panel.
 """
 
 import json
-from mqtt_auth import sign as _mqtt_sign
+from .mqtt_auth import sign as _mqtt_sign
 import queue
 import random
 import struct

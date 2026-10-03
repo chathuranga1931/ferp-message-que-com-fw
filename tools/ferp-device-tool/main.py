@@ -27,7 +27,7 @@ Layout
   ┌─ Console ──────────────────────────────────────────────────────── [Clear] ┤
   └────────────────────────────────────────────────────────────────────────────┘
 
-Config keys are loaded from config_keys.json — no code change needed for new keys.
+Config keys are loaded from ../ferp-core/ferp_core/data/config_keys.json — no code change needed for new keys.
 Messages are loaded from src/app-messages/messages/**/*.json.
 """
 
@@ -53,18 +53,24 @@ except ImportError:
     print("ERROR: paho-mqtt not installed.\nRun:  pip install paho-mqtt", file=sys.stderr)
     sys.exit(1)
 
-from transports import (
+# Shared protocol logic lives in ../ferp-core (package ferp_core)
+_CORE_DIR = Path(__file__).resolve().parent.parent / "ferp-core"
+if _CORE_DIR.is_dir() and str(_CORE_DIR) not in sys.path:
+    sys.path.insert(0, str(_CORE_DIR))
+
+from ferp_core.transports import (
     MqttRawClient, MQTTTransport, WebAPITransport, UARTTransport,
     TransportError, encode_value, decode_value, type_id_from_name,
     TYPE_UINT32, TYPE_STRING, TYPE_BOOL, TYPE_NAMES,
     _build_topic_base,
 )
-from messages.msg_loader import MSG_DEFS
-from mqtt_ota import MqttOtaHandler
+from ferp_core.msg_loader import load_message_defs
+from ferp_core.config_keys import DEFAULT_CONFIG_KEYS_FILE
+from ferp_core.mqtt_ota import MqttOtaHandler
 
 # Conditional import — webapi OTA is a stub; don't fail if not yet complete
 try:
-    from webapi_ota import WebApiOtaHandler
+    from ferp_core.webapi_ota import WebApiOtaHandler
     _WEBAPI_OTA_AVAILABLE = True
 except Exception:
     _WEBAPI_OTA_AVAILABLE = False
@@ -78,7 +84,8 @@ _TOOL_DIR        = Path(__file__).parent
 SETTINGS_FILE    = Path.home() / ".ferp-device-tool.json"
 DEVICES_FILE     = _TOOL_DIR / "ferp_devices.json"
 NETWORK_FILE     = _TOOL_DIR / "ferp_network_config.json"
-CONFIG_KEYS_FILE = _TOOL_DIR / "config_keys.json"
+CONFIG_KEYS_FILE = DEFAULT_CONFIG_KEYS_FILE
+MSG_DEFS         = load_message_defs(_TOOL_DIR / "messages-json")
 
 
 def _load_json(path: Path, default):
@@ -230,31 +237,72 @@ class _AddBrokerDialog(simpledialog.Dialog):
             self.result = None
 
 
+# Device registry fields — same names as the web app (tools/ferp-device-web DeviceIn).
+_DEVICE_FIELDS = [
+    # (key,          label,                    default for a new device)
+    ("label",         "Label:",                 "My Device"),
+    ("ip",            "IP:",                    "192.168.4.1"),
+    ("mac",           "MAC:",                   "AA:BB:CC:DD:EE:FF"),
+    ("uuid",          "UUID:",                  ""),
+    ("group",         "Group:",                 "default"),
+    ("shed",          "Shed name:",             ""),
+    ("pump_id_1",     "Pump ID 1 (nozzle 1):",  ""),
+    ("pump_id_2",     "Pump ID 2 (nozzle 2):",  ""),
+    ("pump_type",     "Pump type:",             ""),
+    ("board_version", "Board version:",         ""),
+    ("sd_card_size",  "SD card size:",          ""),
+    ("notes",         "Notes:",                 ""),
+]
+_PUMP_ID_MAX = 4   # firmware NOZZLE_x_ID limit
+
+
 class _AddDeviceDialog(simpledialog.Dialog):
+    """Add a device, or edit one when `initial` (a device dict) is given."""
+
+    def __init__(self, parent, initial: Optional[dict] = None):
+        self._initial = initial
+        super().__init__(parent)
+
     def body(self, master):
-        self.title("Add device")
-        self.vars = []
-        for i, (lbl, dflt) in enumerate([
-            ("Label:", "My Device"),
-            ("IP:", "192.168.4.1"),
-            ("MAC:", "AA:BB:CC:DD:EE:FF"),
-            ("UUID:", ""),
-            ("Group:", "default"),
-        ]):
+        self.title("Edit device" if self._initial else "Add device")
+        self.vars = {}
+        for i, (key, lbl, dflt) in enumerate(_DEVICE_FIELDS):
             tk.Label(master, text=lbl).grid(row=i, column=0, sticky="w")
-            v = tk.StringVar(value=dflt)
+            value = (self._initial or {}).get(key, "") if self._initial else dflt
+            v = tk.StringVar(value=value)
             tk.Entry(master, textvariable=v, width=30).grid(row=i, column=1, padx=4)
-            self.vars.append(v)
+            self.vars[key] = v
         return None
 
+    def validate(self):
+        too_long = [k for k in ("pump_id_1", "pump_id_2") if len(self.vars[k].get().strip()) > _PUMP_ID_MAX]
+        if too_long:
+            messagebox.showwarning("Pump ID", f"The device stores at most {_PUMP_ID_MAX} characters per pump ID.",
+                                   parent=self)
+            return False
+        return True
+
     def apply(self):
-        self.result = {
-            "label": self.vars[0].get().strip(),
-            "ip":    self.vars[1].get().strip(),
-            "mac":   self.vars[2].get().strip(),
-            "uuid":  self.vars[3].get().strip(),
-            "group": self.vars[4].get().strip(),
-        }
+        result = dict(self._initial or {})          # keep fields this dialog doesn't show
+        result.update({k: v.get().strip() for k, v in self.vars.items()})
+        self.result = result
+
+
+def _device_site_summary(d: dict) -> str:
+    """'Shed YAKKALA · Pumps P01/P02 · Tatsuno · board V3 · SD 8 GB' (empty parts omitted)."""
+    parts = []
+    if d.get("shed"):
+        parts.append(f"Shed {d['shed']}")
+    pumps = "/".join(p for p in (d.get("pump_id_1"), d.get("pump_id_2")) if p)
+    if pumps:
+        parts.append(f"Pumps {pumps}")
+    if d.get("pump_type"):
+        parts.append(d["pump_type"])
+    if d.get("board_version"):
+        parts.append(f"board {d['board_version']}")
+    if d.get("sd_card_size"):
+        parts.append(f"SD {d['sd_card_size']}")
+    return " · ".join(parts)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -545,7 +593,7 @@ class OtaPanel(ttk.LabelFrame):
 
     def _decode_header(self, path: str):
         try:
-            from ota_bundle import decode_bundle
+            from ferp_core.ota_bundle import decode_bundle
             with open(path, "rb") as fh:
                 data = fh.read()
             hdr, _ = decode_bundle(data)
@@ -585,7 +633,7 @@ class OtaPanel(ttk.LabelFrame):
 
         # Strip the 84-byte bundle header → raw firmware bytes → temp file
         try:
-            from ota_bundle import decode_bundle
+            from ferp_core.ota_bundle import decode_bundle
             import tempfile, os
             with open(fw, "rb") as fh:
                 bundle_data = fh.read()
@@ -1190,7 +1238,8 @@ class FerpDeviceTool(tk.Tk):
         ]
         self._mqtt_device.current(0)
         self._mqtt_device.bind("<<ComboboxSelected>>", self._on_device_mqtt_selected)
-        ttk.Button(f, text="+Device", command=self._add_device, width=7).pack(side="left", padx=(0, 8))
+        ttk.Button(f, text="+Device", command=self._add_device, width=7).pack(side="left", padx=(0, 2))
+        ttk.Button(f, text="Edit", command=lambda: self._edit_device(self._mqtt_device), width=5).pack(side="left", padx=(0, 8))
 
         ttk.Label(f, text="Broker:").pack(side="left")
         self._mqtt_broker = ttk.Combobox(f, width=18)
@@ -1220,7 +1269,8 @@ class FerpDeviceTool(tk.Tk):
         ]
         self._webapi_device.current(0)
         self._webapi_device.bind("<<ComboboxSelected>>", self._on_device_webapi_selected)
-        ttk.Button(f, text="+Device", command=self._add_device, width=7).pack(side="left", padx=(0, 8))
+        ttk.Button(f, text="+Device", command=self._add_device, width=7).pack(side="left", padx=(0, 2))
+        ttk.Button(f, text="Edit", command=lambda: self._edit_device(self._webapi_device), width=5).pack(side="left", padx=(0, 8))
 
         ttk.Label(f, text="IP:").pack(side="left")
         self._webapi_ip = tk.StringVar(value="192.168.4.1")
@@ -1542,6 +1592,8 @@ class FerpDeviceTool(tk.Tk):
             if var is not None:
                 var.set(d.get(field, "") or "—")
         self._append_log(f"Device selected: {d.get('label', dev_id or '?')}", "info")
+        if _device_site_summary(d):
+            self._append_log(f"  {_device_site_summary(d)}", "info")
 
     def _on_device_webapi_selected(self, _=None):
         idx = self._webapi_device.current()
@@ -1556,6 +1608,8 @@ class FerpDeviceTool(tk.Tk):
             if var is not None:
                 var.set(d.get(field, "") or "—")
         self._append_log(f"Device selected: {d.get('label', ip or '?')}", "info")
+        if _device_site_summary(d):
+            self._append_log(f"  {_device_site_summary(d)}", "info")
 
     def _add_broker(self):
         dlg = _AddBrokerDialog(self)
@@ -1573,6 +1627,27 @@ class FerpDeviceTool(tk.Tk):
             cur.append(broker)
             self._mqtt_broker["values"] = cur
         self._mqtt_broker.set(broker)
+
+    def _refresh_device_combos(self):
+        labels = ["— select —"] + [d.get("label", d.get("mac", "?")) for d in self._devices]
+        self._mqtt_device["values"]   = labels
+        self._webapi_device["values"] = labels
+
+    def _edit_device(self, combo):
+        idx = combo.current()
+        if idx <= 0 or idx - 1 >= len(self._devices):
+            messagebox.showinfo("Edit device", "Select a device first.")
+            return
+        dlg = _AddDeviceDialog(self, initial=self._devices[idx - 1])
+        if not dlg.result:
+            return
+        self._devices[idx - 1] = dlg.result
+        data = _load_json(DEVICES_FILE, {"devices": []})
+        data["devices"] = self._devices
+        _save_json(DEVICES_FILE, data)
+        self._refresh_device_combos()
+        combo.current(idx)
+        self._append_log(f"Device updated: {dlg.result.get('label', '?')}", "info")
 
     def _add_device(self):
         dlg = _AddDeviceDialog(self)

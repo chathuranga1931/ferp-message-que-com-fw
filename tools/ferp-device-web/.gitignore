@@ -1,0 +1,10 @@
+backend/.venv/
+backend/data/
+backend/data-dev/
+backend/.env
+backend/messages-json/
+__pycache__/
+frontend/node_modules/
+frontend/dist/
+deploy/windows/bin/
+deploy/windows/logs/

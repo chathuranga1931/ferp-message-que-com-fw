@@ -5,7 +5,7 @@ Delegates session logic to messages/ota_session.py so GUI and CLI
 share a single implementation.
 
 Can also be used as a standalone CLI:
-    python mqtt_ota.py --broker 192.168.1.1 --port 1883 \\
+    python -m ferp_core.mqtt_ota --broker 192.168.1.1 --port 1883 \\
         --dev-type ferp-com --group default --device-id AA:BB:CC:DD:EE:FF \\
         --target main --firmware firmware_v1.2.bin
 """
@@ -15,7 +15,7 @@ import os
 import sys
 import threading
 
-from messages.ota_session import OtaSession, crc32_of_file
+from .ota_session import OtaSession, crc32_of_file
 
 
 def _progress_bar(percent: int, width: int = 40) -> str:
