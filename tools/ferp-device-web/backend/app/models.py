@@ -26,8 +26,17 @@ class DeviceOpsConfig(BaseModel):
     verify_writes:      bool  = True   # read each key back after writing it
 
 
+DEFAULT_TYPE_TARGETS = {
+    "COM":     ["esp32-*", "esp07-*", "main", "dt-*"],
+    "Printer": ["*printer*", "*prn*"],
+}
+
+
 class OtaConfig(BaseModel):
     chunk_size: int = Field(4096, ge=256, le=65536)
+    # which bundle targets (glob patterns, case-insensitive) each device type may receive;
+    # a type that is not listed (or has no patterns) accepts any bundle
+    type_targets: dict[str, list[str]] = Field(default_factory=lambda: {k: list(v) for k, v in DEFAULT_TYPE_TARGETS.items()})
     bundle_dirs: list[str] = []   # folders scanned for .bdl files to import; empty → repo releases/ folder
 
 
@@ -87,6 +96,7 @@ class DeviceIn(BaseModel):
     group: str = "default"   # MQTT topic group
     ip:    str = ""      # kept for compatibility with ferp_devices.json; unused by the web app
     notes: str = ""
+    device_type:   str = ""   # "COM" | "Printer" — decides which OTA bundle targets fit (Settings → OTA)
     # site / hardware details (registry only; pump IDs and board version can be read from the device)
     shed:          str = ""   # station name, as used in cloud log paths (e.g. YAKKALA)
     pump_id_1:     str = ""   # device config NOZZLE_0_ID (0x6007), max 4 chars on the device
@@ -168,8 +178,20 @@ class LogFollowIn(BaseModel):
 
 
 class BatchOtaIn(BaseModel):
-    firmware_id:     str
+    # Bundles flashed in order on every device (e.g. DT boot → part → fw). `firmware_id` = single step (older clients).
+    firmware_ids:    list[str] = Field(default_factory=list, max_length=3)
+    firmware_id:     str | None = None
     device_ids:      list[str] = Field(..., min_length=1)
     chunk_size:      int | None = Field(None, ge=256, le=65536)
     concurrency:     int = Field(1, ge=1, le=5)
     stop_on_failure: bool = True
+    step_delay_s:    float = Field(15, ge=0, le=600)     # pause after a step (device reboots)
+    wait_online:     bool = True                          # then wait until the device answers again
+    online_timeout_s: float = Field(180, ge=10, le=1800)
+    allow_type_mismatch: bool = False                     # flash even if a bundle target doesn't fit a device type
+
+    def steps(self) -> list[str]:
+        ids = self.firmware_ids or ([self.firmware_id] if self.firmware_id else [])
+        if not ids:
+            raise ValueError("Choose at least one bundle")
+        return ids

@@ -92,8 +92,17 @@ def list_batches(c: Container = Depends(container)):
 @router.post("/ota/batches")
 def start_batch(body: BatchOtaIn, c: Container = Depends(container), user: str = Depends(current_user)):
     devices = get_devices(c, body.device_ids)
-    return guard(c.batch_ota.start, user, devices, body.firmware_id, body.chunk_size,
-                 body.concurrency, body.stop_on_failure)
+    steps = guard(body.steps)
+    if not body.allow_type_mismatch:
+        from ..services.ota import type_mismatches
+        metas = [m for m in (c.firmware.meta(fid) for fid in steps) if m]
+        bad = type_mismatches(devices, metas, c.config.ota.type_targets)
+        if bad:
+            raise HTTPException(400, "Bundle does not fit the device type: " + "; ".join(bad[:10])
+                                + (f" (+{len(bad) - 10} more)" if len(bad) > 10 else "")
+                                + " — tick 'flash anyway' to override")
+    return guard(c.batch_ota.start, user, devices, steps, body.chunk_size, body.concurrency, body.stop_on_failure,
+                 body.step_delay_s, body.wait_online, body.online_timeout_s)
 
 
 @router.post("/ota/batches/{batch_id}/cancel")

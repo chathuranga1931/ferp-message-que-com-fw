@@ -2,4 +2,5 @@ fastapi>=0.115
 uvicorn[standard]>=0.30
 python-multipart>=0.0.9
 paramiko>=3.4
+openpyxl>=3.1          # devtools/import_devices_xlsx.py
 -e ../../ferp-core

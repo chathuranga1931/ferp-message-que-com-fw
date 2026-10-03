@@ -14,7 +14,7 @@ export interface AppConfig {
     keepalive: number; dev_type: string; auto_connect: boolean; brokers: string[];
   };
   device: { response_timeout_s: number; verify_writes: boolean };
-  ota: { chunk_size: number; bundle_dirs: string[] };
+  ota: { chunk_size: number; bundle_dirs: string[]; type_targets: Record<string, string[]> };
   console: { buffer_lines: number };
   fleet: { online_timeout_s: number; probe_timeout_s: number; auto_probe_interval_s: number };
   history: { persist_console: boolean; console_retention_days: number; audit_retention_days: number };
@@ -30,6 +30,7 @@ export interface LogChunk { path: string; size: number; offset: number; end: num
 export interface DeviceIn {
   label: string; mac: string; uuid: string; group: string; ip: string; notes: string;
   shed: string; pump_id_1: string; pump_id_2: string; sd_card_size: string; board_version: string; pump_type: string;
+  device_type: string;
 }
 export interface Device extends DeviceIn { id: string }
 
@@ -91,14 +92,21 @@ export interface FleetRow {
   msg_count: number; info: Record<string, string>;
   probe: { ts: number; ok: boolean; rtt_ms?: number; error?: string } | null;
   shed?: string; pump_id_1?: string; pump_id_2?: string; pump_type?: string; board_version?: string; sd_card_size?: string;
+  device_type?: string;
 }
 export interface FleetSnapshot { online_timeout_s: number; now: number; devices: FleetRow[] }
 
-export interface BatchItem { device_id: string; label: string; state: "pending" | "running" | "succeeded" | "failed" | "aborted" | "skipped"; error?: string }
+export interface BatchStepState { state: "pending" | "waiting" | "running" | "succeeded" | "failed" | "aborted" | "skipped"; error?: string }
+export interface BatchItem {
+  device_id: string; label: string; state: "pending" | "running" | "succeeded" | "failed" | "aborted" | "skipped" | "cancelled";
+  error?: string; step?: number; steps?: BatchStepState[];
+}
+export interface BatchStep { firmware_id: string; target: string; version: string; filename: string }
 export interface Batch {
   batch_id: string; firmware_id: string; target: string; version: string; concurrency: number;
   stop_on_failure: boolean; state: "running" | "succeeded" | "failed" | "cancelled";
   started: number; finished: number | null; started_by: string; items: BatchItem[];
+  steps?: BatchStep[]; title?: string; step_delay_s?: number; wait_online?: boolean;
 }
 
 export interface SnapshotValue { name: string; type: string; value: string }

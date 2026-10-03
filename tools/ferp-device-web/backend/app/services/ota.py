@@ -137,6 +137,21 @@ class FirmwareLibrary:
         self._blobs.delete(f"{_PREFIX}{fid}.json")
 
 
+def type_mismatches(devices: list[Device], metas: list[dict], type_targets: dict[str, list[str]]) -> list[str]:
+    """['FRP-PRN-0001 (Printer) ← esp32-main', ...] for bundles whose target doesn't fit the device type."""
+    from fnmatch import fnmatch
+    rules = {k.strip().lower(): [p.strip().lower() for p in v if p.strip()] for k, v in type_targets.items()}
+    out = []
+    for d in devices:
+        pats = rules.get((d.device_type or "").strip().lower())
+        if not pats:
+            continue
+        for m in metas:
+            if not any(fnmatch(m["name"].lower(), p) for p in pats):
+                out.append(f"{d.label} ({d.device_type}) ← {m['name']}")
+    return out
+
+
 class OtaManager:
     def __init__(self, library: FirmwareLibrary, console: Console, bus: EventBus,
                  get_config: Callable[[], AppConfig], audit: Optional[Audit] = None):
@@ -261,11 +276,17 @@ class OtaManager:
 
 
 class BatchOta:
-    """Flash one bundle to many devices, `concurrency` at a time."""
+    """Flash one or more bundles (steps, in order) to many devices, `concurrency` devices at a time.
+
+    Per device the steps run strictly in order; a failed step stops that device (later steps
+    are skipped). Between steps the runner pauses `step_delay_s` (the device reboots after an
+    OTA) and, if `wait_online`, waits until the device answers a ping before the next step.
+    """
 
     def __init__(self, ota: OtaManager, library: FirmwareLibrary, console: Console, bus: EventBus,
-                 audit: Optional[Audit] = None):
+                 audit: Optional[Audit] = None, ping: Callable[[Device], bool] = lambda d: True):
         self._ota, self._lib, self._console, self._bus, self._audit = ota, library, console, bus, audit
+        self._ping = ping
         self._batches: dict[str, dict] = {}
         self._lock = threading.Lock()
 
@@ -275,26 +296,36 @@ class BatchOta:
 
     @staticmethod
     def _copy(b: dict) -> dict:
-        return {k: ([dict(i) for i in v] if k == "items" else v) for k, v in b.items() if not k.startswith("_")}
+        def item(i):
+            return {**i, "steps": [dict(st) for st in i["steps"]]}
+        return {k: ([item(i) for i in v] if k == "items" else [dict(x) for x in v] if k == "steps" else v)
+                for k, v in b.items() if not k.startswith("_")}
 
-    def start(self, user: str, devices: list[Device], firmware_id: str, chunk_size: Optional[int],
-              concurrency: int, stop_on_failure: bool) -> dict:
-        meta, _ = self._lib.get(firmware_id)
+    def start(self, user: str, devices: list[Device], firmware_ids: list[str], chunk_size: Optional[int],
+              concurrency: int, stop_on_failure: bool, step_delay_s: float = 15, wait_online: bool = True,
+              online_timeout_s: float = 180) -> dict:
+        metas = [self._lib.get(fid)[0] for fid in firmware_ids]        # KeyError if a bundle is missing
         busy = [d.label for d in devices if (self._ota.session(d.id) or {}).get("state") == "running"]
         if busy:
             raise RuntimeError("OTA already running on: " + ", ".join(busy))
-        batch = {"batch_id": uuid.uuid4().hex[:10], "firmware_id": firmware_id, "target": meta["name"],
-                 "version": meta["version"], "concurrency": concurrency, "stop_on_failure": stop_on_failure,
-                 "chunk_size": chunk_size, "state": "running", "started": time.time(), "finished": None,
-                 "started_by": user, "_cancel": threading.Event(),
-                 "items": [{"device_id": d.id, "label": d.label, "state": "pending"} for d in devices]}
+        steps = [{"firmware_id": m["id"], "target": m["name"], "version": m["version"], "filename": m["filename"]}
+                 for m in metas]
+        title = " → ".join(f"{m['name']} v{m['version']}" for m in metas)
+        batch = {"batch_id": uuid.uuid4().hex[:10], "steps": steps, "title": title,
+                 # first step kept at top level for older UIs
+                 "firmware_id": steps[0]["firmware_id"], "target": steps[0]["target"], "version": steps[0]["version"],
+                 "concurrency": concurrency, "stop_on_failure": stop_on_failure, "chunk_size": chunk_size,
+                 "step_delay_s": step_delay_s, "wait_online": wait_online, "online_timeout_s": online_timeout_s,
+                 "state": "running", "started": time.time(), "finished": None, "started_by": user,
+                 "_cancel": threading.Event(), "_failed": threading.Event(),
+                 "items": [{"device_id": d.id, "label": d.label, "state": "pending", "step": 0,
+                            "steps": [{"state": "pending"} for _ in steps]} for d in devices]}
         with self._lock:
             self._batches[batch["batch_id"]] = batch
         if self._audit:
-            self._audit.record(user, "ota.batch.start", target=meta["name"], version=meta["version"],
+            self._audit.record(user, "ota.batch.start", steps=[f"{m['name']} v{m['version']}" for m in metas],
                                devices=[d.label for d in devices], concurrency=concurrency)
-        self._console.log("ota", f"Batch OTA {meta['name']} v{meta['version']} -> {len(devices)} device(s), "
-                                 f"{concurrency} at a time")
+        self._console.log("ota", f"Batch OTA {title} -> {len(devices)} device(s), {concurrency} at a time")
         threading.Thread(target=self._run, args=(batch, {d.id: d for d in devices}, user), daemon=True,
                          name=f"ota-batch-{batch['batch_id']}").start()
         self._publish(batch)
@@ -309,47 +340,110 @@ class BatchOta:
             if item["state"] == "running":
                 self._ota.abort(item["device_id"], user)
         if self._audit:
-            self._audit.record(user, "ota.batch.cancel", target=b["target"], version=b["version"])
+            self._audit.record(user, "ota.batch.cancel", batch=b["title"])
         return True
 
+    # ── runner ────────────────────────────────────────────────────────────────
+
     def _run(self, batch: dict, devices: dict[str, Device], user: str) -> None:
-        pending = list(batch["items"])
-        running: list[dict] = []
-        failed = False
-        while pending or running:
-            stop = batch["_cancel"].is_set() or (failed and batch["stop_on_failure"])
-            while not stop and pending and len(running) < batch["concurrency"]:
-                item = pending.pop(0)
-                try:
-                    self._ota.start(devices[item["device_id"]], batch["firmware_id"], batch["chunk_size"], user=user)
-                    item["state"] = "running"
-                    running.append(item)
-                except Exception as exc:
-                    item["state"], item["error"] = "failed", str(exc)
-                    failed = True
-                    stop = batch["stop_on_failure"]
+        sem = threading.Semaphore(batch["concurrency"])
+        threads = []
+        for item in batch["items"]:
+            sem.acquire()
+            if batch["_cancel"].is_set() or (batch["stop_on_failure"] and batch["_failed"].is_set()):
+                sem.release()
+                self._skip(item, "skipped")
                 self._publish(batch)
-            if stop and pending:
-                for item in pending:
-                    item["state"] = "skipped"
-                pending = []
-                self._publish(batch)
-            if not running:
                 continue
-            for item in list(running):
-                if self._ota.wait(item["device_id"], timeout=0.5):
-                    s = self._ota.session(item["device_id"]) or {}
-                    item["state"] = s.get("state", "failed")
-                    failed = failed or item["state"] != "succeeded"
-                    running.remove(item)
-                    self._publish(batch)
+            t = threading.Thread(target=self._run_device, args=(batch, devices[item["device_id"]], item, user, sem),
+                                 daemon=True)
+            t.start()
+            threads.append(t)
+        for t in threads:
+            t.join()
         states = {i["state"] for i in batch["items"]}
         batch["state"] = ("cancelled" if batch["_cancel"].is_set()
                           else "succeeded" if states == {"succeeded"} else "failed")
         batch["finished"] = time.time()
         ok = sum(i["state"] == "succeeded" for i in batch["items"])
-        self._console.log("ota", f"Batch OTA {batch['state']}: {ok}/{len(batch['items'])} succeeded")
+        self._console.log("ota", f"Batch OTA {batch['state']}: {ok}/{len(batch['items'])} device(s) succeeded")
         self._publish(batch)
+
+    def _run_device(self, batch: dict, dev: Device, item: dict, user: str, sem: threading.Semaphore) -> None:
+        tid = dev.mqtt_id
+        try:
+            item["state"] = "running"
+            for n, step in enumerate(batch["steps"]):
+                item["step"] = n
+                st = item["steps"][n]
+                if batch["_cancel"].is_set():
+                    self._skip(item, "cancelled", from_step=n)
+                    return
+                if n > 0:                                   # device rebooted after the previous step
+                    st["state"] = "waiting"
+                    self._publish(batch)
+                    if not self._wait_ready(batch, dev, item):
+                        return
+                st["state"] = "running"
+                self._publish(batch)
+                try:
+                    self._ota.start(dev, step["firmware_id"], batch["chunk_size"], user=user)
+                except Exception as exc:
+                    st["state"], st["error"] = "failed", str(exc)
+                    self._fail(batch, item, n, str(exc))
+                    return
+                while not self._ota.wait(dev.id, timeout=0.5):
+                    pass
+                result = (self._ota.session(dev.id) or {}).get("state", "failed")
+                st["state"] = result
+                if result != "succeeded":
+                    self._fail(batch, item, n, f"step {n + 1} {result}")
+                    return
+                self._publish(batch)
+            item["state"] = "succeeded"
+            self._publish(batch)
+        finally:
+            sem.release()
+
+    def _wait_ready(self, batch: dict, dev: Device, item: dict) -> bool:
+        tid = dev.mqtt_id
+        self._console.log("ota", f"{dev.label}: waiting {batch['step_delay_s']:g}s before step {item['step'] + 1}", device=tid)
+        if batch["_cancel"].wait(batch["step_delay_s"]):
+            self._skip(item, "cancelled", from_step=item["step"])
+            return False
+        if not batch["wait_online"]:
+            return True
+        deadline = time.time() + batch["online_timeout_s"]
+        while time.time() < deadline:
+            if batch["_cancel"].is_set():
+                self._skip(item, "cancelled", from_step=item["step"])
+                return False
+            try:
+                if self._ping(dev):
+                    self._console.log("ota", f"{dev.label}: back online — starting step {item['step'] + 1}", device=tid)
+                    return True
+            except Exception:
+                pass
+            batch["_cancel"].wait(3)
+        self._fail(batch, item, item["step"], f"device did not answer within {batch['online_timeout_s']:g}s after the reboot")
+        return False
+
+    def _fail(self, batch: dict, item: dict, step: int, why: str) -> None:
+        item["state"], item["error"] = "failed", why
+        for st in item["steps"][step + 1:]:
+            st["state"] = "skipped"
+        if item["steps"][step]["state"] in ("waiting", "running", "pending"):
+            item["steps"][step]["state"] = "failed"
+        batch["_failed"].set()
+        self._console.log("error", f"{item['label']}: {why}")
+        self._publish(batch)
+
+    @staticmethod
+    def _skip(item: dict, state: str, from_step: int = 0) -> None:
+        item["state"] = state
+        for st in item["steps"][from_step:]:
+            if st["state"] in ("pending", "waiting"):
+                st["state"] = "skipped"
 
     def _publish(self, batch: dict) -> None:
         self._bus.publish({"type": "ota.batch", "batch": self._copy(batch)})

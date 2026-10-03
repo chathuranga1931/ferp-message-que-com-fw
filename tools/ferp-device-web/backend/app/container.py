@@ -57,7 +57,7 @@ class Container:
         self.favorites = Favorites(self.docs, self.audit)
         self.firmware  = FirmwareLibrary(self.blobs, self._bundle_dirs)
         self.ota       = OtaManager(self.firmware, self.console, self.bus, cfg, self.audit)
-        self.batch_ota = BatchOta(self.ota, self.firmware, self.console, self.bus, self.audit)
+        self.batch_ota = BatchOta(self.ota, self.firmware, self.console, self.bus, self.audit, ping=self._ping_device)
         self.logs      = CloudLogs(cfg, settings.data_dir, self.bus, self.console)
 
     # ── app config ────────────────────────────────────────────────────────────
@@ -71,6 +71,15 @@ class Container:
             self.config_store.save(cfg)
             self._config = cfg
         self.console.resize(cfg.console.buffer_lines)
+
+    def _ping_device(self, dev) -> bool:
+        """True when the device answers a device-info read (used between OTA steps)."""
+        key = next((k for k, _, f in self.catalog.devinfo_keys if f == "fw_version"), 0xA004)
+        try:
+            self.ops.read_devinfo(dev, key, timeout=3)
+            return True
+        except Exception:
+            return False
 
     def _bundle_dirs(self) -> list[Path]:
         dirs = [Path(d) for d in self.config.ota.bundle_dirs if d.strip()]

@@ -91,8 +91,8 @@ class Fleet:
     @staticmethod
     def _row(p: Optional[dict], d: Optional[Device], tid: str) -> dict:
         p = p or {}
-        site = {k: getattr(d, k) for k in ("shed", "pump_id_1", "pump_id_2", "pump_type", "board_version",
-                                           "sd_card_size")} if d else {}
+        site = {k: getattr(d, k) for k in ("device_type", "shed", "pump_id_1", "pump_id_2", "pump_type",
+                                           "board_version", "sd_card_size")} if d else {}
         return {"device_id": d.id if d else None, "label": d.label if d else None,
                 "registered": d is not None, "topic_id": tid, **site,
                 "group": (d.group if d else None) or p.get("group") or "default",

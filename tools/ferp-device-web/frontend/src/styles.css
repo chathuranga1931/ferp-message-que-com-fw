@@ -299,3 +299,44 @@ textarea { font: inherit; font-family: var(--mono); font-size: 13px; color: var(
 .log-text { flex: 1; margin: 0; min-height: 300px; max-height: calc(100dvh - var(--dock-h, 260px) - 190px); overflow: auto; font-family: var(--mono); font-size: 12px; line-height: 1.45; background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; white-space: pre; }
 .log-text.wrap { white-space: pre-wrap; overflow-wrap: anywhere; }
 .form-section { display: flex; align-items: center; gap: 10px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px; color: var(--accent); margin: 10px 0 6px; }
+
+/* ── device filters ──────────────────────────────────────── */
+.device-filters { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 8px; }
+.device-filters select { padding: 3px 8px; font-size: 13px; }
+.device-filters select.active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.filter-bar { margin-bottom: 4px; align-items: flex-start; }
+.filter-bar .device-filters { margin-bottom: 0; }
+.selection-note { font-size: 13px; margin: 0 0 8px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.warn-text { color: var(--warn); font-size: 13px; }
+
+/* ── OTA steps + bundle picker ───────────────────────────── */
+.steps { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+.step { border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; background: var(--surface-2); }
+.step.open { border-color: var(--accent); }
+.step-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-height: 30px; }
+.step-no { font-weight: 700; color: var(--accent); font-size: 12px; text-transform: uppercase; letter-spacing: 0.4px; }
+.spacer { flex: 1; }
+.bundle-picker { margin-top: 8px; }
+.bundle-picker select.active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.bundle-list { margin-top: 6px; max-height: 240px; overflow: auto; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); }
+.bundle-row { display: grid; grid-template-columns: auto minmax(110px, auto) auto minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 5px 10px; cursor: pointer; border-bottom: 1px solid var(--border); font-size: 13px; }
+.bundle-row:last-child { border-bottom: 0; }
+.bundle-row:hover { background: var(--surface-2); }
+.bundle-row.active { background: var(--accent-soft); }
+.bundle-row .ellipsis { max-width: none; }
+@media (max-width: 700px) { .bundle-row { grid-template-columns: auto 1fr auto; } .bundle-row .ellipsis, .bundle-row > span:last-child { display: none; } }
+.step-dots { display: inline-flex; gap: 3px; margin-left: 4px; }
+.dot-step { width: 8px; height: 8px; border-radius: 50%; background: var(--border); }
+.dot-step.succeeded { background: var(--ok); }
+.dot-step.running, .dot-step.waiting { background: var(--warn); animation: pulse 1.2s infinite; }
+.dot-step.failed, .dot-step.aborted { background: var(--err); }
+.dot-step.skipped { background: transparent; border: 1px solid var(--muted); }
+button.batch-item { grid-template-columns: minmax(80px, 1fr) 2fr auto auto; display: grid; }
+.type-badge { display: inline-block; margin-left: 6px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px; padding: 1px 6px; border-radius: 4px; color: var(--muted); background: var(--surface-2); border: 1px solid var(--border); vertical-align: 1px; }
+td > .type-badge:first-child { margin-left: 0; }
+.type-badge.t-com { color: var(--evt); border-color: color-mix(in srgb, var(--evt) 40%, transparent); }
+.type-badge.t-printer { color: var(--ota); border-color: color-mix(in srgb, var(--ota) 40%, transparent); }
+.inline-check { display: inline-flex; margin-left: 8px; }
+.devices-table td:first-child, .fleet td:nth-child(3) { white-space: normal; min-width: 170px; max-width: 300px; }
+.devices-table td:nth-child(3) { white-space: normal; min-width: 140px; max-width: 240px; }
+.fleet td:nth-child(4) { white-space: normal; max-width: 220px; }

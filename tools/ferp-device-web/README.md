@@ -21,12 +21,17 @@ Everything the desktop tool does over MQTT, plus some fixes:
 - **Config keys.** Read all, edit values inline, and **Write changes** writes only the keys you edited. The old tool's *Write All* also wrote keys that were never read, as empty values. Each write is checked by reading the key back (✓ / ✗).
 - **OTA page.**
   - **Firmware library:** upload `.bdl` files (several at once, or drag and drop), **import from folders** (default: the repo's `releases/`; set others in Settings), download, add notes, delete. Identical bundles are detected.
-  - **Flash devices:** pick one or many devices with their online status and current FW, choose the chunk size and how many at a time, then confirm.
+  - **Flash devices:** pick one or many devices with their online status and current FW (Shed / Pump type / Board filters; ticking is manual). Choose the chunk size and how many at a time, then confirm.
+  - **Bundle picker:** each step's bundle is chosen from a radio list filtered by **target** and **version**.
+  - **Up to 3 steps in order**, e.g. display tap **boot → part → fw**. **Display-tap set** buttons fill all three when the library has a complete set for a version, and the page warns if the order is wrong.
+  - **Between steps** each device pauses (default 15 s, while it reboots), then waits until it answers again (default up to 180 s) before the next step. If a step fails or the device doesn't come back, that device stops and its later steps are skipped.
   - **Activity:** progress per device and a live OTA log for each device; cancel or abort.
   - Scripts can upload too: `curl -F file=@bundle.bdl -F notes="..." http://<host>:8700/api/firmware`.
 - **Console dock.** Docked to the bottom of the window on every page and shows all activity (or just the selected device). Filter by level, search, copy, clear. Collapse it (new lines are counted on a badge) and drag its top edge to resize; it remembers its height.
 - **Devices page.** Add / edit / delete devices.
-  - Each device also has **shed name, pump ID 1 / 2, pump type, board version and SD card size**, with a shed filter.
+  - Each device also has a **device type** (`COM` / `Printer`) plus **shed name, pump ID 1 / 2, pump type, board version and SD card size**.
+  - **Type / Shed / Pump type / Board filters** are on the Devices, Fleet and OTA pages.
+  - **Settings → OTA → bundle targets per device type** (e.g. `Printer: *printer*, *prn*`) decides which bundles fit which type. A bundle that doesn't fit a selected device's type is refused unless you tick **flash anyway**.
   - **Read from device** fills pump IDs (config `NOZZLE_0_ID` / `NOZZLE_1_ID`) and board version (`HW_VERSION`) from the live device. SD size is entered by hand, because the firmware doesn't report it over MQTT yet.
   - Fleet shows the same fields, and a **Logs** button opens Cloud logs on that device's shed.
 - **Settings page.** All app settings are saved to `backend/data/app-config.json`.
@@ -132,6 +137,7 @@ Notes:
 ```powershell
 tools\ferp-device-web\deploy\windows\run-dev.ps1     # backend :8701 (data-dev/) + Vite hot reload on :5173
 python backend\devtools\fake_device.py --id sim001   # then add a device with MAC "sim001"
+python backend\devtools\import_devices_xlsx.py FERP-Device-List.xlsx --dry-run   # add new devices from the spreadsheet (drop --dry-run to write)
 python backend\devtools\fake_log_server.py --make-sample <dir>                                   # sample logs tree
 python backend\devtools\fake_log_server.py --root <dir> --port 2222 --client-pub <key.pub>      # SFTP on 127.0.0.1:2222
 ```

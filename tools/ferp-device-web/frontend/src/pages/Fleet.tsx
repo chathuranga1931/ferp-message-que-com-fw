@@ -1,10 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../api";
+import { DeviceFilters, matchesFilter, NO_FILTER, SelectionNote, type SiteFilter } from "../components/DeviceFilters";
 import { fleetKey, seedFleet, useLive } from "../store";
 import type { Device, FleetRow } from "../types";
 import { fmtAgo, fmtDateTime, useNow } from "../util";
 
 type Status = "online" | "offline" | "never";
+
+/** Filterable site fields of a fleet row (board falls back to the HW version the device reported). */
+const siteOf = (r: FleetRow) => ({ device_type: r.device_type, shed: r.shed, pump_type: r.pump_type, board_version: r.board_version || r.info.hw_version });
 const STATUS_LABEL: Record<Status, string> = { online: "Online", offline: "Offline", never: "Never seen" };
 
 interface Props {
@@ -20,7 +24,7 @@ export default function Fleet({ devices, onOpen, onOta, onLogs, onDevicesChanged
   const now = useNow(5000) + skew;
   const [filter, setFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState<"" | Status | "unregistered">("");
-  const [shedFilter, setShedFilter] = useState("");
+  const [siteFilter, setSiteFilter] = useState<SiteFilter>(NO_FILTER);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
@@ -33,15 +37,15 @@ export default function Fleet({ devices, onOpen, onOta, onLogs, onDevicesChanged
     const f = filter.trim().toLowerCase();
     const order: Record<Status, number> = { online: 0, offline: 1, never: 2 };
     return Object.values(fleet)
-      .filter((r) => !f || [r.label ?? "", r.topic_id, r.group, r.info.fw_version ?? "", r.shed ?? "", r.pump_id_1 ?? "",
+      .filter((r) => !f || [r.label ?? "", r.topic_id, r.group, r.info.fw_version ?? "", r.shed ?? "", r.pump_id_1 ?? "", r.device_type ?? "",
         r.pump_id_2 ?? "", r.pump_type ?? "", r.board_version ?? ""].some((x) => x.toLowerCase().includes(f)))
-      .filter((r) => !shedFilter || (r.shed ?? "") === shedFilter)
+      .filter((r) => matchesFilter(siteOf(r), siteFilter))
       .filter((r) => !statusFilter || (statusFilter === "unregistered" ? !r.registered : statusOf(r) === statusFilter))
       .sort((a, b) => Number(b.registered) - Number(a.registered) || order[statusOf(a)] - order[statusOf(b)]
         || (a.label ?? a.topic_id).localeCompare(b.label ?? b.topic_id));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fleet, filter, statusFilter, shedFilter, now, timeout]);
-  const sheds = useMemo(() => [...new Set(devices.map((d) => d.shed).filter(Boolean))].sort(), [devices]);
+  }, [fleet, filter, statusFilter, siteFilter, now, timeout]);
+  const allRows = useMemo(() => Object.values(fleet).map(siteOf), [fleet]);
 
   const counts = useMemo(() => {
     const c = { online: 0, offline: 0, never: 0, unregistered: 0 };
@@ -51,9 +55,16 @@ export default function Fleet({ devices, onOpen, onOta, onLogs, onDevicesChanged
   }, [fleet, now, timeout]);
 
   const selectable = rows.filter((r) => r.device_id);
+  const visibleIds = new Set(selectable.map((r) => r.device_id!));
   const selectedIds = [...selected].filter((id) => devices.some((d) => d.id === id));
   const toggle = (id: string) => { const n = new Set(selected); if (n.has(id)) n.delete(id); else n.add(id); setSelected(n); };
   const allSelected = selectable.length > 0 && selectable.every((r) => selected.has(r.device_id!));
+  // header checkbox acts on the visible (filtered) rows only; selections hidden by filters are kept
+  const toggleVisible = () => {
+    const n = new Set(selected);
+    selectable.forEach((r) => (allSelected ? n.delete(r.device_id!) : n.add(r.device_id!)));
+    setSelected(n);
+  };
 
   const probe = async (ids?: string[]) => {
     setMsg(null);
@@ -66,7 +77,8 @@ export default function Fleet({ devices, onOpen, onOta, onLogs, onDevicesChanged
     const isUuid = /^[0-9a-f]{32}$/.test(r.topic_id);
     await api.addDevice({ label: r.topic_id, mac: isUuid ? "" : r.topic_id, uuid: isUuid ? r.topic_id : "",
       group: r.group, ip: "", notes: "Added from Fleet",
-      shed: "", pump_id_1: "", pump_id_2: "", sd_card_size: "", board_version: r.info.hw_version ?? "", pump_type: "" }).catch((e) => setMsg({ ok: false, text: e.message }));
+      shed: "", pump_id_1: "", pump_id_2: "", sd_card_size: "", board_version: r.info.hw_version ?? "", pump_type: "",
+      device_type: "COM" }).catch((e) => setMsg({ ok: false, text: e.message }));
     onDevicesChanged();
   };
 
@@ -77,12 +89,6 @@ export default function Fleet({ devices, onOpen, onOta, onLogs, onDevicesChanged
           <h3>Fleet</h3>
           <div className="row wrap">
             <input className="search small" placeholder="Filter…" value={filter} onChange={(e) => setFilter(e.target.value)} />
-            {sheds.length > 0 && (
-              <select value={shedFilter} onChange={(e) => setShedFilter(e.target.value)}>
-                <option value="">All sheds</option>
-                {sheds.map((s) => <option key={s} value={s}>{s}</option>)}
-              </select>
-            )}
             <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}>
               <option value="">All ({Object.keys(fleet).length})</option>
               <option value="online">Online ({counts.online})</option>
@@ -97,6 +103,10 @@ export default function Fleet({ devices, onOpen, onOta, onLogs, onDevicesChanged
               OTA{selectedIds.length ? ` (${selectedIds.length})` : ""}…</button>
           </div>
         </div>
+        <DeviceFilters rows={allRows} value={siteFilter} onChange={setSiteFilter} />
+        <SelectionNote selected={new Set(selectedIds)} visibleIds={visibleIds}
+                       onUnselectHidden={() => setSelected(new Set(selectedIds.filter((id) => visibleIds.has(id))))}
+                       onClear={() => setSelected(new Set())} />
         <div className="fleet-summary">
           <span><span className="dot connected" /> {counts.online} online</span>
           <span><span className="dot disconnected" /> {counts.offline} offline</span>
@@ -109,7 +119,7 @@ export default function Fleet({ devices, onOpen, onOta, onLogs, onDevicesChanged
             <thead>
               <tr>
                 <th><input type="checkbox" checked={allSelected} aria-label="Select all"
-                           onChange={() => setSelected(allSelected ? new Set() : new Set(selectable.map((r) => r.device_id!)))} /></th>
+                           title="Select / unselect the rows shown" onChange={toggleVisible} /></th>
                 <th>Status</th><th>Device</th><th>Shed</th><th>Pumps</th><th>Type / board</th><th>FW</th><th>Last seen</th><th>Last message</th><th>Probe</th><th />
               </tr>
             </thead>
@@ -123,6 +133,7 @@ export default function Fleet({ devices, onOpen, onOta, onLogs, onDevicesChanged
                     <td>
                       {r.registered ? <button className="link-btn strong" onClick={() => onOpen(r.device_id!)}>{r.label}</button>
                                     : <span className="muted">not registered</span>}
+                      {r.device_type && <span className={`type-badge t-${r.device_type.toLowerCase()}`}>{r.device_type}</span>}
                       <div className="muted small"><code>{r.topic_id}</code></div>
                     </td>
                     <td>{r.shed || <span className="muted">—</span>}</td>

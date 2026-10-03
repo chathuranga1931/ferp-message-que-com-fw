@@ -70,7 +70,10 @@ export const api = {
     req<OtaSession>("POST", `/devices/${id}/ota`, { firmware_id, chunk_size }),
   abortOta: (id: string) => req("POST", `/devices/${id}/ota/abort`),
   batches: () => req<Batch[]>("GET", "/ota/batches"),
-  startBatch: (b: { firmware_id: string; device_ids: string[]; chunk_size?: number; concurrency: number; stop_on_failure: boolean }) =>
+  startBatch: (b: {
+    firmware_ids: string[]; device_ids: string[]; chunk_size?: number; concurrency: number; stop_on_failure: boolean;
+    step_delay_s?: number; wait_online?: boolean; online_timeout_s?: number; allow_type_mismatch?: boolean;
+  }) =>
     req<Batch>("POST", "/ota/batches", b),
   cancelBatch: (bid: string) => req("POST", `/ota/batches/${bid}/cancel`),
 

@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
+import { BundlePicker, compareVersions, dtKind } from "../components/BundlePicker";
+import { DeviceFilters, matchesFilter, NO_FILTER, SelectionNote, type SiteFilter } from "../components/DeviceFilters";
 import { seedFleet, seedOta, useLive } from "../store";
 import type { Batch, Device, Firmware, ScannedBundle } from "../types";
 import { fmtAgo, fmtBytes, fmtDateTime, fmtTime, topicId, useNow } from "../util";
@@ -196,47 +198,140 @@ function FlashDevices({ library, devices, preselect, onPreselectUsed }:
   const skew = useLive((s) => s.clockSkew);
   const ota = useLive((s) => s.ota);
   const now = useNow(5000) + skew;
-  const [fwId, setFwId] = useState("");
+  const [steps, setSteps] = useState<string[]>([""]);       // bundle id per step, flashed in order
+  const [openStep, setOpenStep] = useState<number | null>(0);
+  const [stepDelay, setStepDelay] = useState(15);
+  const [waitOnline, setWaitOnline] = useState(true);
+  const [onlineTimeout, setOnlineTimeout] = useState(180);
+  const [typeTargets, setTypeTargets] = useState<Record<string, string[]>>({});
+  const [allowMismatch, setAllowMismatch] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [chunk, setChunk] = useState(4096);
   const [concurrency, setConcurrency] = useState(1);
   const [stopOnFailure, setStopOnFailure] = useState(true);
   const [confirm, setConfirm] = useState(false);
   const [filter, setFilter] = useState("");
+  const [siteFilter, setSiteFilter] = useState<SiteFilter>(NO_FILTER);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
-  useEffect(() => { api.getConfig().then((c) => setChunk(c.ota.chunk_size)).catch(() => undefined); }, []);
-  useEffect(() => { setFwId((cur) => (library.some((b) => b.id === cur) ? cur : library[0]?.id ?? "")); }, [library]);
+  useEffect(() => {
+    api.getConfig().then((c) => { setChunk(c.ota.chunk_size); setTypeTargets(c.ota.type_targets ?? {}); }).catch(() => undefined);
+  }, []);
+  // drop selections of bundles removed from the library
+  useEffect(() => { setSteps((cur) => cur.map((id) => (library.some((b) => b.id === id) ? id : ""))); }, [library]);
   useEffect(() => {
     if (preselect.length) { setSelected(new Set(preselect)); onPreselectUsed(); }
   }, [preselect, onPreselectUsed]);
-  useEffect(() => setConfirm(false), [fwId, selected.size]);
+  useEffect(() => { setConfirm(false); setAllowMismatch(false); }, [steps, selected.size]);
 
-  const fw = library.find((b) => b.id === fwId);
+  const chosen = steps.map((id) => library.find((b) => b.id === id));
+  const ready = chosen.length > 0 && chosen.every(Boolean);
+  const fw = chosen[0];
+  const title = chosen.filter(Boolean).map((b) => `${b!.name} v${b!.version}`).join(" → ");
+  // display-tap order check: boot → part → fw
+  const ORDER = { boot: 0, part: 1, fw: 2 } as const;
+  const kinds = chosen.map((b) => (b ? dtKind(b.name) : null));
+  const dtOrderBad = kinds.some((k, i) => k && kinds.slice(i + 1).some((k2) => k2 && ORDER[k2] < ORDER[k]));
+  // complete DT sets in the library (same version has boot, part and fw)
+  const dtSets = useMemo(() => {
+    const byVer: Record<string, Partial<Record<"boot" | "part" | "fw", string>>> = {};
+    for (const b of library) { const k = dtKind(b.name); if (k) (byVer[b.version] ??= {})[k] = b.id; }
+    return Object.entries(byVer).filter(([, s]) => s.boot && s.part && s.fw)
+      .sort(([a], [b]) => compareVersions(b, a)).map(([v, s]) => ({ version: v, ids: [s.boot!, s.part!, s.fw!] }));
+  }, [library]);
+  const setStep = (i: number, id: string) => { const n = [...steps]; n[i] = id; setSteps(n); setOpenStep(null); };
   const rowFor = (d: Device) => fleet[d.id];
+  const siteOf = (d: Device) => ({ device_type: d.device_type, shed: d.shed, pump_type: d.pump_type,
+    board_version: d.board_version || fleet[d.id]?.info.hw_version });
+  /** bundle targets the device's type does not accept (Settings → OTA → targets per device type) */
+  const misfits = (d: Device): string[] => {
+    const pats = Object.entries(typeTargets).find(([t]) => t.toLowerCase() === (d.device_type ?? "").toLowerCase())?.[1] ?? [];
+    if (!pats.length) return [];
+    return chosen.filter(Boolean).map((b) => b!.name).filter((t) => !pats.some((p) => globMatch(t, p)));
+  };
   const f = filter.trim().toLowerCase();
-  const rows = useMemo(() => devices.filter((d) => !f || [d.label, d.group, d.mac, d.uuid].some((x) => x.toLowerCase().includes(f))),
-    [devices, f]);
+  const rows = useMemo(() => devices
+    .filter((d) => !f || [d.label, d.group, d.mac, d.uuid, d.shed, d.pump_id_1, d.pump_id_2].some((x) => (x ?? "").toLowerCase().includes(f)))
+    .filter((d) => matchesFilter(siteOf(d), siteFilter))
+    .sort((a, b) => Number(!a.shed) - Number(!b.shed) || a.shed.localeCompare(b.shed) || a.label.localeCompare(b.label)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [devices, f, siteFilter, fleet]);
+  const allRows = useMemo(() => devices.map(siteOf),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [devices, fleet]);
+  const visibleIds = new Set(rows.map((d) => d.id));
   const allSel = rows.length > 0 && rows.every((d) => selected.has(d.id));
+  const toggleVisible = () => {
+    const n = new Set(selected);
+    rows.forEach((d) => (allSel ? n.delete(d.id) : n.add(d.id)));
+    setSelected(n);
+  };
+  const hiddenSelected = [...selected].filter((id) => !visibleIds.has(id)).length;
+  const mismatched = devices.filter((d) => selected.has(d.id) && misfits(d).length > 0);
 
   const start = async () => {
     if (!confirm) { setConfirm(true); return; }
     setConfirm(false); setMsg(null);
     try {
-      await api.startBatch({ firmware_id: fwId, device_ids: [...selected], chunk_size: chunk, concurrency, stop_on_failure: stopOnFailure });
+      await api.startBatch({ firmware_ids: steps, device_ids: [...selected], chunk_size: chunk, concurrency,
+        stop_on_failure: stopOnFailure, step_delay_s: stepDelay, wait_online: waitOnline, online_timeout_s: onlineTimeout,
+        allow_type_mismatch: allowMismatch });
       setMsg({ ok: true, text: `Started — progress below` });
     } catch (e) { setMsg({ ok: false, text: (e as Error).message }); }
   };
 
   return (
     <section className="card">
-      <div className="card-head"><h3>Flash devices</h3></div>
+      <div className="card-head">
+        <h3>Flash devices</h3>
+        {dtSets.length > 0 && (
+          <div className="row wrap">
+            <span className="muted small">Display-tap set:</span>
+            {dtSets.slice(0, 4).map((s) => (
+              <button key={s.version} className="btn small" title="Fill steps 1–3 with boot → part → fw"
+                      onClick={() => { setSteps(s.ids); setOpenStep(null); }}>v{s.version}</button>
+            ))}
+          </div>
+        )}
+      </div>
+      <div className="steps">
+        {steps.map((id, i) => {
+          const b = chosen[i];
+          return (
+            <div key={i} className={`step ${openStep === i ? "open" : ""}`}>
+              <div className="step-head">
+                <span className="step-no">Step {i + 1}</span>
+                {b ? <span><b>{b.name}</b> <code>v{b.version}</code> <span className="muted small">{b.filename}</span></span>
+                   : <span className="muted">no bundle chosen</span>}
+                <span className="spacer" />
+                <button className="btn small" onClick={() => setOpenStep(openStep === i ? null : i)}>{openStep === i ? "Done" : b ? "Change" : "Choose"}</button>
+                {i > 0 && i === steps.length - 1 && (
+                  <button className="btn small ghost" onClick={() => { setSteps(steps.slice(0, -1)); setOpenStep(null); }}>Remove</button>
+                )}
+              </div>
+              {openStep === i && <BundlePicker library={library} value={id} onChange={(v) => setStep(i, v)} name={`step${i}`} />}
+            </div>
+          );
+        })}
+        <div className="row wrap">
+          {steps.length < 3 && <button className="btn small ghost" onClick={() => { setSteps([...steps, ""]); setOpenStep(steps.length); }}>+ Add step {steps.length + 1}</button>}
+          {library.length === 0 && <span className="muted small">The library is empty — upload or import bundles above.</span>}
+          {dtOrderBad && <span className="warn-text">Display-tap bundles are normally flashed boot → part → fw — check the step order.</span>}
+        </div>
+      </div>
+      {steps.length > 1 && (
+        <div className="form-grid">
+          <label className="field"><span>Pause after each step (s)</span>
+            <input type="number" min={0} value={stepDelay} onChange={(e) => setStepDelay(Number(e.target.value) || 0)} /></label>
+          <label className="field"><span>Wait for the device up to (s)</span>
+            <input type="number" min={10} value={onlineTimeout} disabled={!waitOnline} onChange={(e) => setOnlineTimeout(Number(e.target.value) || 10)} /></label>
+          <label className="check field-check">
+            <input type="checkbox" checked={waitOnline} onChange={(e) => setWaitOnline(e.target.checked)} />
+            Before the next step, wait until the device answers again (it reboots after each OTA)
+          </label>
+        </div>
+      )}
       <div className="form-grid">
-        <label className="field"><span>Bundle</span>
-          <select value={fwId} onChange={(e) => setFwId(e.target.value)}>
-            {library.length === 0 && <option value="">— library is empty —</option>}
-            {library.map((b) => <option key={b.id} value={b.id}>{b.name} v{b.version} — {b.filename}</option>)}
-          </select></label>
         <label className="field"><span>Chunk size</span>
           <select value={chunk} onChange={(e) => setChunk(Number(e.target.value))}>
             {[1024, 2048, 4096, 8192].map((c) => <option key={c} value={c}>{c}</option>)}
@@ -250,13 +345,19 @@ function FlashDevices({ library, devices, preselect, onPreselectUsed }:
           Stop starting new devices after a failure
         </label>
       </div>
-      <input className="search" placeholder="Filter devices…" value={filter} onChange={(e) => setFilter(e.target.value)} />
+      <div className="row wrap filter-bar">
+        <input className="search small" placeholder="Search devices…" value={filter} onChange={(e) => setFilter(e.target.value)} />
+        <DeviceFilters rows={allRows} value={siteFilter} onChange={setSiteFilter} />
+      </div>
+      <SelectionNote selected={selected} visibleIds={visibleIds}
+                     onUnselectHidden={() => setSelected(new Set([...selected].filter((id) => visibleIds.has(id))))}
+                     onClear={() => setSelected(new Set())} />
       <div className="table-wrap">
         <table className="list">
           <thead><tr>
-            <th><input type="checkbox" checked={allSel} aria-label="Select all"
-                       onChange={() => setSelected(allSel ? new Set() : new Set(rows.map((d) => d.id)))} /></th>
-            <th>Device</th><th>Group</th><th>Status</th><th>FW now</th><th>OTA</th>
+            <th><input type="checkbox" checked={allSel} aria-label="Select all shown" title="Select / unselect the rows shown"
+                       onChange={toggleVisible} /></th>
+            <th>Device</th><th>Type</th><th>Shed</th><th>Pump type</th><th>Board</th><th>Status</th><th>FW now</th><th>OTA</th>
           </tr></thead>
           <tbody>
             {rows.map((d) => {
@@ -268,7 +369,11 @@ function FlashDevices({ library, devices, preselect, onPreselectUsed }:
                   <td><input type="checkbox" checked={selected.has(d.id)} aria-label={`Select ${d.label}`}
                              onChange={() => { const n = new Set(selected); if (n.has(d.id)) n.delete(d.id); else n.add(d.id); setSelected(n); }} /></td>
                   <td>{d.label}<div className="muted small"><code>{topicId(d.uuid || d.mac)}</code></div></td>
-                  <td>{d.group}</td>
+                  <td>{d.device_type ? <span className={`type-badge t-${d.device_type.toLowerCase()}`}>{d.device_type}</span> : <span className="muted">—</span>}
+                    {misfits(d).length > 0 && <div className="warn-text small" title={`Not for ${d.device_type}: ${misfits(d).join(", ")}`}>⚠ bundle mismatch</div>}</td>
+                  <td>{d.shed || <span className="muted">—</span>}</td>
+                  <td>{d.pump_type || <span className="muted">—</span>}</td>
+                  <td>{siteOf(d).board_version || <span className="muted">—</span>}</td>
                   <td><span className={`dot ${online ? "connected" : fr?.last_seen ? "disconnected" : ""}`} /> {fr?.last_seen ? fmtAgo(fr.last_seen, now) : "never seen"}</td>
                   <td><code>{fr?.info.fw_version ?? "—"}</code></td>
                   <td>{s ? <span className={s.state === "succeeded" ? "ok-text" : s.state === "running" ? "" : "inline-error"}>
@@ -276,13 +381,24 @@ function FlashDevices({ library, devices, preselect, onPreselectUsed }:
                 </tr>
               );
             })}
+            {rows.length === 0 && <tr><td colSpan={9} className="muted center">No devices match the filters.</td></tr>}
           </tbody>
         </table>
       </div>
       <div className="row wrap flash-bar">
-        <button className={`btn ${confirm ? "danger" : "primary"}`} disabled={!fw || selected.size === 0} onClick={start}>
-          {confirm ? `Confirm: flash ${fw?.name} v${fw?.version} to ${selected.size} device(s)` : `Start OTA (${selected.size})`}
+        {mismatched.length > 0 && (
+          <span className="warn-text">
+            {mismatched.length} selected device(s) don't take {mismatched.length === 1 ? "this bundle" : "these bundles"} by type
+            ({mismatched.slice(0, 3).map((d) => `${d.label} (${d.device_type})`).join(", ")}{mismatched.length > 3 ? "…" : ""})
+            <label className="check inline-check"><input type="checkbox" checked={allowMismatch} onChange={(e) => setAllowMismatch(e.target.checked)} /> flash anyway</label>
+          </span>
+        )}
+        <button className={`btn ${confirm ? "danger" : "primary"}`} disabled={!ready || !fw || selected.size === 0 || (mismatched.length > 0 && !allowMismatch)} onClick={start}>
+          {confirm ? `Confirm: ${title} on ${selected.size} device(s)` : `Start OTA${steps.length > 1 ? ` (${steps.length} steps)` : ""} on ${selected.size} device(s)`}
         </button>
+        {!ready && <span className="muted small">Choose a bundle for every step</span>}
+        {confirm && hiddenSelected > 0 &&
+          <span className="warn-text">Includes {hiddenSelected} device(s) not shown by the current filters</span>}
         {confirm && <button className="btn ghost" onClick={() => setConfirm(false)}>Cancel</button>}
         {msg && <span className={msg.ok ? "ok-text" : "inline-error"}>{msg.text}</span>}
       </div>
@@ -319,7 +435,7 @@ function OtaActivity({ devices }: { devices: Device[] }) {
         return (
           <div key={b.batch_id} className="batch">
             <div className="row wrap">
-              <b>{b.target} v{b.version}</b>
+              <b>{b.title ?? `${b.target} v${b.version}`}</b>
               <span className={STATE_CLASS[b.state]}>{b.state}</span>
               <span className="muted small">{done}/{b.items.length} done · {b.concurrency} at a time · {fmtDateTime(b.started)} by {b.started_by}</span>
               {b.state === "running" && <button className="btn small danger" onClick={() => api.cancelBatch(b.batch_id)}>Cancel</button>}
@@ -327,13 +443,25 @@ function OtaActivity({ devices }: { devices: Device[] }) {
             <div className="batch-items">
               {b.items.map((i) => {
                 const s = ota[i.device_id];
-                const pct = i.state === "running" ? s?.progress ?? 0 : i.state === "succeeded" ? 100 : 0;
+                const n = b.steps?.length ?? 1;
+                const cur = i.step ?? 0;
+                const stepState = i.steps?.[cur]?.state;
+                const stepPct = stepState === "running" ? s?.progress ?? 0 : stepState === "succeeded" ? 100 : 0;
+                const pct = i.state === "succeeded" ? 100 : Math.round(((cur + stepPct / 100) / n) * 100);
+                const label = i.state === "running"
+                  ? (n > 1 ? `step ${cur + 1}/${n} ${stepState === "waiting" ? "waiting for device" : `${stepPct}%`}` : `${stepPct}%`)
+                  : i.state;
                 return (
                   <button key={i.device_id} className={`batch-item ${logDevice === i.device_id ? "active" : ""}`}
-                          onClick={() => setLogDevice(i.device_id)} title="Show log">
+                          onClick={() => setLogDevice(i.device_id)} title={i.error ?? "Show log"}>
                     <span className="batch-label">{i.label}</span>
                     <progress max={100} value={pct} />
-                    <span className={`small ${STATE_CLASS[i.state]}`} title={i.error}>{i.state}{i.state === "running" ? ` ${pct}%` : ""}</span>
+                    <span className={`small ${STATE_CLASS[i.state] ?? ""}`}>{label}</span>
+                    {n > 1 && (
+                      <span className="step-dots">
+                        {(i.steps ?? []).map((st, k) => <span key={k} className={`dot-step ${st.state}`} title={`Step ${k + 1}: ${b.steps?.[k]?.target} — ${st.state}`} />)}
+                      </span>
+                    )}
                   </button>
                 );
               })}
@@ -359,4 +487,10 @@ function OtaActivity({ devices }: { devices: Device[] }) {
       )}
     </section>
   );
+}
+
+/** Case-insensitive glob match ("esp07-*", "*printer*"). */
+function globMatch(text: string, pattern: string): boolean {
+  const re = new RegExp("^" + pattern.trim().toLowerCase().replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\?/g, ".") + "$");
+  return re.test(text.toLowerCase());
 }

@@ -245,6 +245,7 @@ _DEVICE_FIELDS = [
     ("mac",           "MAC:",                   "AA:BB:CC:DD:EE:FF"),
     ("uuid",          "UUID:",                  ""),
     ("group",         "Group:",                 "default"),
+    ("device_type",   "Device type (COM/Printer):", "COM"),
     ("shed",          "Shed name:",             ""),
     ("pump_id_1",     "Pump ID 1 (nozzle 1):",  ""),
     ("pump_id_2",     "Pump ID 2 (nozzle 2):",  ""),
@@ -291,6 +292,8 @@ class _AddDeviceDialog(simpledialog.Dialog):
 def _device_site_summary(d: dict) -> str:
     """'Shed YAKKALA · Pumps P01/P02 · Tatsuno · board V3 · SD 8 GB' (empty parts omitted)."""
     parts = []
+    if d.get("device_type"):
+        parts.append(d["device_type"])
     if d.get("shed"):
         parts.append(f"Shed {d['shed']}")
     pumps = "/".join(p for p in (d.get("pump_id_1"), d.get("pump_id_2")) if p)

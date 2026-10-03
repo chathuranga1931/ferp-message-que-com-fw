@@ -13,7 +13,7 @@ from ..models import AppConfig, Device, DeviceIn
 
 def _read_json(path: Path, default):
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        return json.loads(path.read_text(encoding="utf-8-sig"))   # tolerate a BOM (Notepad / PowerShell edits)
     except FileNotFoundError:
         return default
 

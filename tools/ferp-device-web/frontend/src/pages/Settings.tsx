@@ -110,6 +110,11 @@ export default function Settings({ catalog, onReloadCatalog }: { catalog: Catalo
           <label className="field wide"><span>Bundle folders to import from (one per line; empty = repo releases/)</span>
             <textarea rows={2} value={cfg.ota.bundle_dirs.join("\n")}
                       onChange={(e) => upd("ota", { bundle_dirs: e.target.value.split("\n").map((x) => x.trim()).filter(Boolean) })} /></label>
+          <label className="field wide"><span>Bundle targets per device type — one type per line, e.g. <code>Printer: *printer*, *prn*</code> (a type without patterns accepts any bundle)</span>
+            <textarea rows={3} value={Object.entries(cfg.ota.type_targets ?? {}).map(([t, p]) => `${t}: ${p.join(", ")}`).join("\n")}
+                      onChange={(e) => upd("ota", { type_targets: Object.fromEntries(e.target.value.split("\n")
+                        .map((l) => l.split(":")).filter((x) => x.length >= 2 && x[0].trim())
+                        .map(([t, ...rest]) => [t.trim(), rest.join(":").split(",").map((p) => p.trim()).filter(Boolean)])) })} /></label>
           <label className="field"><span>Default OTA chunk size</span>
             <select value={cfg.ota.chunk_size} onChange={(e) => upd("ota", { chunk_size: Number(e.target.value) })}>
               {[1024, 2048, 4096, 8192].map((c) => <option key={c} value={c}>{c}</option>)}
