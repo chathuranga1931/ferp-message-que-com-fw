@@ -20,7 +20,7 @@ function distinct(devices: Device[], k: keyof DeviceIn, extra: string[] = []): s
 }
 
 export default function Devices({ devices, onChanged, onLogs }:
-  { devices: Device[]; onChanged: () => void; onLogs: (shed: string, pump?: string) => void }) {
+  { devices: Device[]; onChanged: () => void; onLogs: (mac: string) => void }) {
   const [editing, setEditing] = useState<string | "new" | null>(null);
   const [form, setForm] = useState<DeviceIn>(BLANK);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
@@ -167,7 +167,7 @@ export default function Devices({ devices, onChanged, onLogs }:
                   <td className="muted">{d.group}</td>
                   <td><code>{topicId(d.uuid || d.mac)}</code></td>
                   <td className="row-actions">
-                    {d.shed && <button className="btn small ghost" onClick={() => onLogs(d.shed)} title="Open this shed in Cloud logs">Logs</button>}
+                    {topicId(d.mac) && <button className="btn small ghost" onClick={() => onLogs(topicId(d.mac))} title="UDP logs of this device (by MAC)">Logs</button>}
                     <button className="btn small" onClick={() => open(d)}>Edit</button>
                     <button className={`btn small ${confirmDelete === d.id ? "danger" : "ghost"}`} onClick={() => remove(d.id)}
                             onBlur={() => setConfirmDelete(null)}>{confirmDelete === d.id ? "Confirm delete" : "Delete"}</button>

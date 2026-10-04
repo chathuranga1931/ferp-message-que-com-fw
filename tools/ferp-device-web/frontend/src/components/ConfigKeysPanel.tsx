@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { api } from "../api";
 import { useLive } from "../store";
 import type { ConfigKeyDef, Device, Snapshot } from "../types";
+import { defName } from "../definitions";
 import { EMPTY, hex } from "../util";
 
 /** Normalise a value the way the device will store it, so edits compare correctly. */
@@ -185,6 +186,9 @@ export function ConfigKeysPanel({ device, keys }: { device: Device; keys: Config
                              onChange={(e) => setV(e.target.value)} />
                     )}
                     {bad && <div className="inline-error small">{bad}</div>}
+                    {k.name === "DISPLAY_TYPE" && shown !== "" && (
+                      <div className="muted small">{defName("display-type", shown.trim()) ?? "unknown display type"}</div>
+                    )}
                   </td>
                   {cmp && <td className={`mono ${sv !== undefined && sv !== cur?.value ? "diff-cell" : "muted"}`}>{sv ?? "—"}</td>}
                   <td className="row-actions">

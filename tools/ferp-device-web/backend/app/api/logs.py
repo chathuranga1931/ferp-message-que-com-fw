@@ -46,6 +46,24 @@ async def files(date: str, shed: str, fresh: bool = False, c: Container = Depend
     return await _run(c.logs.files, date, shed, fresh)
 
 
+@router.get("/logs/devices")
+async def mac_devices(fresh: bool = False, c: Container = Depends(container)):
+    """Device folders written by dump_logs.py."""
+    return await _run(c.logs.mac_devices, fresh)
+
+
+@router.get("/logs/device-files")
+async def mac_files(mac: str, fresh: bool = False, c: Container = Depends(container)):
+    return await _run(c.logs.mac_files, mac, fresh)
+
+
+@router.get("/logs/device-zip")
+async def mac_zip(mac: str, since: str | None = None, until: str | None = None, c: Container = Depends(container)):
+    name, tmp = await _run(c.logs.zip_mac, mac, since or None, until or None)
+    return FileResponse(tmp, media_type="application/zip", filename=name,
+                        background=BackgroundTask(lambda: tmp.unlink(missing_ok=True)))
+
+
 @router.get("/logs/read")
 async def read(path: str, offset: int | None = None, length: int = Query(262144, ge=1, le=2_000_000),
                tail: bool = False, c: Container = Depends(container)):

@@ -340,3 +340,14 @@ td > .type-badge:first-child { margin-left: 0; }
 .devices-table td:first-child, .fleet td:nth-child(3) { white-space: normal; min-width: 170px; max-width: 300px; }
 .devices-table td:nth-child(3) { white-space: normal; min-width: 140px; max-width: 240px; }
 .fleet td:nth-child(4) { white-space: normal; max-width: 220px; }
+
+/* ── logs by device / definitions ────────────────────────── */
+.grow { flex: 1; }
+.nowrap { white-space: nowrap; }
+.align-end { align-self: flex-end; margin-bottom: 2px; }
+.dev-cell { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 6px; min-width: 0; }
+.dev-cell .muted { flex-basis: 100%; overflow: hidden; text-overflow: ellipsis; }
+.device-list { max-height: 38vh; }
+.small-date { padding: 2px 6px; font-size: 12px; }
+.def-table td { white-space: normal; }
+.definitions { max-width: 1000px; }

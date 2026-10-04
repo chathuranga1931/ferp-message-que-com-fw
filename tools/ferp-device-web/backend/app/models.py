@@ -64,8 +64,11 @@ class LogsConfig(BaseModel):
     username:          str   = "ubuntu"
     key_path:          str   = ""      # private key file on this PC (must be readable by the service account)
     key_passphrase:    str   = ""
-    root:              str   = "logs"  # remote folder: <root>/<YYYY-MM-DD>/<SHED>/<SHED>-<PUMP>-<YYYYMMDD>-<HHMM>*.txt
-    local_root:        str   = ""      # used when source == "local"
+    # folders relative to the login's home (SSH) or to local_root (local):
+    root:              str   = "logs"      # log.py layout:        <root>/<YYYY-MM-DD>/<SHED>/<SHED>-<PUMP>-<YYYYMMDD>-<HHMM>*.txt
+    mac_root:          str   = "logs-mac"  # dump_logs.py layout: <mac_root>/<YYYY-MM-DD>/<mac>/<mac>-<YYYYMMDD>.txt
+    mac_scan_days:     int   = Field(31, ge=1, le=3650)  # "By device" looks at this many most recent day folders
+    local_root:        str   = ""          # base folder when source == "local"
     follow_interval_s: float = Field(1.0, ge=0.3, le=30)
 
 

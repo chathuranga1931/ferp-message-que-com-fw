@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "./api";
 import { ConsoleDock } from "./components/ConsoleDock";
 import { MqttControl } from "./components/MqttControl";
+import Definitions from "./pages/Definitions";
 import Devices from "./pages/Devices";
 import Fleet from "./pages/Fleet";
 import History from "./pages/History";
@@ -14,7 +15,7 @@ import { useLive } from "./store";
 import type { Catalog, Device } from "./types";
 import { API_VERSION } from "./version";
 
-type Page = "fleet" | "workspace" | "ota" | "logs" | "snapshots" | "history" | "devices" | "settings";
+type Page = "fleet" | "workspace" | "ota" | "logs" | "snapshots" | "history" | "devices" | "definitions" | "settings";
 const PAGES: { id: Page; label: string }[] = [
   { id: "fleet", label: "Fleet" },
   { id: "workspace", label: "Workspace" },
@@ -23,6 +24,7 @@ const PAGES: { id: Page; label: string }[] = [
   { id: "snapshots", label: "Snapshots" },
   { id: "history", label: "History" },
   { id: "devices", label: "Devices" },
+  { id: "definitions", label: "Definitions" },
   { id: "settings", label: "Settings" },
 ];
 const LS_KEY = "ferp.selectedDevice";
@@ -60,10 +62,11 @@ export default function App() {
   const openDevice = useCallback((id: string) => { setDeviceId(id); setPage("workspace"); }, []);
   const openOta = useCallback((ids: string[]) => { setOtaPreselect(ids); setPage("ota"); }, []);
   const clearPreselect = useCallback(() => setOtaPreselect([]), []);
-  const openLogs = useCallback((shed: string, pump?: string) => {
+  /** Cloud logs → "By device" view for this MAC (dump_logs.py folders). */
+  const openLogs = useCallback((mac: string) => {
     try {
-      const cur = JSON.parse(localStorage.getItem("ferp.logs.sel") ?? "{}");
-      localStorage.setItem("ferp.logs.sel", JSON.stringify({ date: cur.date ?? "", shed, pump: pump ?? "" }));
+      localStorage.setItem("ferp.logs.mode", "device");
+      localStorage.setItem("ferp.logs.mac", mac);
     } catch { /* storage unavailable */ }
     setPage("logs");
   }, []);
@@ -95,10 +98,11 @@ export default function App() {
           {page === "fleet" && <Fleet devices={devices} onOpen={openDevice} onOta={openOta} onLogs={openLogs} onDevicesChanged={reloadDevices} />}
           {page === "workspace" && <Workspace catalog={catalog} devices={devices} deviceId={deviceId} onSelect={setDeviceId} onOta={openOta} />}
           {page === "ota" && <Ota devices={devices} preselect={otaPreselect} onPreselectUsed={clearPreselect} />}
-          {page === "logs" && <Logs onOpenSettings={() => setPage("settings")} />}
+          {page === "logs" && <Logs devices={devices} onOpenSettings={() => setPage("settings")} />}
           {page === "snapshots" && <Snapshots catalog={catalog} devices={devices} />}
           {page === "history" && <History devices={devices} />}
           {page === "devices" && <Devices devices={devices} onChanged={reloadDevices} onLogs={openLogs} />}
+          {page === "definitions" && <Definitions />}
           {page === "settings" && <Settings catalog={catalog} onReloadCatalog={() => reloadCatalog(true)} />}
         </div>
       </main>

@@ -98,7 +98,10 @@ export const api = {
   auditHistory: (q: Record<string, string | number | undefined>) => req<AuditEntry[]>("GET", `/history/audit${qs(q)}`),
   exportUrl: (kind: "console" | "audit", q: Record<string, string | number | undefined>) => `/api/history/${kind}/export${qs(q)}`,
 
-  logsTest: () => req<{ ok: boolean; ms: number; dates: number; latest: string | null }>("POST", "/logs/test"),
+  logsTest: () => req<{ ok: boolean; ms: number; dates: number; latest: string | null; devices: number }>("POST", "/logs/test"),
+  logDevices: (fresh = false) => req<{ mac: string; last_date: string; days: number }[]>("GET", `/logs/devices${qs({ fresh: fresh ? "true" : undefined })}`),
+  logDeviceFiles: (mac: string, fresh = false) => req<LogFile[]>("GET", `/logs/device-files${qs({ mac, fresh: fresh ? "true" : undefined })}`),
+  logDeviceZipUrl: (mac: string, since?: string) => `/api/logs/device-zip${qs({ mac, since })}`,
   logDates: (fresh = false) => req<string[]>("GET", `/logs/dates${qs({ fresh: fresh ? "true" : undefined })}`),
   logSheds: (date: string, fresh = false) => req<string[]>("GET", `/logs/sheds${qs({ date, fresh: fresh ? "true" : undefined })}`),
   logFiles: (date: string, shed: string, fresh = false) =>

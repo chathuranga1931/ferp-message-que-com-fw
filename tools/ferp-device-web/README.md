@@ -58,7 +58,14 @@ New in Phase 2:
 
 New in Phase 4, replacing `tools/cloud-udp-monitor/runssh`:
 
-- **Cloud logs page.**
+- **Cloud logs → By device** (default view). Reads the `dump_logs.py` layout (`logs-mac/YYYY-MM-DD/<mac>/<mac>-YYYYMMDD.txt`, see `tools/cloud-udp-monitor/server-script/README.md`). It looks at the most recent 31 day folders by default (Settings → Cloud logs).
+  - Device folders are matched with the device list by MAC, so you see label, type and shed.
+  - Find a device with search (label / MAC / shed / pump) and the Type / Shed / Pump type / Board filters, then pick a day.
+  - Download a zip of all days, or from a chosen date.
+  - The **Logs** buttons on Fleet and Devices open the device's folder here.
+  - **Live view, like `tail -f`:** a file written to in the last 15 minutes opens in **LIVE** mode automatically. New lines appear about 1–2 s after `dump_logs.py` writes them. The status line shows "last line … ago · checked … ago". At midnight the view moves on to the device's next-day file.
+- **Definitions page.** Static reference tables, edited in `frontend/src/definitions.ts`; currently Display Type. The Workspace config table shows the display-type name next to `DISPLAY_TYPE`.
+- **Cloud logs page (by date & shed).**
   - Browse the log server by date → shed → pump → file; file names follow `SHED-PUMP-YYYYMMDD-HHMM*.txt`.
   - The viewer opens a file at its end. **Load earlier** pages backwards, **Follow live** works like `tail -f`, and there are a line filter, wrap and auto-scroll.
   - Download one file, or a **zip** of a shed or pump for a day.

@@ -76,7 +76,7 @@ function nested<V>(map: Record<string, Record<string, V>>, a: string, b: string,
 }
 
 /** Live log text (logs.data) goes straight to subscribers instead of the store. */
-type LogListener = (ev: { text?: string; size?: number; error?: string }) => void;
+type LogListener = (ev: { type: string; text?: string; size?: number; error?: string; path?: string; name?: string }) => void;
 const logListeners = new Map<string, LogListener>();
 export function onLogData(followId: string, fn: LogListener): () => void {
   logListeners.set(followId, fn);
@@ -86,7 +86,8 @@ export function onLogData(followId: string, fn: LogListener): () => void {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function handle(ev: any) {
   switch (ev.type) {
-    case "logs.data": case "logs.error": logListeners.get(ev.follow_id)?.(ev); break;
+    case "logs.data": case "logs.error": case "logs.tick": case "logs.switch":
+      logListeners.get(ev.follow_id)?.(ev); break;
     case "hello": {
       const ota: Record<string, OtaSession> = {};
       const otaLog: Record<string, OtaLogLine[]> = {};

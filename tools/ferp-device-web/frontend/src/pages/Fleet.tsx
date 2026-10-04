@@ -3,7 +3,7 @@ import { api } from "../api";
 import { DeviceFilters, matchesFilter, NO_FILTER, SelectionNote, type SiteFilter } from "../components/DeviceFilters";
 import { fleetKey, seedFleet, useLive } from "../store";
 import type { Device, FleetRow } from "../types";
-import { fmtAgo, fmtDateTime, useNow } from "../util";
+import { fmtAgo, fmtDateTime, topicId, useNow } from "../util";
 
 type Status = "online" | "offline" | "never";
 
@@ -13,7 +13,7 @@ const STATUS_LABEL: Record<Status, string> = { online: "Online", offline: "Offli
 
 interface Props {
   devices: Device[]; onOpen: (id: string) => void; onOta: (ids: string[]) => void;
-  onLogs: (shed: string, pump?: string) => void; onDevicesChanged: () => void;
+  onLogs: (mac: string) => void; onDevicesChanged: () => void;
 }
 
 export default function Fleet({ devices, onOpen, onOta, onLogs, onDevicesChanged }: Props) {
@@ -148,7 +148,8 @@ export default function Fleet({ devices, onOpen, onOta, onLogs, onDevicesChanged
                         {r.probe.ok ? `✓ ${r.probe.rtt_ms} ms` : "✗ no reply"} <span className="muted small">{fmtAgo(r.probe.ts, now)}</span>
                       </span>) : <span className="muted">—</span>}</td>
                     <td className="row-actions">
-                      {r.registered && r.shed && <button className="btn small ghost" onClick={() => onLogs(r.shed!)} title="Cloud logs for this shed">Logs</button>}
+                      {(() => { const mac = topicId(devices.find((d) => d.id === r.device_id)?.mac ?? "");
+                        return mac ? <button className="btn small ghost" onClick={() => onLogs(mac)} title="UDP logs of this device (by MAC)">Logs</button> : null; })()}
                       {r.registered
                         ? <button className="btn small" onClick={() => onOpen(r.device_id!)}>Open</button>
                         : <>

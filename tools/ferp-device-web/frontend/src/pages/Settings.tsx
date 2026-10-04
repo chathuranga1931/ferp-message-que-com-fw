@@ -176,12 +176,22 @@ export default function Settings({ catalog, onReloadCatalog }: { catalog: Catalo
               <label className="field"><span>Key passphrase (if any)</span>
                 <input type="password" autoComplete="new-password" value={cfg.logs.key_passphrase}
                        onChange={(e) => upd("logs", { key_passphrase: e.target.value })} /></label>
-              <label className="field"><span>Logs folder on the server</span>
+              <label className="field"><span>log.py folder (date / shed layout)</span>
                 <input value={cfg.logs.root} onChange={(e) => upd("logs", { root: e.target.value })} /></label>
+              <label className="field"><span>dump_logs.py folder (date / MAC layout)</span>
+                <input value={cfg.logs.mac_root} onChange={(e) => upd("logs", { mac_root: e.target.value })} /></label>
+              <label className="field"><span>"By device" looks back (days)</span>
+                <input type="number" min={1} value={cfg.logs.mac_scan_days} onChange={(e) => upd("logs", { mac_scan_days: num(e.target.value) })} /></label>
             </>
           ) : (
-            <label className="field wide"><span>Logs folder (contains YYYY-MM-DD folders)</span>
-              <input value={cfg.logs.local_root} onChange={(e) => upd("logs", { local_root: e.target.value })} /></label>
+            <>
+              <label className="field wide"><span>Base folder on this PC (contains the two folders below)</span>
+                <input value={cfg.logs.local_root} onChange={(e) => upd("logs", { local_root: e.target.value })} /></label>
+              <label className="field"><span>Date / shed folder</span>
+                <input value={cfg.logs.root} onChange={(e) => upd("logs", { root: e.target.value })} /></label>
+              <label className="field"><span>Per-device folder</span>
+                <input value={cfg.logs.mac_root} onChange={(e) => upd("logs", { mac_root: e.target.value })} /></label>
+            </>
           )}
           <label className="field"><span>Live follow refresh (s)</span>
             <input type="number" step="0.5" min={0.3} value={cfg.logs.follow_interval_s}
@@ -191,7 +201,7 @@ export default function Settings({ catalog, onReloadCatalog }: { catalog: Catalo
           <button className="btn small" disabled={dirty} title={dirty ? "Save settings first" : ""}
                   onClick={async () => {
                     setLogTest({ ok: true, text: "Connecting…" });
-                    try { const r = await api.logsTest(); setLogTest({ ok: true, text: `Connected in ${r.ms} ms — ${r.dates} day folder(s), latest ${r.latest ?? "—"}` }); }
+                    try { const r = await api.logsTest(); setLogTest({ ok: true, text: `Connected in ${r.ms} ms — ${r.devices} device folder(s); ${r.dates} day folder(s), latest ${r.latest ?? "—"}` }); }
                     catch (e) { setLogTest({ ok: false, text: (e as Error).message }); }
                   }}>Test connection</button>
           {dirty && <span className="muted small">Save settings first</span>}

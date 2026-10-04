@@ -189,5 +189,6 @@ def make_source(cfg, data_dir: Path) -> Optional[object]:
         if not cfg.local_root:
             raise ConnectionError("No local logs folder configured (Settings → Cloud logs)")
         return LocalLogSource(Path(cfg.local_root))
-    return SshLogSource(cfg.host, cfg.port, cfg.username, cfg.key_path, cfg.key_passphrase, cfg.root,
+    # rooted at the login's home; the service adds cfg.root / cfg.mac_root per layout
+    return SshLogSource(cfg.host, cfg.port, cfg.username, cfg.key_path, cfg.key_passphrase, ".",
                         data_dir / "ssh_known_hosts")

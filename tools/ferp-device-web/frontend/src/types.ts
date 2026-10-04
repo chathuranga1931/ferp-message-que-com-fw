@@ -20,11 +20,11 @@ export interface AppConfig {
   history: { persist_console: boolean; console_retention_days: number; audit_retention_days: number };
   logs: {
     source: "ssh" | "local"; host: string; port: number; username: string; key_path: string; key_passphrase: string;
-    root: string; local_root: string; follow_interval_s: number;
+    root: string; mac_root: string; mac_scan_days: number; local_root: string; follow_interval_s: number;
   };
 }
 
-export interface LogFile { name: string; path: string; size: number; mtime: number; pump: string | null; time: string | null }
+export interface LogFile { name: string; path: string; size: number; mtime: number; pump: string | null; time: string | null; date?: string | null }
 export interface LogChunk { path: string; size: number; offset: number; end: number; text: string }
 
 export interface DeviceIn {
