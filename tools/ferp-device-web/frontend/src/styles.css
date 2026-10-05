@@ -20,7 +20,7 @@
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --bg: #12161b;
     --surface: #1a2027;
     --surface-2: #151a20;
@@ -40,6 +40,26 @@
     color-scheme: dark;
   }
 }
+
+:root[data-theme="dark"] {
+    --bg: #12161b;
+    --surface: #1a2027;
+    --surface-2: #151a20;
+    --border: #2b333d;
+    --text: #e4e9ef;
+    --muted: #8d98a6;
+    --accent: #3aa0cc;
+    --accent-text: #0b1218;
+    --accent-soft: #17303d;
+    --ok: #4cc27f;
+    --warn: #e0a040;
+    --err: #ef6a5f;
+    --cmd: #d8a93a;
+    --resp: #4cc27f;
+    --evt: #63a4f3;
+    --ota: #ab88ee;
+    color-scheme: dark;
+  }
 
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
@@ -387,3 +407,13 @@ td > .type-badge:first-child { margin-left: 0; }
 .tile-kv dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
 .tile-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: auto; padding-top: 4px; }
 .type-seg { margin-right: 6px; }
+
+/* ── appearance (Settings) ───────────────────────────────── */
+.theme-choice { display: flex; flex-wrap: wrap; gap: 8px; }
+.theme-option { display: flex; align-items: center; gap: 8px; border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 8px 12px; cursor: pointer; background: var(--surface-2); }
+.theme-option.active { border-color: var(--accent); background: var(--accent-soft); }
+.theme-swatch { width: 28px; height: 18px; border-radius: 4px; border: 1px solid #8884; }
+.theme-swatch.light { background: linear-gradient(90deg, #f3f5f7 50%, #146c94 50%); }
+.theme-swatch.dark { background: linear-gradient(90deg, #12161b 50%, #3aa0cc 50%); }
+.theme-swatch.system { background: linear-gradient(90deg, #f3f5f7 50%, #12161b 50%); }

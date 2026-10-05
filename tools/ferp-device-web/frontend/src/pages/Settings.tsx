@@ -2,7 +2,14 @@ import { useEffect, useState } from "react";
 import { api } from "../api";
 import type { AppConfig, Catalog } from "../types";
 import { fmtDateTime } from "../util";
+import { useTheme, type ThemePref } from "../theme";
 import { API_VERSION } from "../version";
+
+const THEMES: { value: ThemePref; label: string; hint: string }[] = [
+  { value: "system", label: "System", hint: "follow this computer's setting" },
+  { value: "light", label: "Light", hint: "" },
+  { value: "dark", label: "Dark", hint: "" },
+];
 
 export default function Settings({ catalog, onReloadCatalog }: { catalog: Catalog | null; onReloadCatalog: () => void }) {
   const [saved, setSaved] = useState<AppConfig | null>(null);
@@ -10,6 +17,7 @@ export default function Settings({ catalog, onReloadCatalog }: { catalog: Catalo
   const [me, setMe] = useState<{ user: string; auth_mode: string } | null>(null);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [newBroker, setNewBroker] = useState("");
+  const [theme, setTheme] = useTheme();
   const [health, setHealth] = useState<{ api_version: number; started: number } | null>(null);
   const [restart, setRestart] = useState<"idle" | "confirm" | "waiting" | "done" | "failed">("idle");
   const [logTest, setLogTest] = useState<{ ok: boolean; text: string } | null>(null);
@@ -59,6 +67,22 @@ export default function Settings({ catalog, onReloadCatalog }: { catalog: Catalo
 
   return (
     <div className="stack settings">
+      <section className="card">
+        <div className="card-head">
+          <h3>Appearance</h3>
+          <span className="muted small">Saved in this browser only, applies immediately</span>
+        </div>
+        <div className="theme-choice" role="radiogroup" aria-label="Theme">
+          {THEMES.map((t) => (
+            <label key={t.value} className={`theme-option ${theme === t.value ? "active" : ""}`}>
+              <input type="radio" name="theme" checked={theme === t.value} onChange={() => setTheme(t.value)} />
+              <span className={`theme-swatch ${t.value}`} />
+              <span>{t.label}{t.hint && <span className="muted small"> — {t.hint}</span>}</span>
+            </label>
+          ))}
+        </div>
+      </section>
+
       <section className="card">
         <div className="card-head">
           <h3>MQTT broker</h3>
