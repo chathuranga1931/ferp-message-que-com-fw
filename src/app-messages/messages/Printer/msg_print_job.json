@@ -1,0 +1,96 @@
+{
+  "msg_id": "0x0060",
+  "direction": "cmd",
+  "fields": [
+    {
+      "name": "kind",
+      "label": "Kind",
+      "type": "enum",
+      "options": [
+        {
+          "label": "RECEIPT",
+          "value": 0
+        },
+        {
+          "label": "TOTALIZER",
+          "value": 1
+        },
+        {
+          "label": "SAMPLE",
+          "value": 2
+        },
+        {
+          "label": "INFO",
+          "value": 3
+        }
+      ],
+      "default": 2
+    },
+    {
+      "name": "job_id",
+      "label": "Job ID",
+      "type": "uint32",
+      "default": 1
+    },
+    {
+      "name": "time",
+      "label": "Fueled time (ISO)",
+      "type": "string",
+      "default": "2025-01-01T01:23:45"
+    },
+    {
+      "name": "print_time",
+      "label": "Bill issued",
+      "type": "string",
+      "default": ""
+    },
+    {
+      "name": "print_note",
+      "label": "Note",
+      "type": "string",
+      "default": "Original"
+    },
+    {
+      "name": "nozzle_id",
+      "label": "Pump / nozzle ID",
+      "type": "string",
+      "default": "P01"
+    },
+    {
+      "name": "fuel_type",
+      "label": "Fuel type",
+      "type": "string",
+      "default": "Petrol 92"
+    },
+    {
+      "name": "volume_l",
+      "label": "Volume (L)",
+      "type": "float",
+      "default": 1.0
+    },
+    {
+      "name": "unit_price",
+      "label": "Unit price",
+      "type": "float",
+      "default": 300.0
+    },
+    {
+      "name": "total_price",
+      "label": "Total",
+      "type": "float",
+      "default": 300.0
+    },
+    {
+      "name": "event_id",
+      "label": "Bill number (empty = counter)",
+      "type": "string",
+      "default": ""
+    },
+    {
+      "name": "totalizer",
+      "label": "Totalizer reading",
+      "type": "string",
+      "default": ""
+    }
+  ]
+}

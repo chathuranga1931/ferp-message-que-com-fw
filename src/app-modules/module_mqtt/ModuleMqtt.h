@@ -64,6 +64,23 @@ typedef struct {
 } mqtt_ota_target_t;
 
 // ---------------------------------------------------------------------------
+// Product-specific outbound message entry
+//
+// Extra HSYS messages (beyond the built-in config / OTA / fuel set) that
+// ModuleMqtt subscribes to and forwards to the broker.  Supplied by app.cpp
+// via set_outbound_msgs().  is_evt = false -> resp topic, and only when the
+// message is a DIRECT reply addressed to ModuleMqtt; is_evt = true -> evt topic.
+// ---------------------------------------------------------------------------
+
+typedef struct {
+    hsys_msg_id_t msg_id;
+    bool          is_evt;
+} mqtt_outbound_msg_t;
+
+// Extra (non-HSYS) topic subscriptions requested at runtime via MsgMqttSubscribe.
+#define MODULE_MQTT_EXT_SUB_MAX   4
+
+// ---------------------------------------------------------------------------
 // ModuleMqtt
 // ---------------------------------------------------------------------------
 
@@ -77,6 +94,17 @@ public:
     /** Supply the OTA target name → index mapping.  Call from app_init()
      *  before hsys_module_init().  The array must have static lifetime. */
     void set_ota_targets(const mqtt_ota_target_t *table, uint8_t count);
+
+    /** Device type segment of every topic (ferp/<dev_type>/...).  Default
+     *  "ferp-com".  Call from app_init() before the framework starts. */
+    void set_dev_type(const char *dev_type) { if (dev_type && dev_type[0]) _dev_type = dev_type; }
+
+    /** Product-specific messages to forward to the broker (static lifetime). */
+    void set_outbound_msgs(const mqtt_outbound_msg_t *table, uint8_t count)
+    {
+        _outbound_table = table;
+        _outbound_count = count;
+    }
 
 protected:
     void init()                                  override;
@@ -196,6 +224,26 @@ private:
     // ── OTA target name table (supplied by app.cpp) ───────────────────────────
     const mqtt_ota_target_t *_ota_name_table      = nullptr;
     uint8_t                  _ota_name_table_count = 0;
+
+    // ── Product configuration (supplied by app.cpp) ───────────────────────────
+    const char                *_dev_type       = "ferp-com";
+    const mqtt_outbound_msg_t *_outbound_table = nullptr;
+    uint8_t                    _outbound_count = 0;
+
+    // ── Extra topic subscriptions (MsgMqttSubscribe) ─────────────────────────
+    // Written on the module task, read on the PAL event task -> _ext_lock.
+    typedef struct {
+        char             topic[MODULE_MQTT_TOPIC_MAX];
+        hsys_module_id_t owner;
+        uint8_t          qos;
+        bool             used;
+    } ext_sub_t;
+    ext_sub_t           _ext_subs[MODULE_MQTT_EXT_SUB_MAX] = {};
+    hsys_mutex_handle_t _ext_lock = nullptr;
+
+    void _on_ext_subscribe(const hsys_msg_t &msg);
+    bool _route_ext_data(const pal_mqtt_message_t *m);
+    const mqtt_outbound_msg_t *_find_outbound(hsys_msg_id_t id) const;
 
     uint8_t _resolve_ota_target(const char *name) const;
 

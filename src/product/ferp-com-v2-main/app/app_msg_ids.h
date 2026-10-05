@@ -71,6 +71,8 @@ typedef enum : uint16_t
     MSG_ID_OTA_EVENT            = 0x0039,   ///< OtaModule -> all:     session lifecycle events
     MSG_ID_OTA_PROGRESS         = 0x003A,   ///< Source -> all:        write progress update
     MSG_ID_MQTT_STATUS          = 0x003B,   ///< ModuleMqtt -> all: MQTT broker connection state change
+    MSG_ID_MQTT_SUBSCRIBE       = 0x003C,   ///< Any -> ModuleMqtt: (un)subscribe an extra raw topic (DIRECT)
+    MSG_ID_MQTT_EXT_DATA        = 0x003D,   ///< ModuleMqtt -> topic owner: data on an extra topic (DIRECT)
 
     // ------------------------------------------------------------------
     // Device info  (0x0040 – 0x004F)

@@ -249,6 +249,7 @@ void ModuleHttp::_execute()
     if (_method == PAL_HTTP_METHOD_GET || _method == PAL_HTTP_METHOD_HEAD) {
         rc = pal_http_client_get(handle, &resp);
     } else {
+        pal_http_client_set_body_method(handle, _method);   // POST / PUT / PATCH / DELETE
         rc = pal_http_client_post(handle,
                                    (const char *)_body_buf, _body_len,
                                    &resp);

@@ -3,9 +3,10 @@ import { api } from "../api";
 import { CommandPanel } from "../components/CommandPanel";
 import { ConfigKeysPanel } from "../components/ConfigKeysPanel";
 import { DeviceInfoBar } from "../components/DeviceInfoBar";
+import { PrinterPanel } from "../components/PrinterPanel";
 import { seedDevice } from "../store";
 import type { Catalog, Device } from "../types";
-import { topicId } from "../util";
+import { keysForType, topicId } from "../util";
 
 interface Props {
   catalog: Catalog | null;
@@ -53,10 +54,13 @@ export default function Workspace({ catalog, devices, deviceId, onSelect: setDev
           <DeviceInfoBar device={device} keys={catalog.devinfo_keys} />
           <div className="ws-grid">
             <div className="ws-col">
+              {(device.device_type ?? "").toLowerCase() === "printer" && (
+                <PrinterPanel device={device} keys={catalog.config_keys} />
+              )}
               <CommandPanel device={device} catalog={catalog} />
             </div>
             <div className="ws-col">
-              <ConfigKeysPanel device={device} keys={catalog.config_keys} />
+              <ConfigKeysPanel device={device} keys={keysForType(catalog.config_keys, device.device_type)} />
             </div>
           </div>
         </>

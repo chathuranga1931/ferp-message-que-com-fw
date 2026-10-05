@@ -27,6 +27,8 @@
 #include "msg_dev_info_value.h"
 #include "msg_pool_json.h"          // MsgPoolJson (0x0208) — pool snapshot broadcast
 #include "msg_file_list_spiffs.h"    // MsgFileListSpiffs (0x020A) — SPIFFS listing broadcast
+#include "msg_mqtt_subscribe.h"      // MsgMqttSubscribe — extra topic subscription request
+#include "msg_mqtt_ext_data.h"       // MsgMqttExtData   — raw data for an extra topic
 
 // OTA source messages
 #include "msg_ota_start_request.h"
@@ -127,6 +129,15 @@ void ModuleMqtt::init()
     subscribe(MsgDevInfoValue::ID);
     subscribe(MsgPoolJson::ID);      // NOTIFICATION → pool snapshot response
     subscribe(MsgFileListSpiffs::ID); // NOTIFICATION → SPIFFS file listing response
+
+    // Extra topic subscriptions (DIRECT from any module)
+    subscribe(MsgMqttSubscribe::ID);
+    _ext_lock = hsys_mutex_create();
+
+    // Product-specific outbound messages
+    for (uint8_t i = 0; i < _outbound_count; i++) {
+        subscribe(_outbound_table[i].msg_id);
+    }
 
     // OTA write decoupling — see ModuleMqtt.h for rationale.
     _ota_io_mutex = hsys_mutex_create();
@@ -361,9 +372,103 @@ void ModuleMqtt::on_msg_received(const hsys_msg_t &msg)
             }
             break;
 
-        default:
+        case MsgMqttSubscribe::ID:
+            _on_ext_subscribe(msg);
             break;
+
+        default: {
+            const mqtt_outbound_msg_t *ob = _find_outbound(msg.msg_id);
+            if (ob && _state == STATE_CONNECTED) {
+                if (ob->is_evt) {
+                    _on_outbound_msg(msg, true /*evt*/);
+                } else if (msg.receiver_id == id()) {
+                    _on_outbound_msg(msg, false /*resp*/);
+                }
+            }
+            break;
+        }
     }
+}
+
+// ---------------------------------------------------------------------------
+// Product-specific outbound messages / extra topic subscriptions
+// ---------------------------------------------------------------------------
+
+const mqtt_outbound_msg_t *ModuleMqtt::_find_outbound(hsys_msg_id_t msg_id) const
+{
+    for (uint8_t i = 0; i < _outbound_count; i++) {
+        if (_outbound_table[i].msg_id == msg_id) return &_outbound_table[i];
+    }
+    return nullptr;
+}
+
+void ModuleMqtt::_on_ext_subscribe(const hsys_msg_t &msg)
+{
+    auto p = MsgMqttSubscribe::deserialize(msg);
+    if (p.topic[0] == '\0') return;
+    uint8_t qos = p.qos > 1 ? 1 : p.qos;
+
+    hsys_mutex_lock(_ext_lock);
+    int slot = -1, free_slot = -1;
+    for (int i = 0; i < MODULE_MQTT_EXT_SUB_MAX; i++) {
+        if (_ext_subs[i].used && strcmp(_ext_subs[i].topic, p.topic) == 0) { slot = i; break; }
+        if (!_ext_subs[i].used && free_slot < 0) free_slot = i;
+    }
+
+    if (p.unsubscribe) {
+        if (slot >= 0) {
+            _ext_subs[slot].used = false;
+            if (_state == STATE_CONNECTED && _client)
+                pal_mqtt_client_unsubscribe(_client, p.topic);
+            LOG_MSG_INFO(MQTT_LOG, "extra topic unsubscribed: %s", p.topic);
+        }
+        hsys_mutex_unlock(_ext_lock);
+        return;
+    }
+
+    if (slot < 0) slot = free_slot;
+    if (slot < 0) {
+        hsys_mutex_unlock(_ext_lock);
+        LOG_MSG_ERROR(MQTT_LOG, "extra topic table full — '%s' not subscribed", p.topic);
+        return;
+    }
+    ext_sub_t &e = _ext_subs[slot];
+    strncpy(e.topic, p.topic, sizeof(e.topic) - 1);
+    e.topic[sizeof(e.topic) - 1] = '\0';
+    e.owner = msg.sender_id;
+    e.qos   = qos;
+    e.used  = true;
+    hsys_mutex_unlock(_ext_lock);
+
+    if (_state == STATE_CONNECTED && _client) {
+        pal_mqtt_client_subscribe(_client, e.topic, (pal_mqtt_qos_t)qos);
+    }
+    LOG_MSG_INFO(MQTT_LOG, "extra topic registered: %s (owner %u)%s", e.topic,
+                 (unsigned)e.owner, _state == STATE_CONNECTED ? "" : " — subscribes on connect");
+}
+
+/** Called on the PAL event task.  Returns true when the topic was an extra one. */
+bool ModuleMqtt::_route_ext_data(const pal_mqtt_message_t *m)
+{
+    if (!_ext_lock) return false;
+    hsys_module_id_t owner = HSYS_MODULE_ID_INVALID;
+    hsys_mutex_lock(_ext_lock);
+    for (int i = 0; i < MODULE_MQTT_EXT_SUB_MAX; i++) {
+        const ext_sub_t &e = _ext_subs[i];
+        if (e.used && m->topic_len == strlen(e.topic) &&
+            strncmp(m->topic, e.topic, m->topic_len) == 0) {
+            owner = e.owner;
+            break;
+        }
+    }
+    hsys_mutex_unlock(_ext_lock);
+    if (owner == HSYS_MODULE_ID_INVALID) return false;
+
+    hsys_msg_t *out = MsgMqttExtData::create(id(), m->topic, m->topic_len,
+                                             (const char *)m->data, m->data_len);
+    if (out) send(out, owner);
+    LOG_MSG_INFO(MQTT_LOG, "extra topic data (%u B) → module %u", (unsigned)m->data_len, (unsigned)owner);
+    return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -404,7 +509,7 @@ void ModuleMqtt::_on_config_mqtt(const hsys_msg_t &msg)
     // hw_address is populated by ModuleDeviceInfo::init() from eFuse before any
     // module runs, so it is always valid here.
     const app_device_info_t *dev_info = app_device_info_get();
-    _build_topics("ferp-com", dev_info->device_group, dev_info->hw_address);
+    _build_topics(_dev_type, dev_info->device_group, dev_info->hw_address);
 
     // Use hw_address as MQTT client ID (stable across reboots, unique per device)
     strncpy(cfg.client_id, dev_info->hw_address, sizeof(cfg.client_id) - 1);
@@ -492,6 +597,15 @@ void ModuleMqtt::_on_pal_connected()
         LOG_MSG_INFO(MQTT_LOG, "uuid ota/data topic: %s", _uuid_ota_data_topic);
     }
 
+    // Re-subscribe extra topics registered via MsgMqttSubscribe
+    hsys_mutex_lock(_ext_lock);
+    for (int i = 0; i < MODULE_MQTT_EXT_SUB_MAX; i++) {
+        if (!_ext_subs[i].used) continue;
+        pal_mqtt_client_subscribe(_client, _ext_subs[i].topic, (pal_mqtt_qos_t)_ext_subs[i].qos);
+        LOG_MSG_INFO(MQTT_LOG, "extra topic:        %s", _ext_subs[i].topic);
+    }
+    hsys_mutex_unlock(_ext_lock);
+
     // Default response topics to MAC-based until a cmd overrides them
     _active_resp_topic     = _resp_topic;
     _active_ota_resp_topic = _ota_resp_topic;
@@ -535,6 +649,10 @@ void ModuleMqtt::_on_pal_disconnected()
 void ModuleMqtt::_on_pal_data(const pal_mqtt_message_t *m)
 {
     if (!m || !m->data || m->data_len == 0) return;
+
+    // Extra topics (MsgMqttSubscribe) carry opaque payloads for their owner —
+    // no envelope, no command auth.
+    if (_route_ext_data(m)) return;
 
     // Route OTA topics before JSON envelope parsing
     if (m->topic_len == strlen(_ota_ctrl_topic) &&
@@ -697,15 +815,15 @@ void ModuleMqtt::_build_topics(const char *dev_type, const char *group,
 void ModuleMqtt::_build_uuid_topics(const char *group, const char *uuid_topic_id)
 {
     snprintf(_uuid_cmd_topic,      sizeof(_uuid_cmd_topic),
-             "ferp/ferp-com/%s/%s/cmd",      group, uuid_topic_id);
+             "ferp/%s/%s/%s/cmd", _dev_type, group, uuid_topic_id);
     snprintf(_uuid_resp_topic,     sizeof(_uuid_resp_topic),
-             "ferp/ferp-com/%s/%s/resp",     group, uuid_topic_id);
+             "ferp/%s/%s/%s/resp", _dev_type, group, uuid_topic_id);
     snprintf(_uuid_ota_ctrl_topic, sizeof(_uuid_ota_ctrl_topic),
-             "ferp/ferp-com/%s/%s/ota/ctrl", group, uuid_topic_id);
+             "ferp/%s/%s/%s/ota/ctrl", _dev_type, group, uuid_topic_id);
     snprintf(_uuid_ota_data_topic, sizeof(_uuid_ota_data_topic),
-             "ferp/ferp-com/%s/%s/ota/data", group, uuid_topic_id);
+             "ferp/%s/%s/%s/ota/data", _dev_type, group, uuid_topic_id);
     snprintf(_uuid_ota_resp_topic, sizeof(_uuid_ota_resp_topic),
-             "ferp/ferp-com/%s/%s/ota/resp", group, uuid_topic_id);
+             "ferp/%s/%s/%s/ota/resp", _dev_type, group, uuid_topic_id);
 }
 
 // ---------------------------------------------------------------------------

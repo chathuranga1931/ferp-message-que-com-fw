@@ -43,6 +43,7 @@ export interface MessageDef { name: string; msg_id: number; direction: "cmd" | "
 export interface ConfigKeyDef {
   key: number; name: string; type_id: number; type: string; group: string; label: string; description: string;
   min?: number | null; max?: number | null; max_len?: number | null;
+  device_types?: string[];   // empty / absent = every device type
 }
 export interface DevInfoKeyDef { key: number; label: string; field: string }
 export interface Catalog {

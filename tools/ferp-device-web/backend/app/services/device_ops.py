@@ -50,7 +50,7 @@ class DeviceOps:
     def base(self, dev: Device) -> str:
         if not dev.mqtt_id:
             raise ValueError(f"Device '{dev.label}' has neither UUID nor MAC")
-        return topics.device_base(self._hub.dev_type, dev.group or "default", dev.mqtt_id)
+        return topics.device_base(self._hub.dev_type_for(dev.device_type), dev.group or "default", dev.mqtt_id)
 
     def _device_ids_for(self, topic_id: str) -> list[str]:
         return [d.id for d in self._repo.list() if d.mqtt_id and topics.topic_id(d.mqtt_id) == topic_id]
@@ -96,6 +96,10 @@ class DeviceOps:
 
     def send(self, dev: Device, msg: str, data: dict) -> int:
         return self._hub.publish_cmd(self.base(dev), msg, data)
+
+    def request(self, dev: Device, msg: str, data: dict, expect: str, timeout: float) -> dict:
+        """Send *msg* and return the payload of the device's *expect* reply."""
+        return self._hub.request(self.base(dev), msg, data, expect_msg=expect, timeout=timeout)
 
     def read_config(self, dev: Device, key: int) -> dict:
         resp = self._hub.request(self.base(dev), "MsgConfigGetKey", {"key": key},
@@ -165,7 +169,8 @@ class DeviceOps:
     # ── jobs ──────────────────────────────────────────────────────────────────
 
     def start_read_config(self, dev: Device, keys: Optional[list[int]]) -> str:
-        keys = keys or [k.key_id for k in self._catalog.config_keys]
+        # "read all" = every key that exists on this device type
+        keys = keys or [k.key_id for k in self._catalog.config_keys if k.applies_to(dev.device_type)]
         return self._start_job(dev, "config.read", keys, lambda k: self.read_config(dev, k))
 
     def start_write_config(self, dev: Device, values: list[tuple[int, str]], user: str = "system") -> str:

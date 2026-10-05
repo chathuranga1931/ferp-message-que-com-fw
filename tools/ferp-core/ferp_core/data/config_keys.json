@@ -1,5 +1,5 @@
 {
-  "_comment": "Device configuration key definitions. Add/remove keys here without touching any Python code.",
+  "_comment": "Device configuration key definitions. Add/remove keys here without touching any Python code. Optional \"device_types\" (on a group or a key) limits it to those device types (COM, Printer); absent = every type.",
   "groups": [
     {
       "group": "WiFi",
@@ -10,6 +10,7 @@
     },
     {
       "group": "Cloud",
+      "device_types": ["COM"],
       "keys": [
         { "key": "0x2001", "name": "CLOUD_URL",           "type": "STRING",  "label": "Cloud URL",      "description": "Cloud server base URL" },
         { "key": "0x2002", "name": "CLOUD_SECRET",        "type": "STRING",  "label": "Secret",         "description": "Cloud authentication secret" },
@@ -35,6 +36,7 @@
     },
     {
       "group": "Hardware",
+      "device_types": ["COM"],
       "keys": [
         { "key": "0x6001", "name": "DISPLAY_TYPE",        "type": "UINT32",  "label": "Display Type",   "description": "Display hardware type identifier" },
         { "key": "0x6002", "name": "STABILIZE_DELAY_MS",  "type": "UINT32",  "label": "Stabilize Delay (ms)","description": "Nozzle stabilize delay in ms" },
@@ -47,11 +49,47 @@
       ]
     },
     {
-      "group": "Printer",
+      "group": "Printer client",
+      "device_types": ["COM"],
       "keys": [
         { "key": "0x7001", "name": "PRINTER_URL",         "type": "STRING",  "label": "Printer URL",    "description": "Printer service URL" },
         { "key": "0x7002", "name": "PRINTER_COPY_COUNT",  "type": "UINT32",  "label": "Copy Count",     "description": "Number of receipt copies" },
         { "key": "0x7003", "name": "PRINT_DELAY_MS",      "type": "UINT32",  "label": "Print Delay (ms)","description": "Delay before printing in ms" }
+      ]
+    },
+    {
+      "group": "Receipt",
+      "device_types": ["Printer"],
+      "keys": [
+        { "key": "0x7101", "name": "PRN_NAME_L1",         "type": "STRING",  "label": "Name line 1",    "description": "Header line 1 (double height)", "max_len": 63 },
+        { "key": "0x7102", "name": "PRN_NAME_L2",         "type": "STRING",  "label": "Name line 2",    "description": "Header line 2", "max_len": 63 },
+        { "key": "0x7104", "name": "PRN_ADD_L1",          "type": "STRING",  "label": "Address line 1", "description": "Address line 1", "max_len": 63 },
+        { "key": "0x7105", "name": "PRN_ADD_L2",          "type": "STRING",  "label": "Address line 2", "description": "Address line 2", "max_len": 63 },
+        { "key": "0x7107", "name": "PRN_TELE",            "type": "STRING",  "label": "Telephone",      "description": "Telephone / fax line", "max_len": 63 },
+        { "key": "0x7108", "name": "PRN_THANK_L1",        "type": "STRING",  "label": "Thank-you 1",    "description": "Footer message line 1 (all themes)", "max_len": 63 },
+        { "key": "0x7109", "name": "PRN_THANK_L2",        "type": "STRING",  "label": "Thank-you 2",    "description": "Footer message line 2 (all themes)", "max_len": 63 },
+        { "key": "0x710A", "name": "PRN_THANK_L3",        "type": "STRING",  "label": "Thank-you 3",    "description": "Footer message line 3 (theme 3 only)", "max_len": 63 },
+        { "key": "0x710B", "name": "PRN_THANK_L4",        "type": "STRING",  "label": "Thank-you 4",    "description": "Footer message line 4 (theme 3 only)", "max_len": 63 },
+        { "key": "0x710C", "name": "PRN_THANK_L5",        "type": "STRING",  "label": "Thank-you 5",    "description": "Footer message line 5 (theme 3 only)", "max_len": 63 },
+        { "key": "0x710D", "name": "PRN_THANK_L6",        "type": "STRING",  "label": "Thank-you 6",    "description": "Footer message line 6 (theme 3 only)", "max_len": 63 },
+        { "key": "0x7117", "name": "PRN_FOOTER",          "type": "STRING",  "label": "Footer",         "description": "Bottom line of every slip", "max_len": 63 },
+        { "key": "0x7112", "name": "PRN_THEME",           "type": "UINT32",  "label": "Theme",          "description": "Receipt layout 1, 2 or 3", "min": 1, "max": 3 },
+        { "key": "0x7115", "name": "PRN_PRINTER_DOTS",    "type": "UINT32",  "label": "Characters/line","description": "Printer line width in characters (legacy 'printer_dots')", "min": 20, "max": 64 },
+        { "key": "0x7110", "name": "PRN_EN_PRINT_TIME",   "type": "BOOL",    "label": "Print 'Bill Issued'", "description": "Print the bill-issued time line" },
+        { "key": "0x7111", "name": "PRN_EN_SIGNATURE",    "type": "BOOL",    "label": "Signature",      "description": "Theme 3: print the signature block" },
+        { "key": "0x710E", "name": "PRN_END_LINES",       "type": "UINT32",  "label": "End lines",      "description": "Blank lines after the footer", "min": 0, "max": 15 },
+        { "key": "0x7113", "name": "PRN_EN_CUT",          "type": "BOOL",    "label": "Cut paper",      "description": "Send the paper-cut command" },
+        { "key": "0x7114", "name": "PRN_LINES_AFTER_CUT", "type": "UINT32",  "label": "Lines after cut","description": "Blank lines after the cut", "min": 0, "max": 15 },
+        { "key": "0x710F", "name": "PRN_BAUD_RATE",       "type": "UINT32",  "label": "Baud rate",      "description": "COM printer UART baud rate (ignored by USB printers)", "min": 1200, "max": 115200 },
+        { "key": "0x7119", "name": "PRN_EN_BOOT_PRINT",   "type": "BOOL",    "label": "Boot slip",      "description": "Print the MAC / IP / version slip at start-up" }
+      ]
+    },
+    {
+      "group": "Cloud print",
+      "device_types": ["Printer"],
+      "keys": [
+        { "key": "0x7116", "name": "PRN_EN_CLOUD_PRINT",  "type": "BOOL",    "label": "Cloud print",    "description": "Print receipts queued in the cloud" },
+        { "key": "0x7118", "name": "PRN_CP_POLL_S",       "type": "UINT32",  "label": "Fallback poll (s)", "description": "Queue poll interval when no MQTT notification arrives (0 = notify only)", "min": 0, "max": 3600 }
       ]
     },
     {
@@ -60,11 +98,12 @@
         { "key": "0x8001", "name": "LOG_UDP_ENABLED",     "type": "BOOL",    "label": "UDP Log Enabled","description": "Enable UDP log streaming" },
         { "key": "0x8002", "name": "LOG_UDP_SERVER_IP",   "type": "STRING",  "label": "UDP Server IP",  "description": "UDP log server IP address" },
         { "key": "0x8003", "name": "LOG_UDP_PORT",        "type": "UINT32",  "label": "UDP Port",       "description": "UDP log server port" },
-        { "key": "0x8004", "name": "DT_LOG_RATE",         "type": "UINT32",  "label": "DT Log Rate",    "description": "Data log rate setting" }
+        { "key": "0x8004", "name": "DT_LOG_RATE",         "type": "UINT32",  "label": "DT Log Rate",    "description": "Data log rate setting", "device_types": ["COM"] }
       ]
     },
     {
       "group": "Features",
+      "device_types": ["COM"],
       "keys": [
         { "key": "0x9001", "name": "ENABLE_NID_PRINT",    "type": "BOOL",    "label": "NID Print",      "description": "Enable NID printing feature" },
         { "key": "0x9002", "name": "ENABLE_NID_CLOUD",    "type": "BOOL",    "label": "NID Cloud",      "description": "Enable NID cloud upload feature" }

@@ -16,9 +16,28 @@ class MqttConfig(BaseModel):
     password:     str  = ""
     client_id:    str  = ""            # empty → auto "ferp-web-<random>"
     keepalive:    int  = Field(60, ge=5, le=3600)
-    dev_type:     str  = "ferp-com"    # ferp/{dev_type}/{group}/{id}/...
+    dev_type:     str  = "ferp-com"    # ferp/{dev_type}/{group}/{id}/... (default for every device type)
+    # device type (registry "device_type") → MQTT dev_type, for types whose firmware
+    # uses another topic tree (e.g. the HSYS printers publish under ferp/ferp-printer/...)
+    dev_types:    dict[str, str] = Field(default_factory=lambda: {"Printer": "ferp-printer"})
     auto_connect: bool = True          # connect at backend start-up
     brokers:      list[str] = ["localhost", "broker.emqx.io"]  # presets for the host picker
+
+    def dev_type_for(self, device_type: str | None) -> str:
+        """MQTT dev_type for a registry device type (case-insensitive; default dev_type)."""
+        key = (device_type or "").strip().lower()
+        for k, v in self.dev_types.items():
+            if k.strip().lower() == key and v.strip():
+                return v.strip()
+        return self.dev_type
+
+    def all_dev_types(self) -> list[str]:
+        """Every dev_type the hub must listen on."""
+        out = [self.dev_type]
+        for v in self.dev_types.values():
+            if v.strip() and v.strip() not in out:
+                out.append(v.strip())
+        return out
 
 
 class DeviceOpsConfig(BaseModel):
@@ -123,6 +142,14 @@ class Device(DeviceIn):
 class SendMessageIn(BaseModel):
     msg:  str
     data: dict = {}
+
+
+class RequestMessageIn(BaseModel):
+    """Send a command and wait for one reply message (e.g. MsgPrinterGetStatus → MsgPrinterStatus)."""
+    msg:     str
+    data:    dict = {}
+    expect:  str
+    timeout: float = Field(10.0, ge=1, le=60)
 
 
 class KeysIn(BaseModel):

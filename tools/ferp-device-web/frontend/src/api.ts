@@ -45,6 +45,8 @@ export const api = {
   readSiteInfo: (id: string) =>
     req<{ values: Partial<Record<"pump_id_1" | "pump_id_2" | "board_version", string>>; errors: string[] }>("POST", `/devices/${id}/site-info/read`),
 
+  request: (id: string, msg: string, data: Record<string, unknown>, expect: string, timeout = 10) =>
+    req<{ msg: string; seq: number; data: Record<string, unknown> }>("POST", `/devices/${id}/request`, { msg, data, expect, timeout }),
   send: (id: string, msg: string, data: Record<string, unknown>) =>
     req<{ seq: number }>("POST", `/devices/${id}/send`, { msg, data }),
   readConfig: (id: string, keys?: number[]) => req<{ job_id: string }>("POST", `/devices/${id}/config/read`, { keys: keys ?? null }),

@@ -234,7 +234,7 @@ class OtaManager:
         session = OtaSession(
             broker=cfg.mqtt.host, port=cfg.mqtt.port,
             username=cfg.mqtt.username or None, password=cfg.mqtt.password or None,
-            dev_type=cfg.mqtt.dev_type, group=dev.group or "default", device_id=dev.mqtt_id,
+            dev_type=cfg.mqtt.dev_type_for(dev.device_type), group=dev.group or "default", device_id=dev.mqtt_id,
             firmware_path=tmp_path, target=meta["name"], version=meta["version"], chunk_size=chunk,
             on_log=on_log, on_progress=on_progress, on_done=on_done,
         )

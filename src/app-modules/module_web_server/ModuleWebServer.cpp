@@ -70,9 +70,14 @@ void ModuleWebServer::pre_init()
     m_api_resp_sem    = hsys_semaphore_create(false);
 
     /* ── Start HTTP server ───────────────────────────────────────────────── */
+    /* 13 built-in handlers + product extras + upload aliases */
+    uint16_t n_extra = 0;
+    if (m_extra_routes)      for (const ExtraRouteDef *r = m_extra_routes; r->uri; r++) n_extra++;
+    if (m_fw_upload_aliases) for (const char *const *u = m_fw_upload_aliases; *u; u++)  n_extra++;
+
     pal_http_server_config_t cfg = {};
-    cfg.port              = HTTP_PORT;
-    cfg.max_uri_handlers  = 16;
+    cfg.port              = m_port;
+    cfg.max_uri_handlers  = (uint16_t)(16 + n_extra);
     cfg.max_open_sockets  = 7;
     cfg.stack_size        = 8192;
     cfg.recv_wait_timeout = 30000;   /* 30 s — OTA handshake may block briefly */
@@ -80,7 +85,7 @@ void ModuleWebServer::pre_init()
 
     if (pal_http_server_start(&cfg, &m_server) != PAL_OK) {
         LOG_MSG_ERROR(WEB_SRV_LOG_EN, "Failed to start HTTP server on port %d",
-                      (int)HTTP_PORT);
+                      (int)m_port);
         return;
     }
 
@@ -118,6 +123,16 @@ void ModuleWebServer::pre_init()
     /* HTTP -> message-bus bridge */
     pal_http_server_register_uri(m_server, "/api/messages",
         PAL_HTTP_POST, _hdl_post_message, this);
+
+    /* Product-specific routes and firmware-upload aliases */
+    if (m_extra_routes) {
+        for (const ExtraRouteDef *r = m_extra_routes; r->uri; r++)
+            pal_http_server_register_uri(m_server, r->uri, r->method, r->handler, r->ctx);
+    }
+    if (m_fw_upload_aliases) {
+        for (const char *const *u = m_fw_upload_aliases; *u; u++)
+            pal_http_server_register_uri_with_upload(m_server, *u, nullptr, _hdl_fw_upload, this);
+    }
 
     /* Wildcard catch-all for static files — MUST be registered last */
     pal_http_server_register_uri(m_server, "/*",
@@ -212,7 +227,11 @@ bool ModuleWebServer::_ota_publish_progress(uint8_t target_idx,
     p.target_idx    = target_idx;
     p.bytes_written = written;
     p.total_bytes   = total;
-    p.percent       = (total > 0) ? (uint8_t)((written * 100u) / total) : 0;
+    p.percent       = (total > 0) ? (uint8_t)(((uint64_t)written * 100u) / total) : 0;
+    // One message per percent step: a message per HTTP chunk floods the
+    // OTA module's task queue (and with it the final MsgOtaCompleteNotify).
+    if (written > 0 && p.percent == m_ota_last_pct) return true;
+    m_ota_last_pct = p.percent;
     auto *msg = MsgOtaProgress::create(MODULE_ID, p);
     if (!msg) return false;
     publish(msg);
@@ -226,8 +245,9 @@ bool ModuleWebServer::_ota_send_complete_notify(bool success)
     p.last_error = success ? OTA_FS_OK : OTA_FS_ERR_WRITE_FAIL;
     auto *msg = MsgOtaCompleteNotify::create(MODULE_ID, p);
     if (!msg) return false;
-    send(msg, MODULE_OTA_ID);
-    return true;
+    // Must not be dropped (the session would only end on the inactivity
+    // timeout): wait up to 5 s for room in the OTA module's queue.
+    return send(msg, MODULE_OTA_ID, 5000) == HSYS_OK;
 }
 
 void ModuleWebServer::_trigger_config_reload()
@@ -261,11 +281,20 @@ int32_t ModuleWebServer::_hdl_static_file(pal_http_request_t req, void *ctx)
     return pal_http_resp_send(req, "Not found", 0);
 }
 
+// Config buffers are static: the 8 KB httpd task stack cannot hold 3 x 4 KB
+// (POST /setDeviceConfigurationsPost overflowed it and reset the device).
+// All URI handlers of one server run sequentially on its single httpd task,
+// so sharing the buffers between requests is safe.
+static char s_cfg_body[4096 + 1];
+static char s_cfg_existing[4096];
+static char s_cfg_out[4096];
+
 int32_t ModuleWebServer::_hdl_get_config(pal_http_request_t req, void * /*ctx*/)
 {
-    char buf[4096] = "{}";
+    char *buf = s_cfg_existing;
+    strcpy(buf, "{}");
     size_t bytes_read = 2;
-    pal_spiffs_file_read(k_config_path, (uint8_t *)buf, sizeof(buf) - 1,
+    pal_spiffs_file_read(k_config_path, (uint8_t *)buf, sizeof(s_cfg_existing) - 1,
                          &bytes_read);
     buf[bytes_read] = '\0';
 
@@ -285,8 +314,8 @@ int32_t ModuleWebServer::_hdl_post_config(pal_http_request_t req, void *ctx)
             "{\"ok\":false,\"error\":\"empty body\"}", 0);
     }
 
-    static constexpr size_t k_max = 4096;
-    char body[k_max + 1];
+    static constexpr size_t k_max = sizeof(s_cfg_body) - 1;
+    char *body = s_cfg_body;
     size_t received = 0;
 
     /* Read in a loop until we have all content_len bytes */
@@ -309,10 +338,11 @@ int32_t ModuleWebServer::_hdl_post_config(pal_http_request_t req, void *ctx)
     }
 
     /* Read existing config */
-    char existing[4096] = "{}";
+    char *existing = s_cfg_existing;
+    strcpy(existing, "{}");
     size_t existing_len = 2;
     pal_spiffs_file_read(k_config_path, (uint8_t *)existing,
-                         sizeof(existing) - 1, &existing_len);
+                         sizeof(s_cfg_existing) - 1, &existing_len);
     existing[existing_len] = '\0';
 
     JsonDocument existing_doc;
@@ -324,8 +354,8 @@ int32_t ModuleWebServer::_hdl_post_config(pal_http_request_t req, void *ctx)
     }
 
     /* Serialise and write back */
-    char out[4096];
-    size_t out_len = serializeJsonPretty(existing_doc, out, sizeof(out));
+    char *out = s_cfg_out;
+    size_t out_len = serializeJsonPretty(existing_doc, out, sizeof(s_cfg_out));
     pal_spiffs_file_write(k_config_path, (uint8_t *)out, out_len);
 
     /* Hot-reload */
@@ -336,11 +366,14 @@ int32_t ModuleWebServer::_hdl_post_config(pal_http_request_t req, void *ctx)
         "{\"ok\":true,\"hot_reload\":true}", 0);
 }
 
-int32_t ModuleWebServer::_hdl_get_status(pal_http_request_t req, void * /*ctx*/)
+int32_t ModuleWebServer::_hdl_get_status(pal_http_request_t req, void *ctx)
 {
+    ModuleWebServer *self = (ModuleWebServer *)ctx;
+    char resp[48];
+    snprintf(resp, sizeof(resp), "{\"running\":true,\"port\":%u}",
+             (unsigned)(self ? self->m_port : HTTP_PORT));
     pal_http_resp_set_type(req, "application/json");
-    return pal_http_resp_send(req,
-        "{\"running\":true,\"port\":8080}", 0);
+    return pal_http_resp_send(req, resp, 0);
 }
 
 int32_t ModuleWebServer::_hdl_ota_status(pal_http_request_t req, void *ctx)
@@ -389,6 +422,7 @@ int32_t ModuleWebServer::_hdl_fw_upload(pal_http_request_t req,
         if (!already_busy) {
             self->m_ota_busy        = true;
             self->m_ota_bytes       = 0;
+            self->m_ota_last_pct    = 0xFF;
             self->m_ota_total_bytes = (uint32_t)pal_http_req_get_content_len(req);
             self->m_ota_driver      = nullptr;
             self->m_ota_ctx         = nullptr;
@@ -407,6 +441,8 @@ int32_t ModuleWebServer::_hdl_fw_upload(pal_http_request_t req,
         /* Resolve OTA target by ?name= query parameter */
         char name_buf[64] = {};
         pal_http_req_get_query_param(req, "name", name_buf, sizeof(name_buf));
+        if (name_buf[0] == '\0' && self->m_default_ota_name)
+            strncpy(name_buf, self->m_default_ota_name, sizeof(name_buf) - 1);
         uint8_t target = 255;
         if (self->m_ota_targets) {
             for (const OtaTargetDef *t = self->m_ota_targets; t->name; t++) {
@@ -636,6 +672,7 @@ int32_t ModuleWebServer::_hdl_ota_start(pal_http_request_t req, void *ctx)
         self->m_ota_bytes        = 0;
         self->m_ota_total_bytes  = 0;
         self->m_ota_expected_seq = 0;
+        self->m_ota_last_pct     = 0xFF;
         self->m_ota_driver       = nullptr;
         self->m_ota_ctx          = nullptr;
     }

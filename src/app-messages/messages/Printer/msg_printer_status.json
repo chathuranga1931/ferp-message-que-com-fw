@@ -1,0 +1,82 @@
+{
+  "msg_id": "0x0064",
+  "direction": "resp",
+  "fields": [
+    {
+      "name": "transport",
+      "label": "Transport",
+      "type": "string",
+      "default": ""
+    },
+    {
+      "name": "ready",
+      "label": "Ready",
+      "type": "bool",
+      "default": 0
+    },
+    {
+      "name": "last_result",
+      "label": "Last result",
+      "type": "enum",
+      "options": [
+        {
+          "label": "OK",
+          "value": 0
+        },
+        {
+          "label": "NOT_READY",
+          "value": 1
+        },
+        {
+          "label": "WRITE_FAIL",
+          "value": 2
+        },
+        {
+          "label": "INVALID",
+          "value": 3
+        },
+        {
+          "label": "BUSY",
+          "value": 4
+        }
+      ],
+      "default": 0
+    },
+    {
+      "name": "last_cmd",
+      "label": "Last command (255 = status)",
+      "type": "uint8",
+      "default": 255
+    },
+    {
+      "name": "print_count",
+      "label": "Bill count",
+      "type": "uint32",
+      "default": 0
+    },
+    {
+      "name": "jobs_ok",
+      "label": "Jobs OK",
+      "type": "uint32",
+      "default": 0
+    },
+    {
+      "name": "jobs_failed",
+      "label": "Jobs failed",
+      "type": "uint32",
+      "default": 0
+    },
+    {
+      "name": "last_job_id",
+      "label": "Last job ID",
+      "type": "uint32",
+      "default": 0
+    },
+    {
+      "name": "detail",
+      "label": "Detail",
+      "type": "string",
+      "default": ""
+    }
+  ]
+}

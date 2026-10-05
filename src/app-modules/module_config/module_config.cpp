@@ -135,6 +135,13 @@ void ModuleConfig::on_msg_received(const hsys_msg_t &msg)
 
 void ModuleConfig::_load_and_save()
 {
+    // The boot-time buffer is released after the first load; a later reload
+    // (MsgSpiffsReady re-published by the web server after a config POST)
+    // allocates a fresh one.
+    if (!m_json_buf) {
+        m_json_buf = static_cast<char *>(hsys_pool_alloc(static_cast<uint16_t>(k_json_buf_size)));
+    }
+
     if (!m_config_handle.is_initialized) {
         LOG_MSG_ERROR(MOD_CONFIG_LOG_EN, "config handle not initialised");
     } else if (!m_json_buf) {

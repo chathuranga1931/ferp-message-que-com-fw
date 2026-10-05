@@ -3,8 +3,9 @@
 from fastapi import Depends, HTTPException
 
 from ..container import Container
-from ..models import (ConfigWriteIn, DeviceIn, FavoriteIn, KeysIn, SendMessageIn, SnapshotApplyIn,
-                      SnapshotIn)
+from ..models import (ConfigWriteIn, DeviceIn, FavoriteIn, KeysIn, RequestMessageIn, SendMessageIn,
+                      SnapshotApplyIn, SnapshotIn)
+from ..services.mqtt_hub import ResponseTimeout
 from .deps import container, current_user, get_device, get_devices, guard, protected
 
 router = protected()
@@ -60,6 +61,22 @@ def send_message(device_id: str, body: SendMessageIn, c: Container = Depends(con
     seq = guard(c.ops.send, dev, body.msg, body.data)
     c.audit.record(user, "message.send", dev, msg=body.msg, data=body.data)
     return {"seq": seq}
+
+
+@router.post("/devices/{device_id}/request")
+def request_message(device_id: str, body: RequestMessageIn, c: Container = Depends(container),
+                    user: str = Depends(current_user)):
+    """Send a command and wait for its reply (blocking, runs in the worker pool)."""
+    for name in (body.msg, body.expect):
+        if name not in c.catalog.messages:
+            raise HTTPException(400, f"Unknown message {name}")
+    dev = get_device(c, device_id)
+    try:
+        resp = guard(c.ops.request, dev, body.msg, body.data, body.expect, body.timeout)
+    except ResponseTimeout as exc:
+        raise HTTPException(504, str(exc))
+    c.audit.record(user, "message.request", dev, msg=body.msg, data=body.data)
+    return {"msg": resp.get("msg"), "seq": resp.get("seq"), "data": resp.get("data") or {}}
 
 
 @router.post("/devices/{device_id}/site-info/read")

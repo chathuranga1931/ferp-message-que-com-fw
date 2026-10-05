@@ -167,6 +167,20 @@ int32_t pal_http_client_post(pal_http_client_handle_t handle,
                                pal_http_response_t* response);
 
 /**
+ * @brief Select the HTTP method used by pal_http_client_post()
+ *
+ * pal_http_client_post() sends a request with a body; by default the method
+ * is POST.  Call this first to send the body with PUT, PATCH or DELETE
+ * instead (any other value falls back to POST).
+ *
+ * @param handle HTTP client handle
+ * @param method PAL_HTTP_METHOD_POST / PUT / PATCH / DELETE
+ * @return int32_t 0 on success, negative error code on failure
+ */
+int32_t pal_http_client_set_body_method(pal_http_client_handle_t handle,
+                                        pal_http_method_t method);
+
+/**
  * @brief Get specific response header
  * 
  * Retrieves a specific header from the last response.

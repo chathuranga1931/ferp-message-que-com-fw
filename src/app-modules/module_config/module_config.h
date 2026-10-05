@@ -35,7 +35,13 @@ private:
     static constexpr const char *k_config_file = "Configs/DeviceConfigs.json";
 
     // ── JSON working buffer size (pool-allocated on demand, not static) ──────
-    static constexpr size_t k_json_buf_size = 2048;
+    // JSON working buffer for load / save.  Products with a larger config
+    // table override MODULE_CONFIG_JSON_BUF_SIZE in user_config.h (the pool
+    // must provide a block of that size).
+#ifndef MODULE_CONFIG_JSON_BUF_SIZE
+#define MODULE_CONFIG_JSON_BUF_SIZE 2048
+#endif
+    static constexpr size_t k_json_buf_size = MODULE_CONFIG_JSON_BUF_SIZE;
 
     // ── Config handle (owned here; initialised in init()) ───────────────────
     config_handle_t m_config_handle {};

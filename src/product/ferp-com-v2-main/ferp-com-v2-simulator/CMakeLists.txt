@@ -164,6 +164,8 @@ add_library(app_messages STATIC
     ${APP_MSGS}/mqtt/msg_config_get_mqtt.cpp
     ${APP_MSGS}/mqtt/msg_config_mqtt.cpp
     ${APP_MSGS}/mqtt/msg_mqtt_status.cpp
+    ${APP_MSGS}/mqtt/msg_mqtt_subscribe.cpp
+    ${APP_MSGS}/mqtt/msg_mqtt_ext_data.cpp
     # Timer messages
     ${APP_MSGS}/timer/msg_tick_1000ms.cpp
     ${APP_MSGS}/timer/msg_timer_start.cpp

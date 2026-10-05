@@ -1,0 +1,70 @@
+{
+  "msg_id": "0x0061",
+  "direction": "resp",
+  "fields": [
+    {
+      "name": "job_id",
+      "label": "Job ID",
+      "type": "uint32",
+      "default": 0
+    },
+    {
+      "name": "result",
+      "label": "Result",
+      "type": "enum",
+      "options": [
+        {
+          "label": "OK",
+          "value": 0
+        },
+        {
+          "label": "NOT_READY",
+          "value": 1
+        },
+        {
+          "label": "WRITE_FAIL",
+          "value": 2
+        },
+        {
+          "label": "INVALID",
+          "value": 3
+        },
+        {
+          "label": "BUSY",
+          "value": 4
+        }
+      ],
+      "default": 0
+    },
+    {
+      "name": "source",
+      "label": "Source",
+      "type": "enum",
+      "options": [
+        {
+          "label": "HTTP",
+          "value": 0
+        },
+        {
+          "label": "CLOUD",
+          "value": 1
+        },
+        {
+          "label": "MQTT",
+          "value": 2
+        },
+        {
+          "label": "LOCAL",
+          "value": 3
+        }
+      ],
+      "default": 2
+    },
+    {
+      "name": "print_count",
+      "label": "Bill count",
+      "type": "uint32",
+      "default": 0
+    }
+  ]
+}

@@ -50,9 +50,13 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 # ── Product selection ────────────────────────────────────────────────────────
 #   v3 : ferp-com-v3-main       (esp32<>esp32, HW 2602)
 #   v2 : ferp-com-v2-main       (esp32<>esp07, HW 2404)
+#   printer-com : ferp-printer-com-v1  (ESP32, UART receipt printer)
+#   printer-usb : ferp-printer-usb-v1  (ESP32-S3, USB receipt printer)
 PRODUCTS = {
     "v3": "src/product/ferp-com-v3-main/ferp-com-v3-esp32-idf",
     "v2": "src/product/ferp-com-v2-main/ferp-com-v2-esp32-idf",
+    "printer-com": "src/product/ferp-printer-com-v1/ferp-printer-com-v1-esp32-idf",
+    "printer-usb": "src/product/ferp-printer-usb-v1/ferp-printer-usb-v1-esp32s3-idf",
 }
 
 # Defaults to "v3" for backward compatibility; overridden in main() via --product.

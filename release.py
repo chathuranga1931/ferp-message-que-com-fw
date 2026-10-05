@@ -7,7 +7,7 @@ Modes:
                    Output defaults to releases/<product>-esp32/<version>/ —
                    pass --out <dir> to override (relative paths resolve
                    against the invocation directory). --product selects v3
-                   (default) or v2.
+                   (default), v2, printer-com or printer-usb.
   --create-bundle  Bundle only from existing build artifacts (no build, no git).
                    Bundle version is (255-V1).V2.V3.V4 of current version.h.
                    Output goes to the build directory.
@@ -27,20 +27,41 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).resolve().parent
 
 # ── Product selection ────────────────────────────────────────────────────────
-# Both products share the same main-ESP32 app bundle format and 4 MB factory
-# layout (partitions.csv is identical); only the source tree paths differ.
-#   v3 : ferp-com-v3-main       (esp32<>esp32, HW 2602)
-#   v2 : ferp-com-v2-main       (esp32<>esp07, HW 2404)
+# All products share the bundle format and the 4 MB factory layout
+# (partitions.csv is identical); they differ in source tree, binary name,
+# OTA target name and chip.
+#   v3          : ferp-com-v3-main      (esp32<>esp32, HW 2602)
+#   v2          : ferp-com-v2-main      (esp32<>esp07, HW 2404)
+#   printer-com : ferp-printer-com-v1   (ESP32, UART printer,   44.x)
+#   printer-usb : ferp-printer-usb-v1   (ESP32-S3, USB printer, 45.x)
+_COM = {"bin": "ferp-com", "target": "esp32-main", "chip": "esp32", "boot_offset": "0x1000",
+        "flash_freq": "40m", "factory": "ferp-esp32-factory"}
 PRODUCTS = {
     "v3": {
+        **_COM,
         "project":  "src/product/ferp-com-v3-main/ferp-com-v3-esp32-idf",
         "app":      "src/product/ferp-com-v3-main/app",
         "releases": "v3-esp32",
     },
     "v2": {
+        **_COM,
         "project":  "src/product/ferp-com-v2-main/ferp-com-v2-esp32-idf",
         "app":      "src/product/ferp-com-v2-main/app",
         "releases": "v2-esp32",
+    },
+    "printer-com": {
+        "project":  "src/product/ferp-printer-com-v1/ferp-printer-com-v1-esp32-idf",
+        "app":      "src/product/ferp-printer-com-v1/app",
+        "releases": "printer-com-esp32",
+        "bin": "ferp-printer-com", "target": "printer-com-main", "chip": "esp32",
+        "boot_offset": "0x1000", "flash_freq": "40m", "factory": "ferp-printer-com-factory",
+    },
+    "printer-usb": {
+        "project":  "src/product/ferp-printer-usb-v1/ferp-printer-usb-v1-esp32s3-idf",
+        "app":      "src/product/ferp-printer-usb-v1/app",
+        "releases": "printer-usb-esp32s3",
+        "bin": "ferp-printer-usb", "target": "printer-usb-main", "chip": "esp32s3",
+        "boot_offset": "0x0", "flash_freq": "80m", "factory": "ferp-printer-usb-factory",
     },
 }
 
@@ -48,24 +69,28 @@ PRODUCTS = {
 # running/importing without an explicit product preserves the original behaviour.
 PROJECT_DIR = VERSION_FILE = USER_CONFIG_FILE = None
 BUILD_DIR = BUILD_BIN = BUILD_ELF = RELEASES_DIR = None
+PRODUCT = PRODUCTS["v3"]       # selected product's table row
+BIN_NAME = "ferp-com"          # artifact prefix: <BIN_NAME>-v<version>.bin
 
-# Shared across products — the main-ESP32 bundle tool (target "esp32-main").
+# Shared across products — the main-image bundle tool (target from the product row).
 BUNDLE_TOOL = SCRIPT_DIR / "tools/ota-bundle-tools/OtaBundleCreate-MainESP32.py"
 
 
 def configure_product(product: str) -> None:
     """Point the module-level paths at the selected product tree."""
     global PROJECT_DIR, VERSION_FILE, USER_CONFIG_FILE
-    global BUILD_DIR, BUILD_BIN, BUILD_ELF, RELEASES_DIR
+    global BUILD_DIR, BUILD_BIN, BUILD_ELF, RELEASES_DIR, PRODUCT, BIN_NAME
     if product not in PRODUCTS:
         die(f"Unknown product '{product}' (choices: {', '.join(PRODUCTS)})")
     cfg = PRODUCTS[product]
+    PRODUCT = cfg
+    BIN_NAME = cfg["bin"]
     PROJECT_DIR = SCRIPT_DIR / cfg["project"]
     VERSION_FILE = SCRIPT_DIR / cfg["app"] / "version.h"
     USER_CONFIG_FILE = SCRIPT_DIR / cfg["app"] / "user_config.h"
     BUILD_DIR = PROJECT_DIR / "build"
-    BUILD_BIN = BUILD_DIR / "ferp-com.bin"
-    BUILD_ELF = BUILD_DIR / "ferp-com.elf"
+    BUILD_BIN = BUILD_DIR / f"{BIN_NAME}.bin"
+    BUILD_ELF = BUILD_DIR / f"{BIN_NAME}.elf"
     RELEASES_DIR = SCRIPT_DIR / "releases" / cfg["releases"]
 
 
@@ -143,15 +168,16 @@ def build() -> None:
 
 
 def copy_artifacts(version: str, dest: Path) -> None:
-    shutil.copy2(str(BUILD_BIN), str(dest / f"ferp-com-v{version}.bin"))
-    shutil.copy2(str(BUILD_ELF), str(dest / f"ferp-com-v{version}.elf"))
-    print(f"  Saved: ferp-com-v{version}.bin")
-    print(f"  Saved: ferp-com-v{version}.elf")
+    shutil.copy2(str(BUILD_BIN), str(dest / f"{BIN_NAME}-v{version}.bin"))
+    shutil.copy2(str(BUILD_ELF), str(dest / f"{BIN_NAME}-v{version}.elf"))
+    print(f"  Saved: {BIN_NAME}-v{version}.bin")
+    print(f"  Saved: {BIN_NAME}-v{version}.elf")
 
 
 def create_bundle(bin_path: Path, version: str, outdir: Path) -> None:
     subprocess.run(
-        [sys.executable, str(BUNDLE_TOOL), str(bin_path), version, str(outdir)],
+        [sys.executable, str(BUNDLE_TOOL), str(bin_path), version, str(outdir),
+         "--target", PRODUCT["target"]],
         check=True,
     )
 
@@ -323,7 +349,7 @@ def mode_release(idf_path: str, out_dir: str = "") -> None:
     print()
     print("--- Saving ODD artifacts ---")
     copy_artifacts(odd_ver, release_dir)
-    create_bundle(release_dir / f"ferp-com-v{odd_ver}.bin", odd_ver, release_dir)
+    create_bundle(release_dir / f"{BIN_NAME}-v{odd_ver}.bin", odd_ver, release_dir)
 
     # Commit, tag, push ODD
     print()
@@ -352,28 +378,28 @@ def mode_release(idf_path: str, out_dir: str = "") -> None:
     print()
     print("--- Saving EVEN artifacts ---")
     copy_artifacts(even_ver, release_dir)
-    create_bundle(release_dir / f"ferp-com-v{even_ver}.bin", even_ver, release_dir)
+    create_bundle(release_dir / f"{BIN_NAME}-v{even_ver}.bin", even_ver, release_dir)
 
     # Factory image: ODD app + shared build artifacts
     # Bootloader, partition table, ota_data, and SPIFFS come from the last build
     # (identical across both); app bin is taken from the saved ODD artifact.
     print()
     print(f"--- Creating 4MB factory image ({odd_ver}) ---")
-    factory_bin = release_dir / f"ferp-esp32-factory-v{odd_ver}.bin"
+    factory_bin = release_dir / f"{PRODUCT['factory']}-v{odd_ver}.bin"
     esptool_result = subprocess.run(
         [
             "esptool.py",
-            "--chip", "esp32",
+            "--chip", PRODUCT["chip"],
             "merge-bin",
             "--flash-mode", "dio",
-            "--flash-freq", "40m",
+            "--flash-freq", PRODUCT["flash_freq"],
             "--flash-size", "4MB",
             "--pad-to-size", "4MB",
             "-o", str(factory_bin),
-            "0x1000",   str(BUILD_DIR / "bootloader/bootloader.bin"),
+            PRODUCT["boot_offset"], str(BUILD_DIR / "bootloader/bootloader.bin"),
             "0x8000",   str(BUILD_DIR / "partition_table/partition-table.bin"),
             "0xe000",   str(BUILD_DIR / "ota_data_initial.bin"),
-            "0x10000",  str(release_dir / f"ferp-com-v{odd_ver}.bin"),
+            "0x10000",  str(release_dir / f"{BIN_NAME}-v{odd_ver}.bin"),
             "0x370000", str(BUILD_DIR / "spiffs.bin"),
         ],
     )
@@ -387,7 +413,7 @@ def mode_release(idf_path: str, out_dir: str = "") -> None:
     # then moved in.
     print()
     print("--- Creating release archive ---")
-    tar_name = f"ferp-com-release-v{odd_ver}.tar.gz"
+    tar_name = f"{BIN_NAME}-release-v{odd_ver}.tar.gz"
     tar_path = release_dir / tar_name
     temp_tar = releases_dir / tar_name
     with tarfile.open(str(temp_tar), "w:gz") as tar:
@@ -406,8 +432,8 @@ def mode_release(idf_path: str, out_dir: str = "") -> None:
 
     release_notes = (
         f"Production release v{odd_ver}\n\n"
-        f"- **Production binary**: ferp-com-v{odd_ver}.bin\n"
-        f"- **OTA-test binary**:   ferp-com-v{even_ver}.bin  "
+        f"- **Production binary**: {BIN_NAME}-v{odd_ver}.bin\n"
+        f"- **OTA-test binary**:   {BIN_NAME}-v{even_ver}.bin  "
         f"← flash odd first, then OTA to even\n"
         f"- **Factory image**:     ferp-esp32-factory-v{odd_ver}.bin  (flash to 0x0)\n"
         f"- **ELF files** included for crash backtrace decoding (addr2line)"
@@ -415,13 +441,13 @@ def mode_release(idf_path: str, out_dir: str = "") -> None:
 
     gh_files = [
         str(tar_path),
-        str(release_dir / f"ferp-com-v{odd_ver}.bin"),
-        str(release_dir / f"ferp-com-v{odd_ver}.elf"),
-        str(release_dir / f"ferp-com-v{even_ver}.bin"),
-        str(release_dir / f"ferp-com-v{even_ver}.elf"),
+        str(release_dir / f"{BIN_NAME}-v{odd_ver}.bin"),
+        str(release_dir / f"{BIN_NAME}-v{odd_ver}.elf"),
+        str(release_dir / f"{BIN_NAME}-v{even_ver}.bin"),
+        str(release_dir / f"{BIN_NAME}-v{even_ver}.elf"),
         str(factory_bin),
-        str(release_dir / f"ferp_esp32_main_v{odd_ver}.bdl"),
-        str(release_dir / f"ferp_esp32_main_v{even_ver}.bdl"),
+        str(release_dir / f"ferp_{PRODUCT['target'].replace('-', '_')}_v{odd_ver}.bdl"),
+        str(release_dir / f"ferp_{PRODUCT['target'].replace('-', '_')}_v{even_ver}.bdl"),
     ]
 
     subprocess.run(
@@ -440,9 +466,9 @@ def mode_release(idf_path: str, out_dir: str = "") -> None:
     print(f"=== Release v{odd_ver} complete ===")
     print("=" * 56)
     print()
-    print(f"  Production    : ferp-com-v{odd_ver}.bin")
-    print(f"  OTA-test      : ferp-com-v{even_ver}.bin")
-    print(f"  ELF (debug)   : ferp-com-v{odd_ver}.elf + ferp-com-v{even_ver}.elf")
+    print(f"  Production    : {BIN_NAME}-v{odd_ver}.bin")
+    print(f"  OTA-test      : {BIN_NAME}-v{even_ver}.bin")
+    print(f"  ELF (debug)   : {BIN_NAME}-v{odd_ver}.elf + {BIN_NAME}-v{even_ver}.elf")
     print(f"  Factory image : ferp-esp32-factory-v{odd_ver}.bin")
     print(f"  Archive       : {tar_name}")
     print(f"  git tag       : v{odd_ver} (pushed to origin/{current_branch})")

@@ -59,7 +59,7 @@ class ModuleWebServer : public HsysModule
 {
 public:
     static constexpr hsys_module_id_t MODULE_ID      = MODULE_WEB_SERVER_ID;
-    static constexpr uint16_t         HTTP_PORT       = 8080;
+    static constexpr uint16_t         HTTP_PORT       = 8080;  ///< default; see set_port()
     static constexpr uint32_t         OTA_CHUNK_MAX   = 4096;  ///< max body size for /api/ota/chunk
 
     ModuleWebServer();
@@ -96,6 +96,28 @@ public:
     /** Supply the HTTP-to-message-bus route table used by POST /api/messages. */
     void set_api_routes  (const ApiMsgRouteDef *table);
 
+    /** One product-specific URI handler, registered after the built-in API
+     *  routes and before the static-file wildcard.  Terminate with {nullptr}. */
+    struct ExtraRouteDef {
+        const char             *uri;
+        pal_http_method_t       method;
+        pal_http_uri_handler_t  handler;
+        void                   *ctx;
+    };
+
+    /** Listening port (default HTTP_PORT = 8080).  Call before the framework starts. */
+    void set_port(uint16_t port) { m_port = port; }
+    /** Product-specific routes (e.g. a legacy device API).  Static lifetime. */
+    void set_extra_routes(const ExtraRouteDef *table) { m_extra_routes = table; }
+    /** Extra multipart firmware-upload URIs handled like POST /api/ota/bin.
+     *  Requests without ?name= use default_target (an OtaTargetDef name).
+     *  uris is a nullptr-terminated list with static lifetime. */
+    void set_fw_upload_aliases(const char *const *uris, const char *default_target)
+    {
+        m_fw_upload_aliases = uris;
+        m_default_ota_name  = default_target;
+    }
+
 protected:
     void pre_init()  override;
     void init()      override;
@@ -109,6 +131,10 @@ private:
     const StaticFileDef   *m_static_files     = nullptr;
     const OtaTargetDef    *m_ota_targets      = nullptr;
     const ApiMsgRouteDef  *m_api_routes       = nullptr;
+    const ExtraRouteDef   *m_extra_routes     = nullptr;
+    const char *const     *m_fw_upload_aliases = nullptr;
+    const char            *m_default_ota_name = nullptr;
+    uint16_t               m_port             = HTTP_PORT;
 
     /* ── OTA handshake state ─────────────────────────────────────────── */
     hsys_semaphore_handle_t m_start_resp_sem  = nullptr;
@@ -122,6 +148,7 @@ private:
     volatile uint32_t       m_ota_bytes        = 0;
     volatile uint32_t       m_ota_total_bytes  = 0;  ///< total firmware size (from Content-Length or start body)
     volatile uint32_t       m_ota_expected_seq = 0;  ///< next expected chunk seq (chunked-upload mode)
+    uint8_t                 m_ota_last_pct     = 0xFF; ///< last published MsgOtaProgress percent
 
     /* ── API message-bus bridge state ────────────────────────────────── */
     hsys_mutex_handle_t     m_api_lock        = nullptr;

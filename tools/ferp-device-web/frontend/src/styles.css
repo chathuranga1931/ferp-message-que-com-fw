@@ -351,3 +351,20 @@ td > .type-badge:first-child { margin-left: 0; }
 .small-date { padding: 2px 6px; font-size: 12px; }
 .def-table td { white-space: normal; }
 .definitions { max-width: 1000px; }
+
+/* ── printer panel ───────────────────────────────────────── */
+.pill { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 12px; border: 1px solid var(--border); background: var(--surface-2); }
+.pill.ok { border-color: var(--ok); color: var(--ok); }
+.pill.warn { border-color: var(--warn, #c88a00); color: var(--warn, #c88a00); }
+.pill.err { border-color: var(--err); color: var(--err); }
+.printer-status { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin: 6px 0 10px; }
+.printer-status > div { display: flex; flex-direction: column; gap: 3px; }
+.printer-actions { margin-bottom: 10px; }
+.printer-test { margin-bottom: 10px; }
+.printer-test summary { cursor: pointer; color: var(--muted); margin-bottom: 8px; }
+.printer-preview-head { margin: 8px 0 4px; }
+.receipt { background: #fffdf7; color: #222; font: 12px/1.35 ui-monospace, Consolas, monospace; padding: 10px 12px;
+  border: 1px dashed #ccc; border-radius: 4px; overflow-x: auto; max-height: 520px; overflow-y: auto; margin: 0; width: fit-content; max-width: 100%; }
+.receipt > div { white-space: pre; }
+.receipt-big { font-weight: 600; transform: scaleY(1.6); transform-origin: top; margin-bottom: 0.55em; }
+.receipt-cut { color: #999; text-align: center; }

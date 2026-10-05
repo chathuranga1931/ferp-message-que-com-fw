@@ -48,6 +48,9 @@ typedef struct {
     // Temporary PEM cert file (written when cert_pem is PEM content, not a path)
     char _tmp_cert_path[64];
     int  _tmp_cert_fd;
+
+    // Method used by pal_http_client_post() ("" = POST)
+    char body_method[8];
 } pal_http_ctx_t;
 
 // ---------------------------------------------------------------------------
@@ -306,6 +309,22 @@ int32_t pal_http_client_get(pal_http_client_handle_t handle,
     return ret;
 }
 
+int32_t pal_http_client_set_body_method(pal_http_client_handle_t handle,
+                                        pal_http_method_t method)
+{
+    pal_http_ctx_t *ctx = (pal_http_ctx_t *)handle;
+    if (!ctx) return -1;
+    const char *m = "";
+    switch (method) {
+        case PAL_HTTP_METHOD_PUT:    m = "PUT";    break;
+        case PAL_HTTP_METHOD_PATCH:  m = "PATCH";  break;
+        case PAL_HTTP_METHOD_DELETE: m = "DELETE"; break;
+        default:                     m = "";       break;
+    }
+    snprintf(ctx->body_method, sizeof(ctx->body_method), "%s", m);
+    return 0;
+}
+
 int32_t pal_http_client_post(pal_http_client_handle_t handle,
                               const char *body_data, size_t body_len,
                               pal_http_response_t *response)
@@ -322,6 +341,8 @@ int32_t pal_http_client_post(pal_http_client_handle_t handle,
     curl_easy_setopt(curl, CURLOPT_POST, 1L);
     curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body_data);
     curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, (long)body_len);
+    if (ctx->body_method[0] != '\0')
+        curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, ctx->body_method);
 
     CURLcode res = curl_easy_perform(curl);
     if (res != CURLE_OK) {

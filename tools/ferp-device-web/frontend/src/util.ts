@@ -51,3 +51,10 @@ export function downloadText(name: string, text: string, type = "application/jso
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
+
+/** Config keys that exist on devices of the given type (keys without a type list apply to all). */
+export function keysForType<T extends { device_types?: string[] }>(keys: T[], deviceType?: string | null): T[] {
+  const t = (deviceType ?? "").trim().toLowerCase();
+  if (!t) return keys;
+  return keys.filter((k) => !k.device_types?.length || k.device_types.some((d) => d.toLowerCase() === t));
+}

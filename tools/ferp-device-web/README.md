@@ -76,6 +76,18 @@ New in Phase 4, replacing `tools/cloud-udp-monitor/runssh`:
   - The server's host key is trusted on first connect and stored in `data/ssh_known_hosts`; if it changes later, connections are refused.
   - A local folder can be used instead of SSH.
 
+Receipt printers (HSYS firmware 44.x COM / 45.x USB, `src/product/ferp-printer-*`):
+
+- **Own MQTT topic tree.** Printers publish under `ferp/ferp-printer/...`. `mqtt.dev_types` in the config maps a device type to its tree (default `{"Printer": "ferp-printer"}`); the app listens on every tree and addresses each device by its type.
+- **Config keys per device type.** `config_keys.json` groups and keys can carry `"device_types"`. The Workspace shows only the keys a device has: printers get **Receipt** and **Cloud print**, COM units keep Cloud, Hardware, Printer client and Features. **Read all** reads only those keys.
+- **Printer panel** (Workspace, Printer devices only):
+  - **Status:** printer ready, transport, bill count and job counters, plus cloud print state, queue, polls, printed, failed and rejected.
+  - **Actions:** print sample, print info slip, beep, and reset the bill count (asks first).
+  - **Test receipt:** a receipt or totalizer slip with your own values.
+  - **Preview:** a live preview of the receipt with the printer's current settings (themes 1 to 3, column width, cut, thank-you lines). Read the config first.
+- **`POST /api/devices/{id}/request`** sends a command and waits for one named reply (`{"msg", "data", "expect", "timeout"}`). The printer panel uses it; scripts can too.
+- `devtools/fake_device.py --printer --id simprn01` simulates a printer for testing.
+
 Long reads and writes run on the server, so they keep going if you close the browser. Every open tab sees the same live state.
 
 ## Layout

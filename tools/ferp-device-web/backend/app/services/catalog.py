@@ -46,7 +46,8 @@ class Catalog:
                     {"key": k.key_id, "name": k.name, "type_id": k.type_id,
                      "type": TYPE_NAMES.get(k.type_id, str(k.type_id)), "group": k.group,
                      "label": k.label, "description": k.description,
-                     "min": k.min, "max": k.max, "max_len": k.max_len}
+                     "min": k.min, "max": k.max, "max_len": k.max_len,
+                     "device_types": list(k.device_types)}
                     for k in self.config_keys
                 ],
                 "devinfo_keys": [{"key": k, "label": label, "field": field}

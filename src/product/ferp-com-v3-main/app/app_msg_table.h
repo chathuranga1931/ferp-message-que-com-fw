@@ -84,6 +84,8 @@
 #include "msg_http_request.h"           // MsgHttpRequest         (0x005F)
 #include "msg_http_result.h"            // MsgHttpResult          (0x005B)
 #include "msg_http_response_header.h"   // MsgHttpResponseHeader  (0x005D)
+#include "msg_mqtt_subscribe.h"         // MsgMqttSubscribe       (0x003C)
+#include "msg_mqtt_ext_data.h"          // MsgMqttExtData         (0x003D)
 
 // ---------------------------------------------------------------------------
 // Descriptor table macro
@@ -152,6 +154,8 @@
         MsgSdCleanup::DESCRIPTOR,                                                 \
         MsgSpiffsCleanup::DESCRIPTOR,                                             \
         MsgHttpResponseHeader::DESCRIPTOR,                                        \
+        MsgMqttSubscribe::DESCRIPTOR,                                             \
+        MsgMqttExtData::DESCRIPTOR,                                               \
     };                                                                            \
     static const uint16_t k_msg_table_count =                                     \
         (uint16_t)(sizeof(k_msg_table) / sizeof(k_msg_table[0]))

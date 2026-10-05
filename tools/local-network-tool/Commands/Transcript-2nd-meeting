@@ -1,0 +1,162 @@
+
+
+AI-generated content may be incorrect
+
+Abhishek Gaurihar started transcription
+
+
+0 minutes 4 seconds0:04
+0 minutes 4 seconds
+Out of here, certainly with an appreciation for the different kind of segments that you guys are trying to serve with the technology, right?
+0 minutes 12 seconds
+I mean, you've got the kind of that, that small device that might be used individually.
+0 minutes 17 seconds
+You've got small devices working collectively and collaborating to create a, you know.
+0 minutes 23 seconds
+A.
+0 minutes 23 seconds
+A.
+0 minutes 23 seconds
+A system there. Then you certainly got big devices and small devices working in concert, and then you just got big devices, right?
+0 minutes 31 seconds
+I think it's it's sort of what I and.
+0 minutes 35 seconds
+It felt.
+0 minutes 35 seconds
+Like a that distilling this problem is is is a challenge on the technical side.
+0 minutes 42 seconds
+But I think philosophically you guys are pretty aligned.
+0 minutes 45 seconds
+Like on what you're trying to achieve and and and that kind of thing. But one of my challenges, I think yet still is just for us. We want to understand the what and the why just a little bit more and not necessarily dive into the how.
+0 minutes 56 seconds
+No.
+1 minute
+And I know as as people typically think about problems, we the how's the fun part?
+1 minute 4 seconds
+That's where the creative juices get going.
+1 minute 6 seconds
+But I still find that I'm I'm there's still somewhat somewhys missing so.
+1 minute 13 seconds
+Before we, you're gonna sort of fill us today.
+1 minute 15 seconds
+They resist that temptation to dive into the how immediately.
+1 minute 20 seconds
+And that may be uncomfortable, but I'm really gonna try to push it back against the how conversation.
+1 minute 26 seconds
+Just a little bit more what and why, but not so high level.
+1 minute 29 seconds
+So I think the objective today is to drill down a bit.
+1 minute 31 seconds
+Yeah, that.
+1 minute 32 seconds
+You want to fire that thing up.
+1 minute 33 seconds
+Just before we get going, guys on the phone, can you hear everyone OK?
+WB
+Wiewel, Brandon
+1 minute 37 seconds1:37
+Wiewel, Brandon 1 minute 37 seconds
+Yeah, everything's the audio is fantastic.
+
+Kasun Rathnapala
+1 minute 38 seconds1:38
+Kasun Rathnapala 1 minute 38 seconds
+Oh, we can hear you.
+
+1 minute 40 seconds1:40
+1 minute 40 seconds
+Yeah. OK.
+1 minute 44 seconds
+All right.
+1 minute 45 seconds
+Yeah, I hope my screen visible to everyone, so I'll start with the basic agenda for today's meeting.
+1 minute 53 seconds
+So I've listed out topics and descriptions and the time, so we'll start with business vision and goals where we'd like to reaffirm the purpose and the strategic objectives.
+2 minutes 3 seconds
+Of of driving the solution forward.
+
+Kasun Rathnapala
+2 minutes 4 seconds2:04
+Kasun Rathnapala 2 minutes 4 seconds
+OK.
+
+2 minutes 6 seconds2:06
+2 minutes 6 seconds
+Then we'll jump to product lines and impact identify affected products because of because of next Gen. Azure teams.
+2 minutes 14 seconds
+Involved and operational structures behind everything, and then we'll jump to requirement discussion.
+2 minutes 20 seconds
+So here we would like to gather key need dependencies and we would like to post questions in front of you to understand to, to take a deep dive into the process and to and to define the next steps.
+2 minutes 34 seconds
+OK.
+2 minutes 34 seconds
+OK.
+2 minutes 34 seconds
+So here's where we are currently in the discovery sessions. It's phase three.
+2 minutes 41 seconds
+So to define this phase it would be.
+2 minutes 44 seconds
+It would be of multiple rounds of meetings to go over questions and deriving answers. The questions need not be necessarily very specific, but more.
+2 minutes 54 seconds
+Of trying to open the dialogue on discussions and then understand the technical requirements. Any assumptions that may come along with it constraints risk.
+3 minutes 3 seconds
+What are the priorities and what the expectations are?
+3 minutes 8 seconds
+So to to tell more about our discovery process, I'll start with what we are targeting in today's session.
+3 minutes 15 seconds
+So in today's session, we'll take a broader look at the current state portfolio and people map, which includes the broad portfolio of the product product lines.
+3 minutes 25 seconds
+And the divisions and then interface between these product lines identify global, internal and external users and what the expectations.
+3 minutes 34 seconds
+Along with that and any decisions for the upcoming deep dives and upcoming sessions for upcoming sessions are planning to our plan is to also get into the specific product lines. Again, identify the interface, the users that come along with that and.
+3 minutes 51 seconds
+Future state functionality down the line would also open up the dialogue on future state and non negotiable requirements and technical requirements.
+
+Kasun Rathnapala
+3 minutes 53 seconds3:53
+Kasun Rathnapala 3 minutes 53 seconds
+OK.
+
+4 minutes4:00
+4 minutes
+So this one will still stay in that kind of why and how the next one will start bridging that and then we'll go full how after that which is I know that's where the everybody wants to get to. But I think for us our goal is to walk.
+4 minutes 11 seconds
+In your shoes, and I know I shared it with you on the elevator there, but I know there's people in this room been doing this stuff for 25 years.
+4 minutes 17 seconds
+We're never going to be able to step into your shoes.
+4 minutes 20 seconds
+But I want to attempt to understand it from a distilled methodology.
+4 minutes 24 seconds
+So what we're trying to ask you guys is distill your 25 years.
+4 minutes 27 seconds
+So we can step into your shoes and engineer like we're here.
+4 minutes 31 seconds
+Again, that's we're never going to be able to truly do that, but we're working.
+4 minutes 34 seconds
+We're almost getting you guys to distill that data for us so that we can step into this problem with you and then we'll start getting into. All right, how do we solve it from here to what?
+4 minutes 42 seconds
+What are the tools and how do we coalesce these to be successful?
+4 minutes 47 seconds
+OK.
+4 minutes 47 seconds
+So this is from the previous slide deck.
+4 minutes 50 seconds
+Just want to highlight once again the problem areas, the constraints and the benefits.
+4 minutes 56 seconds
+So we would like to reaffirm on the problem areas complex system with multiple multiple gateways, nonmodular architecture and legacy versus next generation edge uncertainty to drive forward in the market.
+5 minutes 9 seconds
+Then constraints would be technical and design constraint, system specifications, scope boundaries and dependencies.
+5 minutes 15 seconds
+And benefits would be unified solution, greater functions and features, retrofit for all legacy Gateway.
+5 minutes 22 seconds
+So just want to reaffirm that.
+5 minutes 24 seconds
+Our understanding so far has been correct on on the on the overall picture.
+5 minutes 29 seconds
+And then what we want to achieve here?
+
+Kasun Rathnapala
+2 hours 8 minutes 5 seconds2:08:05
+Kasun Rathnapala 2 hours 8 minutes 5 seconds
+Thanks very much.
+

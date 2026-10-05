@@ -1,0 +1,32 @@
+# sdkconfig.defaults — FERP USB printer (ESP32-S3, USB OTG host).
+# Same project settings as the ferp-com / COM printer builds (see
+# ferp-com-v3 sdkconfig.defaults for the rationale of each), retargeted to S3.
+
+CONFIG_IDF_TARGET="esp32s3"
+
+# Flash layout: 4 MB, custom partition table identical to every FERP product
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+
+# mbedTLS from the system heap, dynamic record buffers (MQTT + HTTPS fit)
+CONFIG_MBEDTLS_DEFAULT_MEM_ALLOC=y
+CONFIG_MBEDTLS_DYNAMIC_BUFFER=y
+
+# Smaller WiFi buffer pool (heap fragmentation)
+CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM=3
+CONFIG_ESP_WIFI_DYNAMIC_RX_BUFFER_NUM=8
+CONFIG_ESP_WIFI_DYNAMIC_TX_BUFFER_NUM=8
+
+# Watchdog / crash capture as on the other products
+CONFIG_ESP_TASK_WDT_PANIC=y
+CONFIG_BOOTLOADER_WDT_ENABLE=n
+
+CONFIG_COMPILER_ORPHAN_SECTIONS_WARNING=y
+CONFIG_LIBC_NEWLIB=y
+CONFIG_FREERTOS_IN_IRAM=y
+
+# The native USB port runs the USB host (printer); logs stay on UART0 only —
+# no secondary console on the USB-Serial-JTAG (it shares the USB PHY).
+CONFIG_ESP_CONSOLE_UART_DEFAULT=y
+CONFIG_ESP_CONSOLE_SECONDARY_NONE=y

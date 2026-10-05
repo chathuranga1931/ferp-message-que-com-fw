@@ -1,0 +1,36 @@
+{
+  "msg_id": "0x0062",
+  "direction": "cmd",
+  "fields": [
+    {
+      "name": "cmd",
+      "label": "Command",
+      "type": "enum",
+      "options": [
+        {
+          "label": "PRINT_SAMPLE",
+          "value": 0
+        },
+        {
+          "label": "RESET_COUNT",
+          "value": 1
+        },
+        {
+          "label": "PRINT_INFO",
+          "value": 2
+        },
+        {
+          "label": "BEEP",
+          "value": 3
+        }
+      ],
+      "default": 0
+    },
+    {
+      "name": "arg",
+      "label": "Argument (BEEP: seconds)",
+      "type": "uint8",
+      "default": 0
+    }
+  ]
+}

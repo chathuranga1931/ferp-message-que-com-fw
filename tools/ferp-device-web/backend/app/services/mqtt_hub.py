@@ -86,6 +86,7 @@ class MqttHub:
         cfg = self._cfg or self._get_config()
         return {"state": self._state, "connected": self._state == "connected",
                 "host": cfg.host, "port": cfg.port, "dev_type": cfg.dev_type,
+                "dev_types": cfg.all_dev_types(),
                 "error": self._error, "since": self._since}
 
     def _set_state(self, state: str, error: Optional[str] = None) -> None:
@@ -99,6 +100,10 @@ class MqttHub:
     @property
     def dev_type(self) -> str:
         return (self._cfg or self._get_config()).dev_type
+
+    def dev_type_for(self, device_type: Optional[str]) -> str:
+        """MQTT dev_type used by devices of a registry device type."""
+        return (self._cfg or self._get_config()).dev_type_for(device_type)
 
     def add_listener(self, fn: Listener) -> None:
         self._listeners.append(fn)
@@ -156,11 +161,14 @@ class MqttHub:
             self._console.log("error", f"MQTT connect refused: {reason_code}")
             self._set_state("reconnecting", str(reason_code))
             return
-        dev_type = self._cfg.dev_type
-        client.subscribe([(topics.wildcard(dev_type, "resp"), 1), (topics.wildcard(dev_type, "evt"), 0)])
+        dev_types = self._cfg.all_dev_types()
+        subs = []
+        for dt in dev_types:
+            subs += [(topics.wildcard(dt, "resp"), 1), (topics.wildcard(dt, "evt"), 0)]
+        client.subscribe(subs)
         self._set_state("connected")
-        self._console.log("info", f"MQTT connected to {self._cfg.host}:{self._cfg.port} — "
-                                  f"listening on {topics.wildcard(dev_type, 'resp|evt')}")
+        self._console.log("info", f"MQTT connected to {self._cfg.host}:{self._cfg.port} — listening on "
+                                  + ", ".join(topics.wildcard(dt, 'resp|evt') for dt in dev_types))
 
     def _on_connect_fail(self, client, userdata):
         if client is not self._client:

@@ -79,5 +79,7 @@ releases
 old
 src/product/ferp-com-v3-main/ferp-com-v3-esp32-idf/managed_components
 src/product/ferp-com-v2-main/ferp-com-v2-esp32-idf/managed_components
+src/product/ferp-printer-com-v1/ferp-printer-com-v1-esp32-idf/managed_components
+src/product/ferp-printer-usb-v1/ferp-printer-usb-v1-esp32s3-idf/managed_components
 
 History/

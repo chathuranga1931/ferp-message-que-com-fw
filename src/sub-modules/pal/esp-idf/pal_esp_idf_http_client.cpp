@@ -30,6 +30,8 @@ typedef struct {
     pal_http_stream_chunk_cb_t stream_chunk_cb;
     void*                      stream_user_ctx;
     bool                       stream_abort;
+    // Method used by pal_http_client_post() (POST unless overridden)
+    esp_http_client_method_t   body_method;
 } pal_http_client_internal_t;
 
 // Event handler for HTTP client
@@ -101,6 +103,7 @@ int32_t pal_http_client_init(const pal_http_client_config_t* config,
 
     // Allocate internal structure
     pal_http_client_internal_t* client = (pal_http_client_internal_t*)calloc(1, sizeof(pal_http_client_internal_t));
+    if (client) client->body_method = HTTP_METHOD_POST;
     if (client == NULL) {
         LOG_MSG_ERROR(HTTP_ERROR_LOG_EN, "Failed to allocate HTTP client");
         return -1;
@@ -286,6 +289,20 @@ int32_t pal_http_client_get(pal_http_client_handle_t handle,
     return status_code;
 }
 
+int32_t pal_http_client_set_body_method(pal_http_client_handle_t handle,
+                                        pal_http_method_t method)
+{
+    if (handle == NULL) return -1;
+    pal_http_client_internal_t* client = (pal_http_client_internal_t*)handle;
+    switch (method) {
+        case PAL_HTTP_METHOD_PUT:    client->body_method = HTTP_METHOD_PUT;    break;
+        case PAL_HTTP_METHOD_PATCH:  client->body_method = HTTP_METHOD_PATCH;  break;
+        case PAL_HTTP_METHOD_DELETE: client->body_method = HTTP_METHOD_DELETE; break;
+        default:                     client->body_method = HTTP_METHOD_POST;   break;
+    }
+    return 0;
+}
+
 int32_t pal_http_client_post(pal_http_client_handle_t handle,
                                const char* body,
                                size_t body_len,
@@ -301,8 +318,8 @@ int32_t pal_http_client_post(pal_http_client_handle_t handle,
     client->response_len = 0;
     client->response_buffer[0] = '\0';
     
-    // Set method to POST
-    esp_http_client_set_method(client->esp_client, HTTP_METHOD_POST);
+    // POST unless pal_http_client_set_body_method() selected PUT/PATCH/DELETE
+    esp_http_client_set_method(client->esp_client, client->body_method);
     esp_http_client_set_post_field(client->esp_client, body, body_len);
     
     // Perform request

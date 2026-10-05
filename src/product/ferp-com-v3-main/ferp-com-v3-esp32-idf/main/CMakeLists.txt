@@ -110,6 +110,8 @@ idf_component_register(
         "${D_MSGS}/mqtt/msg_config_get_mqtt.cpp"
         "${D_MSGS}/mqtt/msg_config_mqtt.cpp"
         "${D_MSGS}/mqtt/msg_mqtt_status.cpp"
+        "${D_MSGS}/mqtt/msg_mqtt_subscribe.cpp"
+        "${D_MSGS}/mqtt/msg_mqtt_ext_data.cpp"
         # Timer messages
         "${D_MSGS}/timer/msg_tick_1000ms.cpp"
         "${D_MSGS}/timer/msg_timer_start.cpp"

@@ -1,0 +1,86 @@
+{
+  "msg_id": "0x0066",
+  "direction": "resp",
+  "fields": [
+    {
+      "name": "state",
+      "label": "State",
+      "type": "enum",
+      "options": [
+        {
+          "label": "DISABLED",
+          "value": 0
+        },
+        {
+          "label": "WAIT_NET",
+          "value": 1
+        },
+        {
+          "label": "REGISTERING",
+          "value": 2
+        },
+        {
+          "label": "READY",
+          "value": 3
+        },
+        {
+          "label": "REG_FAILED",
+          "value": 4
+        },
+        {
+          "label": "NO_QUEUE",
+          "value": 5
+        }
+      ],
+      "default": 0
+    },
+    {
+      "name": "notify_subscribed",
+      "label": "Notify subscribed",
+      "type": "bool",
+      "default": 0
+    },
+    {
+      "name": "last_http",
+      "label": "Last HTTP status",
+      "type": "int32",
+      "default": 0
+    },
+    {
+      "name": "polls",
+      "label": "Polls",
+      "type": "uint32",
+      "default": 0
+    },
+    {
+      "name": "printed",
+      "label": "Printed",
+      "type": "uint32",
+      "default": 0
+    },
+    {
+      "name": "failed",
+      "label": "Failed",
+      "type": "uint32",
+      "default": 0
+    },
+    {
+      "name": "rejected",
+      "label": "Rejected",
+      "type": "uint32",
+      "default": 0
+    },
+    {
+      "name": "queue_id",
+      "label": "Queue ID",
+      "type": "string",
+      "default": ""
+    },
+    {
+      "name": "notify_topic",
+      "label": "Notify topic",
+      "type": "string",
+      "default": ""
+    }
+  ]
+}
