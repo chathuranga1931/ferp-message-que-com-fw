@@ -386,9 +386,11 @@ def mode_release(idf_path: str, out_dir: str = "") -> None:
     print()
     print(f"--- Creating 4MB factory image ({odd_ver}) ---")
     factory_bin = release_dir / f"{PRODUCT['factory']}-v{odd_ver}.bin"
+    # ESP-IDF v6 installs the "esptool" command; older setups have "esptool.py".
+    esptool_cmd = shutil.which("esptool") or shutil.which("esptool.py") or "esptool.py"
     esptool_result = subprocess.run(
         [
-            "esptool.py",
+            esptool_cmd,
             "--chip", PRODUCT["chip"],
             "merge-bin",
             "--flash-mode", "dio",

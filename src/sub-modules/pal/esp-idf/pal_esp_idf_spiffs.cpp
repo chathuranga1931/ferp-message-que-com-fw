@@ -16,6 +16,7 @@
 
 #include "esp_err.h"
 #include "esp_spiffs.h"
+#include "sdkconfig.h"
 #include <errno.h>
 
 /*===========================================================================*/
@@ -36,6 +37,9 @@
 
 static bool is_initialized = false;
 static char base_path[32] = DEFAULT_BASE_PATH;
+static char s_partition_label[18] = "";     // "" → default "spiffs" partition (NULL label)
+
+static const char *_label(void) { return s_partition_label[0] ? s_partition_label : NULL; }
 
 /*===========================================================================*/
 /*                          HELPER FUNCTIONS                                 */
@@ -56,6 +60,53 @@ static void build_full_path(const char* relative_path, char* full_path, size_t m
     }
 }
 
+/**
+ * @brief Reclaim space after a write failed for lack of room.
+ *
+ * SPIFFS frees deleted / obsolete pages (left behind by appends and deleted
+ * files) only through garbage collection. When the partition is nearly full
+ * its automatic GC can give up and a write fails with ENOSPC although the
+ * space is reclaimable — e.g. a unit whose 512 KB SPIFFS holds the DisplayTap
+ * images could no longer rewrite its 640-byte config file.
+ *
+ * Runs esp_spiffs_gc() for `need` bytes plus a margin (a few block erases,
+ * bounded by CONFIG_SPIFFS_GC_MAX_RUNS). esp_spiffs_check() is deliberately
+ * not used: on a large partition it can block long enough to trip the task
+ * watchdog (configured to panic).
+ *
+ * @return true when GC reports success (the write is worth retrying)
+ */
+static bool _reclaim_space(size_t need, int attempt) {
+    size_t total = 0, used_before = 0, used_after = 0;
+    esp_spiffs_info(_label(), &total, &used_before);
+    size_t want = need + (attempt == 0 ? 8 * 1024 : 32 * 1024);
+    esp_err_t gc = esp_spiffs_gc(_label(), want);
+    esp_spiffs_info(_label(), &total, &used_after);
+    // logged on the error channel so it appears in field logs (UDP / SD)
+    LOG_MSG_ERROR(SPIF_ERROR_LOG_EN, "no space for %zu B — GC(%zu) %s: total=%zu used=%zu -> %zu free=%zu",
+                  need, want, gc == ESP_OK ? "ok" : esp_err_to_name(gc),
+                  total, used_before, used_after, total - used_after);
+    // ESP_ERR_NOT_FINISHED can still have freed enough for a small file: retry anyway
+    return gc == ESP_OK || gc == ESP_ERR_NOT_FINISHED;
+}
+
+/** Write a whole file once. Returns 0 on success, else an errno value. */
+static int _write_once(const char *full_path, const char *mode, const uint8_t *data, size_t size, size_t *written_out) {
+    *written_out = 0;
+    errno = 0;
+    FILE *file = fopen(full_path, mode);
+    if (file == NULL) {
+        return errno ? errno : EIO;
+    }
+    size_t written = fwrite(data, 1, size, file);
+    int werr = (written != size) ? (errno ? errno : ENOSPC) : 0;
+    if (fclose(file) != 0 && werr == 0) werr = errno ? errno : EIO;
+    *written_out = written;
+    return werr;
+}
+
+static bool _is_space_error(int err) { return err == ENOSPC || err == EFBIG || err == EIO; }
+
 /*===========================================================================*/
 /*                       INITIALIZATION FUNCTIONS                            */
 /*===========================================================================*/
@@ -71,6 +122,13 @@ int32_t pal_spiffs_init(const pal_spiffs_config_t* config, pal_spiffs_info_t* in
         return PAL_OK;
     }
     
+    // Store partition label (needed by esp_spiffs_gc / esp_spiffs_info)
+    s_partition_label[0] = '\0';
+    if(config->partition_label != NULL) {
+        strncpy(s_partition_label, config->partition_label, sizeof(s_partition_label) - 1);
+        s_partition_label[sizeof(s_partition_label) - 1] = '\0';
+    }
+
     // Store base path
     if(config->base_path != NULL) {
         strncpy(base_path, config->base_path, sizeof(base_path) - 1);
@@ -159,24 +217,44 @@ int32_t pal_spiffs_file_write(const char* path, const uint8_t * data, size_t siz
     build_full_path(path, full_path, sizeof(full_path));
 
     size_t _total = 0, _used = 0;
-    esp_spiffs_info(NULL, &_total, &_used);
+    esp_spiffs_info(_label(), &_total, &_used);
     LOG_MSG_DEBUG(SPIF_DEBUG_LOG_EN, "write: '%s' size=%zu | spiffs total=%zu used=%zu free=%zu",
                   full_path, size, _total, _used, _total - _used);
 
-    FILE* file = fopen(full_path, "w");
-    if(file == NULL) {
-        LOG_MSG_ERROR(SPIF_ERROR_LOG_EN, "fopen failed for '%s': errno=%d (%s)", full_path, errno, strerror(errno));
+    // Replace safely: write "<path>.tmp", then swap it in. fopen(path, "w")
+    // truncates first, so a write that fails half way (no space, power cut)
+    // would otherwise leave a damaged file — fatal for the config file.
+    // SPIFFS object names (relative to the mount point) are limited to
+    // CONFIG_SPIFFS_OBJ_NAME_LEN - 1 characters; names too long for the
+    // ".tmp" suffix are written in place as before (still with the GC retry).
+    char tmp_path[sizeof(full_path) + 4];
+    snprintf(tmp_path, sizeof(tmp_path), "%s.tmp", full_path);
+    const bool use_tmp = (strlen(full_path) - strlen(base_path) + 4) <= (CONFIG_SPIFFS_OBJ_NAME_LEN - 1);
+    const char *target = use_tmp ? tmp_path : full_path;
+
+    int err = 0;
+    size_t written = 0;
+    for (int attempt = 0; attempt < 3; attempt++) {
+        err = _write_once(target, "w", data, size, &written);
+        if (err == 0) break;
+        if (use_tmp) unlink(tmp_path);
+        LOG_MSG_ERROR(SPIF_ERROR_LOG_EN, "write '%s' failed (attempt %d): wrote=%zu/%zu errno=%d (%s)",
+                      full_path, attempt + 1, written, size, err, strerror(err));
+        if (attempt == 2 || !_is_space_error(err) || !_reclaim_space(size, attempt)) {
+            return PAL_ERROR_IO;
+        }
+    }
+
+    if (!use_tmp) return PAL_OK;
+
+    // SPIFFS rename() refuses an existing destination: remove, then rename.
+    // A power cut between the two leaves only "<path>.tmp", which
+    // pal_spiffs_file_read() falls back to.
+    unlink(full_path);
+    if (rename(tmp_path, full_path) != 0) {
+        LOG_MSG_ERROR(SPIF_ERROR_LOG_EN, "rename '%s' -> '%s' failed: errno=%d (%s)", tmp_path, full_path, errno, strerror(errno));
         return PAL_ERROR_IO;
     }
-    
-    size_t written = fwrite(data, 1, size, file);
-    fclose(file);
-    
-    if(written != size) {
-        LOG_MSG_ERROR(SPIF_ERROR_LOG_EN, "fwrite incomplete: wrote=%zu expected=%zu for '%s'", written, size, full_path);
-        return PAL_ERROR_IO;
-    }
-    
     return PAL_OK;
 }
 
@@ -197,21 +275,21 @@ int32_t pal_spiffs_file_append(const char* path, const uint8_t * data, size_t si
     struct stat st;
     bool exists = (stat(full_path, &st) == 0);
     
-    // Open for writing (create) or appending
-    FILE* file = fopen(full_path, exists ? "a" : "w");
-    if(file == NULL) {
-        LOG_MSG_ERROR(SPIF_ERROR_LOG_EN, "Failed to open file: %s", full_path);
-        return PAL_ERROR_IO;
+    // Open for writing (create) or appending. Retried after GC only when
+    // nothing was written — a partial append must not be repeated.
+    int err = 0;
+    size_t written = 0;
+    for (int attempt = 0; attempt < 3; attempt++) {
+        err = _write_once(full_path, exists ? "a" : "w", data, size, &written);
+        if (err == 0) return PAL_OK;
+        LOG_MSG_ERROR(SPIF_ERROR_LOG_EN, "append '%s' failed (attempt %d): wrote=%zu/%zu errno=%d (%s)",
+                      full_path, attempt + 1, written, size, err, strerror(err));
+        if (written != 0 || attempt == 2 || !_is_space_error(err) || !_reclaim_space(size, attempt)) {
+            return PAL_ERROR_IO;
+        }
+        exists = (stat(full_path, &st) == 0);
     }
-    
-    size_t written = fwrite(data, 1, size, file);
-    fclose(file);
-    
-    if(written != size) {
-        return PAL_ERROR_IO;
-    }
-    
-    return PAL_OK;
+    return PAL_ERROR_IO;
 }
 
 int32_t pal_spiffs_file_read(const char* path, uint8_t * buffer, size_t max_size, size_t* bytes_read) {
@@ -226,12 +304,19 @@ int32_t pal_spiffs_file_read(const char* path, uint8_t * buffer, size_t max_size
     char full_path[256];
     build_full_path(path, full_path, sizeof(full_path));
     
-    // Check if file exists
+    // Check if file exists (or only the "<path>.tmp" of an interrupted replace)
     struct stat st;
     if(stat(full_path, &st) != 0) {
-        return PAL_ERROR_NOT_FOUND;
+        char tmp_path[sizeof(full_path) + 4];
+        snprintf(tmp_path, sizeof(tmp_path), "%s.tmp", full_path);
+        if(stat(tmp_path, &st) != 0) {
+            return PAL_ERROR_NOT_FOUND;
+        }
+        LOG_MSG_ERROR(SPIF_ERROR_LOG_EN, "'%s' missing — reading interrupted replace '%s'", full_path, tmp_path);
+        strncpy(full_path, tmp_path, sizeof(full_path) - 1);
+        full_path[sizeof(full_path) - 1] = '\0';
     }
-    
+
     FILE* file = fopen(full_path, "r");
     if(file == NULL) {
         return PAL_ERROR_IO;
@@ -289,6 +374,11 @@ int32_t pal_spiffs_file_exists(const char* path, bool* exists) {
     struct stat st;
     int stat_result = stat(full_path, &st);
     *exists = (stat_result == 0);
+    if (!*exists) {   // only the "<path>.tmp" of an interrupted replace → still readable
+        char tmp_path[sizeof(full_path) + 4];
+        snprintf(tmp_path, sizeof(tmp_path), "%s.tmp", full_path);
+        *exists = (stat(tmp_path, &st) == 0);
+    }
     
     LOG_MSG_DEBUG(SPIF_DEBUG_LOG_EN, "pal_spiffs_file_exists: path='%s' full='%s' stat=%d exists=%d",
                   path, full_path, stat_result, (int)*exists);
@@ -308,10 +398,15 @@ int32_t pal_spiffs_file_delete(const char* path) {
     char full_path[256];
     build_full_path(path, full_path, sizeof(full_path));
     
-    if(unlink(full_path) != 0) {
+    // also drop a leftover "<path>.tmp" from an interrupted replace
+    char tmp_path[sizeof(full_path) + 4];
+    snprintf(tmp_path, sizeof(tmp_path), "%s.tmp", full_path);
+    bool had_tmp = (unlink(tmp_path) == 0);
+
+    if(unlink(full_path) != 0 && !had_tmp) {
         return PAL_ERROR_IO;
     }
-    
+
     return PAL_OK;
 }
 
@@ -475,7 +570,7 @@ int32_t pal_spiffs_get_info(pal_spiffs_info_t* info) {
     }
     
     size_t total = 0, used = 0;
-    esp_err_t ret = esp_spiffs_info(NULL, &total, &used);
+    esp_err_t ret = esp_spiffs_info(_label(), &total, &used);
     
     if(ret != ESP_OK) {
         return PAL_ERROR;

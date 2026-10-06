@@ -123,6 +123,8 @@ void ModuleSysmon::_publish_file_list_spiffs()
     }
 
     JsonDocument doc;
+    doc["t"] = spiffs_info.total_bytes;   // partition capacity as SPIFFS reports it
+    doc["u"] = spiffs_info.used_bytes;    // used incl. not-yet-collected pages
     JsonArray files = doc["f"].to<JsonArray>();
 
     // Enumerate files via app_spiffs (mutex-protected, resource-safe).
