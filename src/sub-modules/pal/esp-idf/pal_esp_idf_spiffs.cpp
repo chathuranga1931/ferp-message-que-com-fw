@@ -598,3 +598,18 @@ int32_t pal_spiffs_format(void) {
     LOG_MSG_DEBUG(SPIF_DEBUG_LOG_EN, "SPIFFS formatted successfully");
     return PAL_OK;
 }
+
+int32_t pal_spiffs_gc(size_t size) {
+    if(!is_initialized) {
+        return PAL_ERROR_INIT;
+    }
+
+    esp_err_t ret = esp_spiffs_gc(_label(), size);
+    if(ret == ESP_OK) {
+        return PAL_OK;
+    }
+    if(ret != ESP_ERR_NOT_FINISHED) {
+        LOG_MSG_ERROR(SPIF_ERROR_LOG_EN, "gc(%zu) failed: %s", size, esp_err_to_name(ret));
+    }
+    return PAL_ERROR;
+}

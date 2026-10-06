@@ -152,6 +152,18 @@ int32_t app_spiffs_get_info(app_spiffs_info_t *info);
 int32_t app_spiffs_format(void);
 
 /**
+ * @brief  One garbage-collection pass: erase blocks holding deleted pages
+ *         until at least @p size bytes can be written (bounded number of
+ *         block erases per call; call again to collect more).
+ *
+ * @param  size        Bytes to make immediately writable
+ * @param  timeout_ms  Mutex acquire timeout in milliseconds
+ * @return APP_SPIFFS_OK when reached, APP_SPIFFS_ERR_IO when SPIFFS could not
+ *         free that much (nothing left to reclaim)
+ */
+int32_t app_spiffs_gc(size_t size, uint32_t timeout_ms);
+
+/**
  * @brief  Callback type for app_spiffs_list_files.
  *
  * Called once per regular file while the SPIFFS mutex is held.

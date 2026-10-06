@@ -73,6 +73,7 @@
 #include "app_device_info.h"
 #include "app_sd.h"
 #include "app_spiffs.h"
+#include "app_dt_image.h"
 #include "hsys_config.h"
 #include "hsys_type.h"
 #include "hsys_task.h"
@@ -407,6 +408,8 @@ static const app_msg_codec_entry_t k_codec_table[] = {
     { "MsgSdStatus",             MSG_ID_SD_STATUS,             MsgSdStatus::from_json,             MsgSdStatus::to_json            },
     { "MsgSdCleanup",            MSG_ID_SD_CLEANUP,            MsgSdCleanup::from_json,            MsgSdCleanup::to_json           },
     { "MsgSpiffsCleanup",        MSG_ID_SPIFFS_CLEANUP,        MsgSpiffsCleanup::from_json,        MsgSpiffsCleanup::to_json       },
+    { "MsgSpiffsCleanDt",        MSG_ID_SPIFFS_CLEAN_DT,       MsgSpiffsCleanDt::from_json,        MsgSpiffsCleanDt::to_json       },
+    { "MsgSpiffsCleanDtResult",  MSG_ID_SPIFFS_CLEAN_DT_RESULT, MsgSpiffsCleanDtResult::from_json, MsgSpiffsCleanDtResult::to_json },
     { "MsgSystemReboot",          MSG_ID_SYSTEM_REBOOT,         MsgSystemReboot::from_json,         MsgSystemReboot::to_json        },
 
     // ── Connectivity ─────────────────────────────────────────────────────────
@@ -502,6 +505,8 @@ static const app_msg_mqtt_route_t k_mqtt_route_table[] = {
     { MSG_ID_GET_FILE_LIST_SPIFFS,  (hsys_module_id_t)0,   false },
     // ── SD cleanup → ModuleSD (blocking wipe + reboot) ────────────────────────
     { MSG_ID_SD_CLEANUP,            MODULE_SD_ID,          false },
+    // ── SPIFFS DispTap image cleanup → ModuleSpiffs (replies MsgSpiffsCleanDtResult)
+    { MSG_ID_SPIFFS_CLEAN_DT,       MODULE_SPIFFS_ID,      false },
     // ── System reboot → ModuleSysmon ─────────────────────────────────────────
     { MSG_ID_SYSTEM_REBOOT,         MODULE_SYSMON_ID,      false },
 };
@@ -570,6 +575,12 @@ static const mqtt_ota_target_t k_mqtt_ota_targets[] = {
     { "esp32-dt-boot",  OTA_TARGET_DT_BOOT_IDX },
     { "esp32-dt-part",  OTA_TARGET_DT_PART_IDX },
     { "esp32-dt-fw",    OTA_TARGET_DT_FW_IDX },
+};
+
+// Product-specific replies forwarded to the MQTT resp topic (DIRECT replies
+// addressed to ModuleMqtt).  Passed via ModuleMqtt::set_outbound_msgs().
+static const mqtt_outbound_msg_t k_mqtt_outbound[] = {
+    { MSG_ID_SPIFFS_CLEAN_DT_RESULT, false },
 };
 
 // ============================================================================
@@ -842,6 +853,15 @@ extern "C" void app_config_init(void)
 
 #ifndef FERP_SIMULATOR
 #include "board.h"
+#include "serial_flasher.h"
+
+// DispTap images for the UART flasher come from the DT image store on the SD
+// card instead of a direct fopen() on SPIFFS.
+static const serial_flasher_file_ops_t k_dt_flasher_ops = {
+    app_dt_image_open,
+    app_dt_image_read_at,
+    app_dt_image_close,
+};
 #endif
 extern "C" void app_init(void)
 {
@@ -902,6 +922,14 @@ extern "C" void app_init(void)
     // Wire OTA target name table to ModuleMqtt.
     ModuleMqtt::instance()->set_ota_targets(
         k_mqtt_ota_targets, (uint8_t)(sizeof(k_mqtt_ota_targets) / sizeof(k_mqtt_ota_targets[0])));
+    ModuleMqtt::instance()->set_outbound_msgs(
+        k_mqtt_outbound, (uint8_t)(sizeof(k_mqtt_outbound) / sizeof(k_mqtt_outbound[0])));
+
+    // DispTap image store: lock first, then hand it to the UART flasher.
+    app_dt_image_init();
+#ifndef FERP_SIMULATOR
+    serial_flasher_set_file_ops(&k_dt_flasher_ops);
+#endif
 
     // Wire stale-file purge list to ModuleSpiffs (removes the previous esp07/v2
     // product's DispTap binaries after mount so the esp32 OTA can't overflow SPIFFS).

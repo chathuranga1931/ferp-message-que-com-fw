@@ -89,6 +89,8 @@ idf_component_register(
         "${D_MSGS}/system/msg_file_list_spiffs.cpp"
         "${D_MSGS}/system/msg_system_reboot.cpp"
         "${D_MSGS}/system/msg_sd_cleanup.cpp"
+        "${D_MSGS}/system/msg_spiffs_clean_dt.cpp"
+        "${D_MSGS}/system/msg_spiffs_clean_dt_result.cpp"
         "${D_MSGS}/system/msg_spiffs_cleanup.cpp"
         # Config messages
         "${D_MSGS}/configs/msg_config_ready.cpp"
@@ -154,6 +156,7 @@ idf_component_register(
         # ── App peripherals ───────────────────────────────────────────────
         "${D_PHER}/app_spiffs.cpp"
         "${D_PHER}/app_sd.cpp"
+        "${D_PHER}/app_dt_image.cpp"
         "${D_PHER}/app_nvs.cpp"
 
         # ── Generic peripheral implementations ────────────────────────────

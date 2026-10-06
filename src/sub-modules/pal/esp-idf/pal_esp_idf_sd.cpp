@@ -474,6 +474,69 @@ int32_t pal_sd_file_get_size(const char* path, size_t* size) {
     return PAL_OK;
 }
 
+int32_t pal_sd_file_read_at(const char* path, size_t offset, uint8_t* buffer, size_t max_size, size_t* bytes_read) {
+    if(!is_initialized) {
+        return PAL_ERROR_INIT;
+    }
+
+    if(path == NULL || buffer == NULL) {
+        return PAL_ERROR_INVALID;
+    }
+
+    char full_path[256];
+    build_full_path(path, full_path, sizeof(full_path));
+
+    FILE* file = fopen(full_path, "rb");
+    if(file == NULL) {
+        struct stat st;
+        return (stat(full_path, &st) != 0) ? PAL_ERROR_NOT_FOUND : PAL_ERROR_IO;
+    }
+
+    if(offset > 0 && fseek(file, (long)offset, SEEK_SET) != 0) {
+        fclose(file);
+        return PAL_ERROR_IO;
+    }
+    size_t n = fread(buffer, 1, max_size, file);
+    bool err = ferror(file) != 0;
+    fclose(file);
+
+    if(err) {
+        LOG_MSG_ERROR(SD_DEBUG_LOG_EN, "read_at failed: %s @%zu", full_path, offset);
+        return PAL_ERROR_IO;
+    }
+    if(bytes_read != NULL) {
+        *bytes_read = n;
+    }
+    return PAL_OK;
+}
+
+int32_t pal_sd_file_rename(const char* from, const char* to) {
+    if(!is_initialized) {
+        return PAL_ERROR_INIT;
+    }
+
+    if(from == NULL || to == NULL) {
+        return PAL_ERROR_INVALID;
+    }
+
+    char full_from[256];
+    char full_to[256];
+    build_full_path(from, full_from, sizeof(full_from));
+    build_full_path(to, full_to, sizeof(full_to));
+
+    // FAT rename() refuses an existing destination: remove it first.
+    struct stat st;
+    if(stat(full_to, &st) == 0 && unlink(full_to) != 0) {
+        LOG_MSG_ERROR(SD_DEBUG_LOG_EN, "rename: cannot remove %s", full_to);
+        return PAL_ERROR_IO;
+    }
+    if(rename(full_from, full_to) != 0) {
+        LOG_MSG_ERROR(SD_DEBUG_LOG_EN, "rename %s -> %s failed", full_from, full_to);
+        return PAL_ERROR_IO;
+    }
+    return PAL_OK;
+}
+
 /*===========================================================================*/
 /*                      DIRECTORY OPERATIONS                                 */
 /*===========================================================================*/

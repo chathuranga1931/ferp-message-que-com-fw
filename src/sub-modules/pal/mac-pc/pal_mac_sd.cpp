@@ -235,6 +235,36 @@ int32_t pal_sd_file_get_size(const char *path, size_t *size)
     return PAL_OK;
 }
 
+int32_t pal_sd_file_read_at(const char *path, size_t offset, uint8_t *buffer,
+                            size_t max_size, size_t *bytes_read)
+{
+    if (!s_initialized || !path || !buffer) return -1;
+    char fp[1024]; if (!_full_path(path, fp, sizeof(fp))) return -1;
+    FILE *f = fopen(fp, "rb");
+    if (!f) return PAL_ERROR_NOT_FOUND;
+    if (offset > 0 && fseek(f, (long)offset, SEEK_SET) != 0) { fclose(f); return -1; }
+    size_t n = fread(buffer, 1, max_size, f);
+    bool err = ferror(f) != 0;
+    fclose(f);
+    if (err) return -1;
+    if (bytes_read) *bytes_read = n;
+    return PAL_OK;
+}
+
+int32_t pal_sd_file_rename(const char *from, const char *to)
+{
+    if (!s_initialized || !from || !to) return -1;
+    char ff[1024]; if (!_full_path(from, ff, sizeof(ff))) return -1;
+    char ft[1024]; if (!_full_path(to, ft, sizeof(ft))) return -1;
+    _ensure_parent(ft);
+    // POSIX rename() replaces the destination atomically
+    if (rename(ff, ft) != 0) {
+        LOG_MSG_ERROR(SD_LOG, "rename '%s' -> '%s' failed: %s", ff, ft, strerror(errno));
+        return -1;
+    }
+    return PAL_OK;
+}
+
 // ---------------------------------------------------------------------------
 // Directory operations
 // ---------------------------------------------------------------------------

@@ -149,6 +149,27 @@ int32_t pal_sd_file_create(const char* path);
  */
 int32_t pal_sd_file_get_size(const char* path, size_t* size);
 
+/**
+ * @brief Read up to max_size bytes starting at offset (binary, no NUL added)
+ *
+ * @param path Relative file path
+ * @param offset Byte offset to start reading from
+ * @param buffer Buffer to receive the data
+ * @param max_size Number of bytes to read
+ * @param bytes_read Receives the number of bytes read (less than max_size at EOF)
+ * @return PAL_OK on success, PAL_ERROR_NOT_FOUND if missing, error code otherwise
+ */
+int32_t pal_sd_file_read_at(const char* path, size_t offset, uint8_t* buffer, size_t max_size, size_t* bytes_read);
+
+/**
+ * @brief Rename a file, replacing the destination if it exists
+ *
+ * @param from Existing relative file path
+ * @param to New relative file path
+ * @return PAL_OK on success, error code otherwise
+ */
+int32_t pal_sd_file_rename(const char* from, const char* to);
+
 /*===========================================================================*/
 /*                      DIRECTORY OPERATIONS                                 */
 /*===========================================================================*/

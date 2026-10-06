@@ -115,6 +115,8 @@ typedef enum : uint16_t
     MSG_ID_SYSTEM_REBOOT        = 0x020B, ///< Any -> ModuleSysmon: reboot the device immediately (no payload)
     MSG_ID_SD_CLEANUP           = 0x020C, ///< Any -> ModuleSD: delete all SD files then reboot (no payload)
     MSG_ID_SPIFFS_CLEANUP       = 0x020D, ///< Any -> ModuleSpiffs: format SPIFFS, restore config, then reboot (no payload)
+    MSG_ID_SPIFFS_CLEAN_DT      = 0x020E, ///< Any -> ModuleSpiffs: delete esp32/ + esp07/ DispTap images, GC (no payload)
+    MSG_ID_SPIFFS_CLEAN_DT_RESULT = 0x020F, ///< ModuleSpiffs -> sender: result of MSG_ID_SPIFFS_CLEAN_DT (DIRECT)
 
     // ------------------------------------------------------------------
     // Config  (0x0300 – 0x03FF)
@@ -146,5 +148,9 @@ typedef enum : uint16_t
     MSG_ID_MAX              = 0x0310,   ///< highest used is 0x030F (CONFIG_UPDATED) — pool IDs at 0x0207/0x0208
 
 } app_msg_id_e;
+
+// This product keeps the DispTap images on the SD card: ModuleSpiffs handles
+// MSG_ID_SPIFFS_CLEAN_DT (removes the old esp32/ + esp07/ SPIFFS copies).
+#define APP_HAS_SPIFFS_CLEAN_DT 1
 
 #endif // APP_MSG_IDS_H

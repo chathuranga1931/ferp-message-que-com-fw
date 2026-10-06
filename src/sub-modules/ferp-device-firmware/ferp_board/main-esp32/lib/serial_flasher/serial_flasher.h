@@ -58,6 +58,24 @@ typedef struct example_bin_segment {
     uint8_t *data;
 } example_bin_segment_t;
 
+/**
+ * @brief Optional image source for the flasher.
+ *
+ * Images are named by file name only ("bootloader.bin", "partition_table.bin",
+ * the app image).  open() must succeed before read(); close() is called once
+ * for every successful open().  Without registered ops the flasher reads
+ * FIRMWARE_BASE_PATH<name> with stdio (SPIFFS).
+ */
+typedef struct {
+    int32_t (*open)(const char *name, size_t *size);                 ///< 0 = OK
+    int32_t (*read)(const char *name, size_t offset, uint8_t *buf,
+                    size_t len, size_t *bytes_read);                 ///< 0 = OK
+    void    (*close)(const char *name);
+} serial_flasher_file_ops_t;
+
+/** Register the image source (NULL restores stdio).  The ops must stay valid. */
+void serial_flasher_set_file_ops(const serial_flasher_file_ops_t *ops);
+
 esp_loader_error_t connect_to_target(uint32_t higher_transmission_rate);
 esp_loader_error_t flash_binary(const char *file_name, size_t size, size_t address);
 esp_loader_error_t load_ram_binary(const uint8_t *bin);

@@ -144,6 +144,8 @@ add_library(app_messages STATIC
     ${APP_MSGS}/system/msg_sd_ready.cpp
     ${APP_MSGS}/system/msg_sd_status.cpp
     ${APP_MSGS}/system/msg_sd_cleanup.cpp
+    ${APP_MSGS}/system/msg_spiffs_clean_dt.cpp
+    ${APP_MSGS}/system/msg_spiffs_clean_dt_result.cpp
     # Config messages
     ${APP_MSGS}/configs/msg_config_ready.cpp
     ${APP_MSGS}/configs/msg_config_set.cpp
@@ -244,6 +246,7 @@ target_link_libraries(app_messages PRIVATE hsys_framework)
 add_library(app_pheripherals STATIC
     ${APP_PHR}/app_spiffs.cpp
     ${APP_PHR}/app_sd.cpp
+    ${APP_PHR}/app_dt_image.cpp
     ${APP_PHR}/app_nvs.cpp
     ${PERIPHERAL}/generic_peripheral/hsys_led.cpp
     ${PERIPHERAL}/generic_peripheral/hsys_buzzer.cpp

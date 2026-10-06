@@ -222,6 +222,19 @@ int32_t app_spiffs_get_info(app_spiffs_info_t *info)
     return APP_SPIFFS_OK;
 }
 
+int32_t app_spiffs_gc(size_t size, uint32_t timeout_ms)
+{
+    if (!s_initialized) return APP_SPIFFS_ERR_NOT_INIT;
+
+    int32_t rc = _lock(timeout_ms);
+    if (rc != APP_SPIFFS_OK) return rc;
+
+    int32_t pal = pal_spiffs_gc(size);
+    _unlock();
+
+    return (pal == PAL_OK) ? APP_SPIFFS_OK : APP_SPIFFS_ERR_IO;
+}
+
 int32_t app_spiffs_format(void)
 {
     if (!s_initialized) return APP_SPIFFS_ERR_NOT_INIT;

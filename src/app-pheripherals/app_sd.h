@@ -93,6 +93,32 @@ int32_t app_sd_create_file(const char *path, uint32_t timeout_ms);
 int32_t app_sd_delete_file(const char *path, uint32_t timeout_ms);
 
 // ---------------------------------------------------------------------------
+// Binary file I/O — for large files (e.g. DispTap firmware images) handled
+// in chunks: each call holds the mutex for one short operation only, so
+// other SD users (logs, retransmission) are never blocked for long.
+// ---------------------------------------------------------------------------
+
+/** True once the card is mounted (false after app_sd_cleanup()). */
+bool app_sd_is_ready(void);
+
+/** Set *exists to whether a regular file exists at path. */
+int32_t app_sd_file_exists(const char *path, bool *exists, uint32_t timeout_ms);
+
+/** File size in bytes; APP_SD_ERR_NOT_FOUND if missing. */
+int32_t app_sd_get_file_size(const char *path, size_t *size, uint32_t timeout_ms);
+
+/** Append raw bytes to a file, creating it (and parent dirs) if necessary. */
+int32_t app_sd_append_bin(const char *path, const uint8_t *data, size_t len,
+                           uint32_t timeout_ms);
+
+/** Read up to len bytes from offset; *bytes_read < len at end of file. */
+int32_t app_sd_read_at(const char *path, size_t offset, uint8_t *buf, size_t len,
+                        size_t *bytes_read, uint32_t timeout_ms);
+
+/** Rename a file, replacing the destination if it exists. */
+int32_t app_sd_rename(const char *from, const char *to, uint32_t timeout_ms);
+
+// ---------------------------------------------------------------------------
 // Directory I/O
 // ---------------------------------------------------------------------------
 

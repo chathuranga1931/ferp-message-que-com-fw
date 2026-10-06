@@ -301,3 +301,9 @@ int32_t pal_spiffs_format(void)
     // In the simulator we just report success — no actual formatting needed
     return PAL_OK;
 }
+
+int32_t pal_spiffs_gc(size_t /*size*/)
+{
+    // Host filesystem — nothing to collect
+    return PAL_OK;
+}

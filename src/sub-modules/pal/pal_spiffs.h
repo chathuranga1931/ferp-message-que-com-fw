@@ -167,6 +167,18 @@ int32_t pal_spiffs_get_info(pal_spiffs_info_t* info);
  */
 int32_t pal_spiffs_format(void);
 
+/**
+ * @brief Garbage-collect deleted pages so their blocks are erased and reusable
+ *
+ * Runs a bounded number of SPIFFS GC passes, each aiming to make at least
+ * @p size bytes immediately writable.
+ *
+ * @param size Bytes to make available per pass
+ * @return PAL_OK when the target was reached, PAL_ERROR when SPIFFS could not
+ *         free that much (nothing more to reclaim), other codes on failure
+ */
+int32_t pal_spiffs_gc(size_t size);
+
 #ifdef __cplusplus
 }
 #endif

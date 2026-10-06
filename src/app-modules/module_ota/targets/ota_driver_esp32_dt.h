@@ -16,11 +16,14 @@
  *   ctx → { .spiffs_path = "esp32/partitions.bin" }
  *   ctx → { .spiffs_path = "esp32/firmware.bin"   }
  *
+ * The images are stored by app_dt_image on the SD card (/dtfw/<file name>);
+ * without a mounted card fopen() fails and the OTA is refused.
+ *
  * Driver op mapping:
- *   fopen  → pal_spiffs_file_delete (clear stale file) + set is_open
- *   fwrite → pal_spiffs_file_append  (create-if-absent + append chunk)
- *   fclose → clear is_open (data already committed by each append)
- *   ferase → pal_spiffs_file_delete (abort — remove partial file)
+ *   fopen  → app_dt_image_write_begin  (new "<name>.tmp")
+ *   fwrite → app_dt_image_write        (append chunk)
+ *   fclose → app_dt_image_write_commit (verify size + CRC32, swap in)
+ *   ferase → app_dt_image_write_abort  (remove partial file)
  *   fread  → not supported
  */
 

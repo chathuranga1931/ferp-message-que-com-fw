@@ -1,21 +1,20 @@
 /**
  * @file ota_driver_esp32_dt.c
- * @brief OTA filesystem driver for ESP32 dispTap (esp07) binary files.
+ * @brief OTA filesystem driver for the ESP32 dispTap (DT) binary files.
  *
- * Uses PAL SPIFFS APIs to write each received binary to a fixed path on
- * SPIFFS.  The file is always overwritten — no timestamps.
+ * Streams each received binary into the DT image store (app_dt_image), which
+ * keeps the images on the SD card (/dtfw/<name>).  Without a mounted card
+ * fopen() fails, so DT firmware OTA is not available.
  *
- *   fopen  → pal_spiffs_file_delete() clears any stale file, sets is_open
- *   fwrite → pal_spiffs_file_append() streams each incoming chunk
- *   fclose → clears is_open (data committed by each append call)
- *   ferase → pal_spiffs_file_delete() removes partial file on abort
+ *   fopen  → app_dt_image_write_begin()  (writes to "<name>.tmp")
+ *   fwrite → app_dt_image_write()        streams each incoming chunk
+ *   fclose → app_dt_image_write_commit() verifies (size + CRC32) and swaps
+ *            the new image in — the old image stays usable until then
+ *   ferase → app_dt_image_write_abort()  discards the partial file
  *   fread  → not supported
  *
- * Path examples (relative to SPIFFS mount — no leading '/'):
- *   "esp32/bootloader.bin"  "esp32/partitions.bin"  "esp32/firmware.bin"
- *
- * On simulator: resolves to <cwd>/SPIFFS/spiffs/<spiffs_path>
- * On ESP32 VFS: resolves to /spiffs/<spiffs_path>
+ * ctx->spiffs_path names the image, e.g. "esp32/distap_esp32.bin"; only the
+ * file name part is used.
  */
 
 #include <stdbool.h>
@@ -23,14 +22,11 @@
 #include <stdint.h>
 
 #include "ota_driver_esp32_dt.h"
-#include "pal_spiffs.h"
+#include "app_dt_image.h"
 #include "pal_logger.h"
 
 #define __TAG__  "OTA_DT  "
 #define LOG_EN   true
-
-/* PAL return codes */
-#define PAL_OK  0
 
 /* -------------------------------------------------------------------------
  * Driver function implementations
@@ -44,8 +40,10 @@ static ota_fs_err_t _dt_fopen(void *ctx, const char *path, ota_fs_open_mode_t mo
     ota_esp32_dt_ctx_t *c = (ota_esp32_dt_ctx_t *)ctx;
     if (!c || !c->spiffs_path) return OTA_FS_ERR_INVALID_ARG;
 
-    /* Delete any stale file so we start with a clean slate */
-    pal_spiffs_file_delete(c->spiffs_path);   /* ignore error if doesn't exist */
+    if (app_dt_image_write_begin(c->spiffs_path) != APP_DT_IMAGE_OK) {
+        LOG_MSG_ERROR(LOG_EN, "fopen: cannot start %s", c->spiffs_path);
+        return OTA_FS_ERR_WRITE_FAIL;
+    }
 
     c->is_open = true;
     LOG_MSG_INFO(LOG_EN, "fopen: dispTap OTA session opened -> %s", c->spiffs_path);
@@ -58,6 +56,11 @@ static ota_fs_err_t _dt_fclose(void *ctx)
     if (!c || !c->is_open) return OTA_FS_ERR_NOT_OPEN;
 
     c->is_open = false;
+    int32_t rc = app_dt_image_write_commit();
+    if (rc != APP_DT_IMAGE_OK) {
+        LOG_MSG_ERROR(LOG_EN, "fclose: %s not saved (%ld)", c->spiffs_path, (long)rc);
+        return OTA_FS_ERR_WRITE_FAIL;
+    }
     LOG_MSG_INFO(LOG_EN, "fclose: dispTap file saved -> %s", c->spiffs_path);
     return OTA_FS_OK;
 }
@@ -68,9 +71,9 @@ static ota_fs_err_t _dt_fwrite(void *ctx, const uint8_t *data, uint32_t len)
     if (!c || !c->is_open) return OTA_FS_ERR_NOT_OPEN;
     if (!data || len == 0)  return OTA_FS_ERR_INVALID_ARG;
 
-    int32_t ret = pal_spiffs_file_append(c->spiffs_path, data, (size_t)len);
-    if (ret != PAL_OK) {
-        LOG_MSG_ERROR(LOG_EN, "fwrite: pal_spiffs_file_append failed (%ld)", (long)ret);
+    int32_t ret = app_dt_image_write(data, (size_t)len);
+    if (ret != APP_DT_IMAGE_OK) {
+        LOG_MSG_ERROR(LOG_EN, "fwrite: app_dt_image_write failed (%ld)", (long)ret);
         return OTA_FS_ERR_WRITE_FAIL;
     }
     return OTA_FS_OK;
@@ -92,7 +95,7 @@ static ota_fs_err_t _dt_ferase(void *ctx)
 
     if (c->is_open) {
         /* Remove partial file so a corrupt binary is never used */
-        pal_spiffs_file_delete(c->spiffs_path);
+        app_dt_image_write_abort();
         c->is_open = false;
         LOG_MSG_INFO(LOG_EN, "ferase: removed partial file %s", c->spiffs_path);
     }

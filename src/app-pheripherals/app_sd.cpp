@@ -198,6 +198,79 @@ int32_t app_sd_delete_file(const char *path, uint32_t timeout_ms)
     return ret;
 }
 
+// ── Binary file I/O ───────────────────────────────────────────────────────────
+
+bool app_sd_is_ready(void)
+{
+    return s_initialized;
+}
+
+int32_t app_sd_file_exists(const char *path, bool *exists, uint32_t timeout_ms)
+{
+    if (!s_initialized) return APP_SD_ERR_NOT_INIT;
+    if (!path || !exists) return APP_SD_ERR_INVALID;
+    if (_lock(timeout_ms) != APP_SD_OK) return APP_SD_ERR_BUSY;
+
+    *exists = false;
+    int32_t ret = (pal_sd_file_exists(path, exists) == PAL_OK) ? APP_SD_OK : APP_SD_ERR_IO;
+    _unlock();
+    return ret;
+}
+
+int32_t app_sd_get_file_size(const char *path, size_t *size, uint32_t timeout_ms)
+{
+    if (!s_initialized) return APP_SD_ERR_NOT_INIT;
+    if (!path || !size) return APP_SD_ERR_INVALID;
+    if (_lock(timeout_ms) != APP_SD_OK) return APP_SD_ERR_BUSY;
+
+    int32_t ret = (pal_sd_file_get_size(path, size) == PAL_OK) ? APP_SD_OK : APP_SD_ERR_NOT_FOUND;
+    _unlock();
+    return ret;
+}
+
+int32_t app_sd_append_bin(const char *path, const uint8_t *data, size_t len,
+                           uint32_t timeout_ms)
+{
+    if (!s_initialized) return APP_SD_ERR_NOT_INIT;
+    if (!path || !data || len == 0) return APP_SD_ERR_INVALID;
+    if (_lock(timeout_ms) != APP_SD_OK) return APP_SD_ERR_BUSY;
+
+    int32_t ret = APP_SD_OK;
+    if (pal_sd_file_append(path, (const char *)data, len) != PAL_OK) {
+        LOG_MSG_ERROR(APP_SD_LOG_EN, "append_bin failed: %s (%u B)", path, (unsigned)len);
+        ret = APP_SD_ERR_IO;
+    }
+    _unlock();
+    return ret;
+}
+
+int32_t app_sd_read_at(const char *path, size_t offset, uint8_t *buf, size_t len,
+                        size_t *bytes_read, uint32_t timeout_ms)
+{
+    if (!s_initialized) return APP_SD_ERR_NOT_INIT;
+    if (!path || !buf || len == 0) return APP_SD_ERR_INVALID;
+    if (_lock(timeout_ms) != APP_SD_OK) return APP_SD_ERR_BUSY;
+
+    size_t n = 0;
+    int32_t rc  = pal_sd_file_read_at(path, offset, buf, len, &n);
+    int32_t ret = (rc == PAL_OK) ? APP_SD_OK
+                : (rc == PAL_ERROR_NOT_FOUND) ? APP_SD_ERR_NOT_FOUND : APP_SD_ERR_IO;
+    _unlock();
+    if (bytes_read) *bytes_read = (ret == APP_SD_OK) ? n : 0;
+    return ret;
+}
+
+int32_t app_sd_rename(const char *from, const char *to, uint32_t timeout_ms)
+{
+    if (!s_initialized) return APP_SD_ERR_NOT_INIT;
+    if (!from || !to) return APP_SD_ERR_INVALID;
+    if (_lock(timeout_ms) != APP_SD_OK) return APP_SD_ERR_BUSY;
+
+    int32_t ret = (pal_sd_file_rename(from, to) == PAL_OK) ? APP_SD_OK : APP_SD_ERR_IO;
+    _unlock();
+    return ret;
+}
+
 // ── Directory ops ─────────────────────────────────────────────────────────────
 
 int32_t app_sd_create_dir(const char *path, uint32_t timeout_ms)

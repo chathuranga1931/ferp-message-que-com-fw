@@ -142,8 +142,10 @@ void ModuleMqtt::init()
     // OTA write decoupling — see ModuleMqtt.h for rationale.
     _ota_io_mutex = hsys_mutex_create();
     hsys_queue_init(&_ota_write_queue, MODULE_MQTT_OTA_WRITE_QUEUE_DEPTH, sizeof(ota_write_job_t));
+    // 4 KB: the writer runs whatever I/O the target's driver needs — an SD card
+    // write (FATFS + SDSPI, DispTap images) left only ~44 B of a 3 KB stack.
     _ota_writer_task = hsys_task_create(&ModuleMqtt::s_ota_writer_task_entry,
-                                         "ota_writer", 3072, this, 5);
+                                         "ota_writer", 4096, this, 5);
 
     LOG_MSG_INFO(MQTT_LOG, "init — state=WAIT_CONFIG");
 }

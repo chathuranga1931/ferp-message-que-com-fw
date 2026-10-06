@@ -35,7 +35,7 @@
 #include "pal_crypto.h"
 #include "pal_power.h"
 #include "pal_crash_log.h"
-#include "pal_sd.h"
+#include "app_sd.h"         // crash.json goes through the SD mutex like all other SD users
 
 #include <ArduinoJson.h>
 #include "version.h"
@@ -854,7 +854,7 @@ void ModuleCubeSphere::_on_reg_step3_result(const hsys_msg_t &msg)
     if (_pending_crash_send) {
         char _crash_raw[800] = {};
         size_t _crash_bytes  = 0;
-        if (pal_sd_file_read("/panic/crash.json", _crash_raw, sizeof(_crash_raw) - 1, &_crash_bytes) == PAL_OK
+        if (app_sd_read_file("/panic/crash.json", _crash_raw, sizeof(_crash_raw) - 1, &_crash_bytes, 1000) == APP_SD_OK
             && _crash_bytes > 0) {
             JsonDocument _crash_doc;
             if (deserializeJson(_crash_doc, _crash_raw) == DeserializationError::Ok) {
@@ -1129,7 +1129,7 @@ bool ModuleCubeSphere::_build_event_json(evt_type_t evt)
             // crash.json is up to ~620 B (4 fields + 512-char backtrace).
             char raw[768] = {};
             size_t bytes_read = 0;
-            if (pal_sd_file_read("/panic/crash.json", raw, sizeof(raw) - 1, &bytes_read) != PAL_OK
+            if (app_sd_read_file("/panic/crash.json", raw, sizeof(raw) - 1, &bytes_read, 1000) != APP_SD_OK
                 || bytes_read == 0) {
                 LOG_MSG_ERROR(CSP_LOG_EN, "EVT_CRASH: cannot read crash.json from SD");
                 return false;
@@ -1352,7 +1352,7 @@ void ModuleCubeSphere::_on_event_result(const hsys_msg_t &msg)
         case EVT_CRASH:
             if (ok) {
                 LOG_MSG_INFO(CSP_LOG_EN, "=====> crash event OK — deleting crash log from SD");
-                pal_sd_file_delete("/panic/crash.json");
+                app_sd_delete_file("/panic/crash.json", 1000);
                 _pending_crash_send = false;
             } else {
                 LOG_MSG_WARNING(CSP_LOG_EN, "crash event failed result=%d status=%d — will retry",
@@ -1609,9 +1609,9 @@ void ModuleCubeSphere::_crash_check_on_sd_ready()
                  (unsigned)info.heap_free,
                  bt);
 
-        // pal_sd_file_write() creates parent directories automatically
-        int32_t rc = pal_sd_file_write("/panic/crash.json", json, strlen(json));
-        if (rc == PAL_OK) {
+        // app_sd_write_file() creates parent directories automatically
+        int32_t rc = app_sd_write_file("/panic/crash.json", json, 1000);
+        if (rc == APP_SD_OK) {
             LOG_MSG_INFO(CSP_LOG_EN, "crash log written to SD: %s", json);
             _pending_crash_send = true;
         } else {
@@ -1625,7 +1625,7 @@ void ModuleCubeSphere::_crash_check_on_sd_ready()
     // Case 2: no fresh crash, but crash.json may remain from a previous boot
     // where the file was written but the cloud send failed (e.g. no network).
     bool exists = false;
-    if (pal_sd_file_exists("/panic/crash.json", &exists) == PAL_OK && exists) {
+    if (app_sd_file_exists("/panic/crash.json", &exists, 1000) == APP_SD_OK && exists) {
         LOG_MSG_WARNING(CSP_LOG_EN, "unsent crash.json found on SD — will send to cloud when connected");
         _pending_crash_send = true;
     }

@@ -55,24 +55,96 @@
 
 esp_err_t read_app_info(const char *file_name, esp_app_desc_t *app_desc);
 
+/* ---------------------------------------------------------------------------
+ * Image source: registered ops (e.g. SD card via the app's mutex-protected
+ * storage layer) or, by default, stdio on FIRMWARE_BASE_PATH.
+ * ------------------------------------------------------------------------- */
+
+static const serial_flasher_file_ops_t *s_file_ops = NULL;
+
+void serial_flasher_set_file_ops(const serial_flasher_file_ops_t *ops)
+{
+    s_file_ops = ops;
+}
+
+typedef struct {
+    const char *name;
+    FILE *fp;
+    size_t size;
+} image_t;
+
+static bool image_open(image_t *img, const char *name)
+{
+    img->name = name;
+    img->fp = NULL;
+    img->size = 0;
+    if (s_file_ops)
+    {
+        if (s_file_ops->open(name, &img->size) != 0)
+        {
+            printf("%s not found\r\n", name);
+            return false;
+        }
+        return true;
+    }
+    char path[96];
+    snprintf(path, sizeof(path), FIRMWARE_BASE_PATH "%s", name);
+    img->fp = fopen(path, "rb");
+    if (img->fp == NULL)
+    {
+        printf("%s not found\r\n", path);
+        return false;
+    }
+    fseek(img->fp, 0, SEEK_END);
+    img->size = ftell(img->fp);
+    fseek(img->fp, 0, SEEK_SET);
+    return true;
+}
+
+/** Read exactly len bytes at offset. */
+static bool image_read(image_t *img, size_t offset, void *buf, size_t len)
+{
+    if (s_file_ops)
+    {
+        size_t got = 0;
+        return s_file_ops->read(img->name, offset, (uint8_t *)buf, len, &got) == 0 && got == len;
+    }
+    return fseek(img->fp, (long)offset, SEEK_SET) == 0 && fread(buf, 1, len, img->fp) == len;
+}
+
+static void image_close(image_t *img)
+{
+    if (s_file_ops)
+    {
+        s_file_ops->close(img->name);
+    }
+    else if (img->fp)
+    {
+        fclose(img->fp);
+    }
+    img->fp = NULL;
+}
+
+static uint8_t s_io_buf[1024];
+
 void start_serial_flash(bool skip_version_check)
 {
     example_binaries_t bin = {
         .boot = {
             .data = nullptr,
-            .file_name = FIRMWARE_BASE_PATH BOOTLOADER_NAME,
+            .file_name = BOOTLOADER_NAME,
             .size = 0,
             .addr = BOOTLOADER_ADDRESS,
         },
         .part = {
             .data = nullptr,
-            .file_name = FIRMWARE_BASE_PATH PARTITION_TABLE,
+            .file_name = PARTITION_TABLE,
             .size = 0,
             .addr = PARTITION_ADDRESS,
         },
         .app = {
             .data = nullptr,
-            .file_name = FIRMWARE_BASE_PATH APP_NAME,
+            .file_name = APP_NAME,
             .size = 0,
             .addr = APP_ADDRESS,
         }};
@@ -148,43 +220,53 @@ void start_serial_flash(bool skip_version_check)
 
 esp_err_t read_app_info(const char *file_name, esp_app_desc_t *app_desc)
 {
-    esp_err_t err = ESP_OK;
-    FILE *fptr = NULL;
-    size_t file_size;
     if (file_name == NULL || app_desc == NULL)
     {
         return ESP_ERR_INVALID_ARG;
     }
-    fptr = fopen(file_name, "rb");
-    if (fptr == NULL)
+    image_t img;
+    if (!image_open(&img, file_name))
     {
-        printf("%s not found\r\n", file_name);
         return ESP_ERR_NOT_FOUND;
     }
-    fseek(fptr, 0, SEEK_END);
-    file_size = ftell(fptr);
-    fseek(fptr, 0, SEEK_SET); // rewind to zero position, same as rewind(fptr);
-    size_t lenght = 0;
-    while (lenght < file_size)
+
+    // Scan 4-byte aligned words for the app descriptor magic, a block at a time
+    esp_err_t err = ESP_ERR_NOT_SUPPORTED;
+    for (size_t off = 0; off < img.size && err == ESP_ERR_NOT_SUPPORTED; off += sizeof(s_io_buf))
     {
-        fread(&app_desc->magic_word, sizeof(esp_app_desc_t::magic_word), 1, fptr);
-        lenght += 4;
-        if(app_desc->magic_word == ESP_APP_DESC_MAGIC_WORD)
+        size_t n = MIN(sizeof(s_io_buf), img.size - off);
+        if (!image_read(&img, off, s_io_buf, n))
         {
-            printf("Magic word found @0x%x, %dKB\r\n", file_size-lenght, (file_size-lenght)/8);
-            fread(&app_desc->secure_version, sizeof(esp_app_desc_t) - sizeof(esp_app_desc_t::magic_word), 1, fptr);
+            printf("%s read failed\r\n", file_name);
+            err = ESP_FAIL;
+            break;
+        }
+        for (size_t i = 0; i + sizeof(uint32_t) <= n; i += sizeof(uint32_t))
+        {
+            uint32_t word;
+            memcpy(&word, &s_io_buf[i], sizeof(word));
+            if (word != ESP_APP_DESC_MAGIC_WORD)
+            {
+                continue;
+            }
+            size_t pos = off + i;
+            if (pos + sizeof(esp_app_desc_t) <= img.size && image_read(&img, pos, app_desc, sizeof(esp_app_desc_t)))
+            {
+                printf("Magic word found @0x%x, image %u B\r\n", (unsigned)pos, (unsigned)img.size);
+                err = ESP_OK;
+            }
+            else
+            {
+                err = ESP_FAIL;
+            }
             break;
         }
     }
-    if(lenght >= file_size)
+    if (err == ESP_ERR_NOT_SUPPORTED)
     {
         printf("Magic word not found\r\n");
-        err = ESP_ERR_NOT_SUPPORTED;
-        goto end;
     }
-end:
-    fseek(fptr, 0, SEEK_SET); // rewind(fptr);
-    fclose(fptr);
+    image_close(&img);
     return err;
 }
 
@@ -235,28 +317,24 @@ esp_loader_error_t connect_to_target(uint32_t higher_transmission_rate)
 esp_loader_error_t flash_binary(const char *file_name, size_t size, size_t address)
 {
     esp_loader_error_t err = ESP_LOADER_SUCCESS;
-    static uint8_t payload[1024];
+    uint8_t *payload = s_io_buf;
     size_t binary_size = 0;
     size_t written = 0;
-    FILE *fptr = NULL;
+    image_t img;
 
     if (file_name == NULL)
     {
         printf("Invalid parameter\r\n");
         return ESP_LOADER_ERROR_INVALID_PARAM;
     }
-    fptr = fopen(file_name, "rb");
-    if (fptr == NULL)
+    if (!image_open(&img, file_name))
     {
-        printf("%s not found\r\n", file_name);
         return ESP_LOADER_ERROR_FAIL;
     }
-    fseek(fptr, 0, SEEK_END);
-    size = ftell(fptr);
-    fseek(fptr, 0, SEEK_SET); // same as rewind(fptr);
+    size = img.size;
 
     printf("Erasing flash (this may take a while)...\r\n");
-    err = esp_loader_flash_start(address, size, sizeof(payload));
+    err = esp_loader_flash_start(address, size, sizeof(s_io_buf));
     if (err != ESP_LOADER_SUCCESS)
     {
         printf("Erasing flash failed with error %d.\r\n", err);
@@ -269,9 +347,13 @@ esp_loader_error_t flash_binary(const char *file_name, size_t size, size_t addre
 
     while (size > 0)
     {
-        size_t to_read = MIN(size, sizeof(payload));
-        // memcpy(payload, bin_addr, to_read);
-        fread(payload, to_read, 1, fptr);
+        size_t to_read = MIN(size, sizeof(s_io_buf));
+        if (!image_read(&img, written, payload, to_read))
+        {
+            printf("\r\n%s read failed at %u\r\n", file_name, (unsigned)written);
+            err = ESP_LOADER_ERROR_FAIL;
+            goto end;
+        }
 
         err = esp_loader_flash_write(payload, to_read);
         if (err != ESP_LOADER_SUCCESS)
@@ -281,7 +363,6 @@ esp_loader_error_t flash_binary(const char *file_name, size_t size, size_t addre
         }
 
         size -= to_read;
-        // bin_addr += to_read; //skip this because file pointer is already doing it
         written += to_read;
 
         int progress = (int)(((float)written / binary_size) * 100);
@@ -307,8 +388,7 @@ esp_loader_error_t flash_binary(const char *file_name, size_t size, size_t addre
 #endif
 
 end:
-    fseek(fptr, 0, SEEK_SET); // rewind(fptr);
-    fclose(fptr);
+    image_close(&img);
     return err;
 }
 #endif /* SERIAL_FLASHER_INTERFACE_UART */
