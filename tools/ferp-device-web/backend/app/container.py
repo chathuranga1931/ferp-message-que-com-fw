@@ -10,6 +10,7 @@ from .models import AppConfig
 from .ports import (AuthProvider, BlobStore, ConfigStore, DeviceRepository, DocumentStore, EventBus,
                     HistoryStore)
 from .server_settings import REPO_RELEASES, ServerSettings
+from .services.assets import Assets
 from .services.audit import Audit
 from .services.catalog import Catalog
 from .services.cloud_logs import CloudLogs
@@ -55,6 +56,7 @@ class Container:
         self.fleet     = Fleet(self.hub, self.devices, self.ops, self.catalog, self.docs, self.bus, self.console, cfg)
         self.snapshots = Snapshots(self.docs, self.ops, self.catalog, self.audit)
         self.favorites = Favorites(self.docs, self.audit)
+        self.assets    = Assets(self.docs, self.devices, self.audit)
         self.firmware  = FirmwareLibrary(self.blobs, self._bundle_dirs)
         self.ota       = OtaManager(self.firmware, self.console, self.bus, cfg, self.audit)
         self.batch_ota = BatchOta(self.ota, self.firmware, self.console, self.bus, self.audit, ping=self._ping_device)

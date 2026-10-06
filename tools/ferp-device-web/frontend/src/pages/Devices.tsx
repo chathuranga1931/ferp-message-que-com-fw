@@ -19,8 +19,8 @@ function distinct(devices: Device[], k: keyof DeviceIn, extra: string[] = []): s
   return [...new Set([...extra, ...devices.map((d) => d[k]).filter(Boolean)])].sort();
 }
 
-export default function Devices({ devices, onChanged, onLogs }:
-  { devices: Device[]; onChanged: () => void; onLogs: (mac: string) => void }) {
+export default function Devices({ devices, onChanged, onLogs, onOpen }:
+  { devices: Device[]; onChanged: () => void; onLogs: (mac: string) => void; onOpen: (id: string) => void }) {
   const [editing, setEditing] = useState<string | "new" | null>(null);
   const [form, setForm] = useState<DeviceIn>(BLANK);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
@@ -42,7 +42,10 @@ export default function Devices({ devices, onChanged, onLogs }:
     if (!form.mac.trim() && !form.uuid.trim()) { setErr("Enter a MAC or a UUID — MQTT topics need one of them"); return; }
     try {
       if (editing === "new") await api.addDevice(form);
-      else if (editing) await api.updateDevice(editing, form);
+      else if (editing) {
+        const cur = devices.find((d) => d.id === editing);
+        await api.updateDevice(editing, cur ? { ...cur, ...form } : form);
+      }
       setEditing(null);
       onChanged();
     } catch (e) { setErr((e as Error).message); }
@@ -157,7 +160,8 @@ export default function Devices({ devices, onChanged, onLogs }:
             <tbody>
               {rows.map((d) => (
                 <tr key={d.id}>
-                  <td>{d.label}{d.notes && <div className="muted small">{d.notes}</div>}</td>
+                  <td><button className="link-btn strong" onClick={() => onOpen(d.id)} title="Open the device page">{d.label}</button>
+                    {d.notes && <div className="muted small">{d.notes}</div>}</td>
                   <td>{d.device_type ? <span className={`type-badge t-${d.device_type.toLowerCase()}`}>{d.device_type}</span> : <span className="muted">—</span>}</td>
                   <td>{d.shed || <span className="muted">—</span>}</td>
                   <td>{[d.pump_id_1, d.pump_id_2].filter(Boolean).join(" / ") || <span className="muted">—</span>}</td>

@@ -2,28 +2,35 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "./api";
 import { ConsoleDock } from "./components/ConsoleDock";
 import { MqttControl } from "./components/MqttControl";
+import Cables from "./pages/Cables";
 import Definitions from "./pages/Definitions";
+import DevicePage from "./pages/DevicePage";
 import Devices from "./pages/Devices";
 import Fleet from "./pages/Fleet";
 import History from "./pages/History";
 import Logs from "./pages/Logs";
 import Ota from "./pages/Ota";
 import Settings from "./pages/Settings";
+import Sheds from "./pages/Sheds";
 import Snapshots from "./pages/Snapshots";
 import Workspace from "./pages/Workspace";
 import { useLive } from "./store";
 import type { Catalog, Device } from "./types";
 import { API_VERSION } from "./version";
 
-type Page = "fleet" | "workspace" | "ota" | "logs" | "snapshots" | "history" | "devices" | "definitions" | "settings";
+type Page = "fleet" | "device" | "workspace" | "ota" | "logs" | "snapshots" | "history" | "devices" | "sheds" | "cables"
+  | "definitions" | "settings";
 const PAGES: { id: Page; label: string }[] = [
   { id: "fleet", label: "Fleet" },
+  { id: "device", label: "Device" },
   { id: "workspace", label: "Workspace" },
   { id: "ota", label: "OTA" },
   { id: "logs", label: "Cloud logs" },
   { id: "snapshots", label: "Snapshots" },
   { id: "history", label: "History" },
   { id: "devices", label: "Devices" },
+  { id: "sheds", label: "Sheds" },
+  { id: "cables", label: "Cables" },
   { id: "definitions", label: "Definitions" },
   { id: "settings", label: "Settings" },
 ];
@@ -45,6 +52,7 @@ export default function App() {
   const [page, setPage] = useState<Page>(initialPage);
   const [deviceId, setDeviceId] = useState<string>(initialDevice);
   const [otaPreselect, setOtaPreselect] = useState<string[]>([]);
+  const [shedFocus, setShedFocus] = useState("");
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [devices, setDevices] = useState<Device[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -59,7 +67,10 @@ export default function App() {
   useEffect(() => { location.hash = page; }, [page]);
   useEffect(() => { try { localStorage.setItem(LS_KEY, deviceId); } catch { /* storage unavailable */ } }, [deviceId]);
 
-  const openDevice = useCallback((id: string) => { setDeviceId(id); setPage("workspace"); }, []);
+  /** A device's own page (details, lifecycle, history); the Workspace is one click from there. */
+  const openDevice = useCallback((id: string) => { setDeviceId(id); setPage("device"); }, []);
+  const openWorkspace = useCallback((id: string) => { setDeviceId(id); setPage("workspace"); }, []);
+  const openSheds = useCallback((name = "") => { setShedFocus(name); setPage("sheds"); }, []);
   const openOta = useCallback((ids: string[]) => { setOtaPreselect(ids); setPage("ota"); }, []);
   const clearPreselect = useCallback(() => setOtaPreselect([]), []);
   /** Cloud logs → "By device" view for this MAC (dump_logs.py folders). */
@@ -96,12 +107,16 @@ export default function App() {
       <main className="page-scroll">
         <div className="page">
           {page === "fleet" && <Fleet devices={devices} onOpen={openDevice} onOta={openOta} onLogs={openLogs} onDevicesChanged={reloadDevices} />}
+          {page === "device" && <DevicePage deviceId={deviceId} devices={devices} onSelect={setDeviceId} onWorkspace={openWorkspace}
+                                             onOta={openOta} onLogs={openLogs} onSheds={openSheds} onChanged={reloadDevices} />}
           {page === "workspace" && <Workspace catalog={catalog} devices={devices} deviceId={deviceId} onSelect={setDeviceId} onOta={openOta} />}
           {page === "ota" && <Ota devices={devices} preselect={otaPreselect} onPreselectUsed={clearPreselect} />}
           {page === "logs" && <Logs devices={devices} onOpenSettings={() => setPage("settings")} />}
           {page === "snapshots" && <Snapshots catalog={catalog} devices={devices} />}
           {page === "history" && <History devices={devices} />}
-          {page === "devices" && <Devices devices={devices} onChanged={reloadDevices} onLogs={openLogs} />}
+          {page === "devices" && <Devices devices={devices} onChanged={reloadDevices} onLogs={openLogs} onOpen={openDevice} />}
+          {page === "sheds" && <Sheds devices={devices} focusName={shedFocus} onChanged={reloadDevices} onOpenDevice={openDevice} />}
+          {page === "cables" && <Cables devices={devices} onOpenDevice={openDevice} />}
           {page === "definitions" && <Definitions />}
           {page === "settings" && <Settings catalog={catalog} onReloadCatalog={() => reloadCatalog(true)} />}
         </div>

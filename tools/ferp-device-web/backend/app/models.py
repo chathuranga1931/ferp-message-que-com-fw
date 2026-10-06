@@ -126,6 +126,12 @@ class DeviceIn(BaseModel):
     sd_card_size:  str = ""   # e.g. "8 GB" (not yet reported by the firmware over MQTT)
     board_version: str = ""   # device info HW_VERSION (0xA005)
     pump_type:     str = ""
+    # lifecycle (Device page)
+    manufactured:    str = ""        # YYYY-MM-DD
+    delivered:       str = ""        # YYYY-MM-DD, handed over to the customer
+    warranty_months: int = Field(12, ge=0, le=120)   # warranty runs from the delivery date
+    harnesses:       list[str] = []  # wire harness IDs fitted with the device (SWH0xx), see /harnesses
+    config_snapshot: str = ""        # id of the config snapshot last applied to the device
 
 
 class Device(DeviceIn):
@@ -225,3 +231,60 @@ class BatchOtaIn(BaseModel):
         if not ids:
             raise ValueError("Choose at least one bundle")
         return ids
+
+
+# ── Sheds (customer sites) — keyed by the name devices use in their "shed" field ─
+
+class RemoteAccess(BaseModel):
+    tool:    str = ""     # AnyDesk, TeamViewer, router web UI, …
+    address: str = ""     # ID / URL / IP
+    notes:   str = ""     # credentials hint, who to call first, …
+
+
+class ShedIn(BaseModel):
+    name:          str = Field(..., min_length=1)   # e.g. YAKKALA — must match the devices' shed field
+    customer:      str = ""      # company / owner
+    contact_name:  str = ""
+    phone:         str = ""
+    phone_2:       str = ""
+    email:         str = ""
+    address:       str = ""
+    city:          str = ""
+    map_url:       str = ""
+    remote_access: list[RemoteAccess] = []
+    notes:         str = ""
+
+
+class Shed(ShedIn):
+    id: str
+
+
+# ── Wire harness catalogue (SWH0xx) — stock tracking comes later ─────────────
+
+class HarnessIn(BaseModel):
+    id:          str = Field(..., min_length=1, pattern=r"^[A-Za-z0-9_-]+$")   # SWH001
+    type:        str = ""        # TAP | IO | Suppliment | …
+    description: str = ""
+    retired:     bool = False
+    stock:       int | None = None   # reserved for stock keeping
+
+
+# ── Device history (Device page timeline) ─────────────────────────────────────
+
+LOG_KINDS = ("manufactured", "delivered", "repair", "modification", "issue", "config", "note")
+
+
+class DeviceLogIn(BaseModel):
+    date:     str = ""           # YYYY-MM-DD (empty → today)
+    kind:     Literal["manufactured", "delivered", "repair", "modification", "issue", "config", "note"] = "note"
+    title:    str = Field(..., min_length=1)
+    details:  str = ""
+    status:   Literal["", "open", "resolved"] = ""   # issues: open → resolved
+    snapshot_id: str = ""        # kind "config": the snapshot that was applied
+
+
+class DeviceLogEntry(DeviceLogIn):
+    id:        str
+    device_id: str
+    created:   float
+    user:      str = ""

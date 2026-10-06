@@ -1,5 +1,5 @@
 import type {
-  AppConfig, AuditEntry, Batch, Catalog, Device, DeviceIn, DeviceState, Favorite, Firmware, FleetSnapshot,
+  AppConfig, AuditEntry, Batch, Catalog, Device, DeviceLogEntry, DeviceLogIn, DeviceSave, DeviceState, Harness, Shed, ShedIn, Favorite, Firmware, FleetSnapshot,
   HistoryLine, LogChunk, LogFile, MqttStatus, OtaSession, RecentMessage, ScannedBundle, Snapshot,
 } from "./types";
 
@@ -38,8 +38,21 @@ export const api = {
   clearConsole: () => req("DELETE", "/console"),
 
   devices: () => req<Device[]>("GET", "/devices"),
-  addDevice: (d: DeviceIn) => req<Device>("POST", "/devices", d),
-  updateDevice: (id: string, d: DeviceIn) => req<Device>("PUT", `/devices/${id}`, d),
+  addDevice: (d: DeviceSave) => req<Device>("POST", "/devices", d),
+  updateDevice: (id: string, d: DeviceSave) => req<Device>("PUT", `/devices/${id}`, d),
+
+  sheds: () => req<Shed[]>("GET", "/sheds"),
+  addShed: (s: ShedIn) => req<Shed>("POST", "/sheds", s),
+  updateShed: (id: string, s: ShedIn) => req<Shed & { renamed_devices: number }>("PUT", `/sheds/${id}`, s),
+  deleteShed: (id: string) => req("DELETE", `/sheds/${id}`),
+  harnesses: () => req<Harness[]>("GET", "/harnesses"),
+  saveHarness: (h: Harness) => req<Harness>("PUT", `/harnesses/${encodeURIComponent(h.id)}`, h),
+  deleteHarness: (id: string) => req("DELETE", `/harnesses/${encodeURIComponent(id)}`),
+  deviceLog: (id: string) => req<DeviceLogEntry[]>("GET", `/devices/${id}/log`),
+  addDeviceLog: (id: string, e: DeviceLogIn) => req<DeviceLogEntry>("POST", `/devices/${id}/log`, e),
+  updateDeviceLog: (eid: string, e: DeviceLogIn) => req<DeviceLogEntry>("PUT", `/device-log/${eid}`, e),
+  deleteDeviceLog: (eid: string) => req("DELETE", `/device-log/${eid}`),
+  openIssues: () => req<Record<string, number>>("GET", "/device-log/open-issues"),
   deleteDevice: (id: string) => req("DELETE", `/devices/${id}`),
   deviceState: (id: string) => req<DeviceState>("GET", `/devices/${id}/state`),
   readSiteInfo: (id: string) =>

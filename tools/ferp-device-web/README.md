@@ -88,6 +88,23 @@ Receipt printers (HSYS firmware 44.x COM / 45.x USB, `src/product/ferp-printer-*
 - **`POST /api/devices/{id}/request`** sends a command and waits for one named reply (`{"msg", "data", "expect", "timeout"}`). The printer panel uses it; scripts can too.
 - `devtools/fake_device.py --printer --id simprn01` simulates a printer for testing.
 
+Device records (all JSON in `backend/data`):
+
+- **Device page.** Clicking a device (Fleet, Devices, Sheds, Cables) opens its own page:
+  - details, status and FW, with **Workspace**, **OTA…** and **Logs** buttons;
+  - **Lifecycle:** manufactured and delivered dates and warranty months, giving "under warranty until … / expired";
+  - **Cables:** wire harness tags added with **+** (a device can carry several);
+  - **Shed** contact, address and remote-access details;
+  - **Config snapshot** currently loaded;
+  - **History:** issues (open / resolved), repairs, modifications, config changes, delivery and notes.
+- **Sheds page** (`docs/sheds.json`): customer, contact, phones, e-mail, address, map link, remote access (tool / ID / notes) and notes.
+  - A shed is matched to devices by its **name**. Renaming a shed renames it on its devices.
+  - Shed names used by devices that have no record yet are listed for one-click creation.
+- **Cables page** (`docs/harnesses.json`): the SWH0xx harness catalogue (type, description, retired), with the devices each cable is fitted to. A `stock` field is reserved for stock keeping.
+- **Device history** (`docs/device_log.json`):
+  - applying a snapshot adds a config entry and records it as the device's loaded snapshot;
+  - a *delivered* or *manufactured* entry fills the matching date if it is empty.
+
 Long reads and writes run on the server, so they keep going if you close the browser. Every open tab sees the same live state.
 
 ## Layout

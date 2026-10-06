@@ -144,7 +144,12 @@ def delete_snapshot(sid: str, c: Container = Depends(container), user: str = Dep
 @router.post("/snapshots/{sid}/apply")
 def apply_snapshot(sid: str, body: SnapshotApplyIn, c: Container = Depends(container),
                    user: str = Depends(current_user)):
-    return {"results": guard(c.snapshots.apply, user, sid, get_devices(c, body.device_ids), body.keys, body.only_diff)}
+    devices = get_devices(c, body.device_ids)
+    results = guard(c.snapshots.apply, user, sid, devices, body.keys, body.only_diff)
+    snap = c.snapshots.get(sid)
+    if snap:   # history entry + "loaded snapshot" on each device page
+        c.assets.record_snapshot_applied(user, devices, snap, results)
+    return {"results": results}
 
 
 # ── favourites ──────────────────────────────────────────────────────────────

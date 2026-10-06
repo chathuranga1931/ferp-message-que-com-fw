@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
+import { DeviceFilters, matchesFilter, NO_FILTER, SelectionNote, type SiteFilter } from "../components/DeviceFilters";
 import { seedDevice, useLive, waitForJob } from "../store";
 import type { Catalog, Device, Snapshot } from "../types";
 import { downloadText, EMPTY, fmtDateTime, hex } from "../util";
@@ -100,6 +101,8 @@ function SnapshotDetail({ snap, devices, onDeleted }: { snap: Snapshot; devices:
   const [compareId, setCompareId] = useState("");
   const [onlyDiff, setOnlyDiff] = useState(false);
   const [targets, setTargets] = useState<Set<string>>(new Set());
+  const [siteFilter, setSiteFilter] = useState<SiteFilter>(NO_FILTER);
+  const [search, setSearch] = useState("");
   const [applyOnlyDiff, setApplyOnlyDiff] = useState(true);
   const [confirm, setConfirm] = useState<"apply" | "delete" | null>(null);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -110,6 +113,21 @@ function SnapshotDetail({ snap, devices, onDeleted }: { snap: Snapshot; devices:
   useEffect(() => {      // load the compared device's last-read values
     if (compareId) api.deviceState(compareId).then((s) => seedDevice(compareId, s.config, s.devinfo, s.jobs, s.ota)).catch(() => undefined);
   }, [compareId]);
+
+  // Apply-to-devices list: Type / Shed / Pump type / Board filters + text search
+  const shownDevices = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return devices
+      .filter((d) => matchesFilter(d, siteFilter))
+      .filter((d) => !q || [d.label, d.mac, d.shed, d.pump_id_1, d.pump_id_2].some((x) => (x ?? "").toLowerCase().includes(q)));
+  }, [devices, siteFilter, search]);
+  const shownIds = useMemo(() => new Set(shownDevices.map((d) => d.id)), [shownDevices]);
+  const allShownSelected = shownDevices.length > 0 && shownDevices.every((d) => targets.has(d.id));
+  const toggleShown = () => {
+    const n = new Set(targets);
+    shownDevices.forEach((d) => (allShownSelected ? n.delete(d.id) : n.add(d.id)));
+    setTargets(n);
+  };
 
   const rows = useMemo(() => Object.entries(snap.values).map(([k, v]) => {
     const keyId = parseInt(k, 16);
@@ -181,10 +199,24 @@ function SnapshotDetail({ snap, devices, onDeleted }: { snap: Snapshot; devices:
 
       <div className="edit-box apply-box">
         <h4>Apply to devices</h4>
+        <DeviceFilters rows={devices} value={siteFilter} onChange={setSiteFilter} />
+        <div className="row wrap apply-tools">
+          <input className="search small" placeholder="Search label / MAC / shed / pump…" value={search} onChange={(e) => setSearch(e.target.value)} />
+          <label className="check small"><input type="checkbox" checked={allShownSelected} disabled={shownDevices.length === 0} onChange={toggleShown} />
+            Select all shown ({shownDevices.length})</label>
+        </div>
+        <SelectionNote selected={targets} visibleIds={shownIds}
+                       onUnselectHidden={() => setTargets(new Set([...targets].filter((id) => shownIds.has(id))))}
+                       onClear={() => setTargets(new Set())} />
         <div className="device-checks">
-          {devices.map((d) => (
-            <label key={d.id} className="check"><input type="checkbox" checked={targets.has(d.id)} onChange={() => toggle(d.id)} /> {d.label}</label>
+          {shownDevices.map((d) => (
+            <label key={d.id} className="check" title={[d.device_type, d.shed, d.board_version].filter(Boolean).join(" · ")}>
+              <input type="checkbox" checked={targets.has(d.id)} onChange={() => toggle(d.id)} /> {d.label}
+              {d.device_type && <span className={`type-badge t-${d.device_type.toLowerCase()}`}>{d.device_type}</span>}
+              {d.shed && <span className="muted small"> {d.shed}</span>}
+            </label>
           ))}
+          {shownDevices.length === 0 && <span className="muted small">No devices match the filters.</span>}
         </div>
         <label className="check"><input type="checkbox" checked={applyOnlyDiff} onChange={(e) => setApplyOnlyDiff(e.target.checked)} />
           Only write keys that differ from each device's last-read value</label>
