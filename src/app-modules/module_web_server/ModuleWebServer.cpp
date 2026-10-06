@@ -281,20 +281,11 @@ int32_t ModuleWebServer::_hdl_static_file(pal_http_request_t req, void *ctx)
     return pal_http_resp_send(req, "Not found", 0);
 }
 
-// Config buffers are static: the 8 KB httpd task stack cannot hold 3 x 4 KB
-// (POST /setDeviceConfigurationsPost overflowed it and reset the device).
-// All URI handlers of one server run sequentially on its single httpd task,
-// so sharing the buffers between requests is safe.
-static char s_cfg_body[4096 + 1];
-static char s_cfg_existing[4096];
-static char s_cfg_out[4096];
-
 int32_t ModuleWebServer::_hdl_get_config(pal_http_request_t req, void * /*ctx*/)
 {
-    char *buf = s_cfg_existing;
-    strcpy(buf, "{}");
+    char buf[4096] = "{}";
     size_t bytes_read = 2;
-    pal_spiffs_file_read(k_config_path, (uint8_t *)buf, sizeof(s_cfg_existing) - 1,
+    pal_spiffs_file_read(k_config_path, (uint8_t *)buf, sizeof(buf) - 1,
                          &bytes_read);
     buf[bytes_read] = '\0';
 
@@ -314,8 +305,8 @@ int32_t ModuleWebServer::_hdl_post_config(pal_http_request_t req, void *ctx)
             "{\"ok\":false,\"error\":\"empty body\"}", 0);
     }
 
-    static constexpr size_t k_max = sizeof(s_cfg_body) - 1;
-    char *body = s_cfg_body;
+    static constexpr size_t k_max = 4096;
+    char body[k_max + 1];
     size_t received = 0;
 
     /* Read in a loop until we have all content_len bytes */
@@ -338,11 +329,10 @@ int32_t ModuleWebServer::_hdl_post_config(pal_http_request_t req, void *ctx)
     }
 
     /* Read existing config */
-    char *existing = s_cfg_existing;
-    strcpy(existing, "{}");
+    char existing[4096] = "{}";
     size_t existing_len = 2;
     pal_spiffs_file_read(k_config_path, (uint8_t *)existing,
-                         sizeof(s_cfg_existing) - 1, &existing_len);
+                         sizeof(existing) - 1, &existing_len);
     existing[existing_len] = '\0';
 
     JsonDocument existing_doc;
@@ -354,8 +344,8 @@ int32_t ModuleWebServer::_hdl_post_config(pal_http_request_t req, void *ctx)
     }
 
     /* Serialise and write back */
-    char *out = s_cfg_out;
-    size_t out_len = serializeJsonPretty(existing_doc, out, sizeof(s_cfg_out));
+    char out[4096];
+    size_t out_len = serializeJsonPretty(existing_doc, out, sizeof(out));
     pal_spiffs_file_write(k_config_path, (uint8_t *)out, out_len);
 
     /* Hot-reload */
