@@ -501,7 +501,7 @@ static const app_msg_mqtt_route_t k_mqtt_route_table[] = {
 
     // ── Pool diagnostics → broadcast (ModuleSysmon subscribes) ───────────────
     { MSG_ID_POOL_GET_JSON,         (hsys_module_id_t)0,   false },
-    // ── SPIFFS file listing → broadcast (ModuleSysmon subscribes) ─────────────
+    // ── SPIFFS file listing → broadcast (ModuleSpiffs subscribes) ─────────────
     { MSG_ID_GET_FILE_LIST_SPIFFS,  (hsys_module_id_t)0,   false },
     // ── SD cleanup → ModuleSD (blocking wipe + reboot) ────────────────────────
     { MSG_ID_SD_CLEANUP,            MODULE_SD_ID,          false },
@@ -660,7 +660,7 @@ static const ModuleWebServer::ApiMsgRouteDef k_api_routes[] = {
     { MSG_ID_CONFIG_SET,       (hsys_module_id_t)0,  (hsys_msg_id_t)0     }, // broadcast
     { MSG_ID_DEV_INFO_READ,    MODULE_DEVICE_INFO_ID, MSG_ID_DEV_INFO_VALUE },
     { MSG_ID_POOL_GET_JSON,    (hsys_module_id_t)0,   MSG_ID_POOL_JSON      }, // broadcast → sysmon responds
-    { MSG_ID_GET_FILE_LIST_SPIFFS, (hsys_module_id_t)0, MSG_ID_FILE_LIST_SPIFFS }, // broadcast → sysmon responds
+    { MSG_ID_GET_FILE_LIST_SPIFFS, (hsys_module_id_t)0, MSG_ID_FILE_LIST_SPIFFS }, // broadcast → ModuleSpiffs responds
     { (hsys_msg_id_t)0,        (hsys_module_id_t)0,   (hsys_msg_id_t)0     }  // sentinel
 };
 

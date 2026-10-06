@@ -81,6 +81,8 @@
 #include "msg_system_reboot.h"          // MsgSystemReboot        (0x020B)
 #include "msg_sd_cleanup.h"              // MsgSdCleanup           (0x020C)
 #include "msg_spiffs_cleanup.h"         // MsgSpiffsCleanup       (0x020D)
+#include "msg_spiffs_clean_dt.h"         // MsgSpiffsCleanDt       (0x020E)
+#include "msg_spiffs_clean_dt_result.h"  // MsgSpiffsCleanDtResult (0x020F)
 #include "msg_http_request.h"           // MsgHttpRequest         (0x005F)
 #include "msg_http_result.h"            // MsgHttpResult          (0x005B)
 #include "msg_http_response_header.h"   // MsgHttpResponseHeader  (0x005D)
@@ -153,6 +155,8 @@
         MsgSystemReboot::DESCRIPTOR,                                               \
         MsgSdCleanup::DESCRIPTOR,                                                 \
         MsgSpiffsCleanup::DESCRIPTOR,                                             \
+        MsgSpiffsCleanDt::DESCRIPTOR,                                             \
+        MsgSpiffsCleanDtResult::DESCRIPTOR,                                       \
         MsgHttpResponseHeader::DESCRIPTOR,                                        \
         MsgMqttSubscribe::DESCRIPTOR,                                             \
         MsgMqttExtData::DESCRIPTOR,                                               \

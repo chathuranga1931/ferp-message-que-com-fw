@@ -69,6 +69,9 @@ private:
     // Saves config to RAM, formats SPIFFS, writes config back, triggers reboot
     void _on_spiffs_cleanup();
 
+    // Replies MsgFileListSpiffs (budgeted to fit one MQTT reply)
+    void _publish_file_list();
+
     // Deletes the esp32/ + esp07/ DispTap image folders, garbage-collects,
     // replies MsgSpiffsCleanDtResult to the sender (APP_HAS_SPIFFS_CLEAN_DT)
     void _on_clean_dt(const hsys_msg_t &msg);

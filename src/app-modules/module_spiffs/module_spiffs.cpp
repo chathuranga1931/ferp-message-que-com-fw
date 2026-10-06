@@ -3,7 +3,8 @@
 // ModuleSpiffs — mounts the SPIFFS filesystem via app_spiffs, then
 // broadcasts MsgSpiffsReady so other modules know they can access files.
 //
-// Also handles MsgSpiffsCleanup: erases the SPIFFS partition then reboots,
+// Also handles MsgGetFileListSpiffs (replies MsgFileListSpiffs), MsgSpiffsCleanup:
+// erases the SPIFFS partition then reboots,
 // and MsgSpiffsCleanDt: deletes the esp32/ + esp07/ DispTap image folders
 // (the images now live on the SD card) and garbage-collects SPIFFS.
 
@@ -17,7 +18,10 @@
 #include "msg_spiffs_clean_dt_result.h"
 #endif
 #include "msg_system_reboot.h"
+#include "msg_get_file_list_spiffs.h"
+#include "msg_file_list_spiffs.h"
 #include "pal_logger.h"
+#include <ArduinoJson.h>
 #include <string.h>
 
 #define __TAG__          "SPIFFS_M"
@@ -103,6 +107,7 @@ void ModuleSpiffs::_purge_stale_files()
 void ModuleSpiffs::post_init()
 {
     subscribe(MsgSpiffsCleanup::ID);
+    subscribe(MsgGetFileListSpiffs::ID);
 #ifdef APP_HAS_SPIFFS_CLEAN_DT
     subscribe(MsgSpiffsCleanDt::ID);
 #endif
@@ -128,6 +133,9 @@ void ModuleSpiffs::on_msg_received(const hsys_msg_t &msg)
 {
     if (msg.msg_id == MsgSpiffsCleanup::ID) {
         _on_spiffs_cleanup();
+    }
+    else if (msg.msg_id == MsgGetFileListSpiffs::ID) {
+        _publish_file_list();
     }
 #ifdef APP_HAS_SPIFFS_CLEAN_DT
     else if (msg.msg_id == MsgSpiffsCleanDt::ID) {
@@ -226,6 +234,64 @@ void ModuleSpiffs::_on_clean_dt(const hsys_msg_t &msg)
     else                                      publish(resp);
 }
 #endif  // APP_HAS_SPIFFS_CLEAN_DT
+
+// ── SPIFFS file listing ──────────────────────────────────────────────────────
+//
+// Runs here (storage_task) rather than in ModuleSysmon (indicator_task, 2 KB):
+// the directory walk + stat + JSON build overran that small stack.
+//
+// The reply travels in one MQTT envelope whose data part is limited to
+// 512 bytes, so files are listed while they fit a budget; the rest are
+// counted in "more".  JSON: {"t":total,"u":used,"f":[{"n":name,"s":size},...],"more":N}
+
+#define FILE_LIST_JSON_BUDGET  470   // bytes, leaves room for ,"more":N within 511
+
+namespace {
+struct FileListCtx {
+    JsonDocument *doc;
+    JsonArray     arr;
+    uint32_t      more;
+};
+
+void _add_file(const char *name, size_t size, void *ctx)
+{
+    FileListCtx *c = static_cast<FileListCtx *>(ctx);
+    if (c->more == 0) {
+        JsonObject f = c->arr.add<JsonObject>();
+        f["n"] = name;
+        f["s"] = size;
+        if (measureJson(*c->doc) <= FILE_LIST_JSON_BUDGET) return;
+        c->arr.remove(c->arr.size() - 1);     // did not fit — count it instead
+    }
+    c->more++;
+}
+}  // namespace
+
+void ModuleSpiffs::_publish_file_list()
+{
+    app_spiffs_info_t info = {};
+    (void)app_spiffs_get_info(&info);
+
+    JsonDocument doc;
+    doc["t"] = info.total_bytes;   // partition capacity as SPIFFS reports it
+    doc["u"] = info.used_bytes;    // used incl. not-yet-collected pages
+    FileListCtx ctx = { &doc, doc["f"].to<JsonArray>(), 0 };
+    (void)app_spiffs_list_files(_add_file, &ctx, 2000);
+    if (ctx.more) doc["more"] = ctx.more;
+
+    static char json[512];         // static: off the task stack
+    size_t n = serializeJson(doc, json, sizeof(json));
+    if (n == 0 || n >= sizeof(json)) {
+        LOG_MSG_ERROR(MOD_SPIFFS_LOG_EN, "file list: JSON too large (%u)", (unsigned)n);
+        return;
+    }
+    hsys_msg_t *resp = MsgFileListSpiffs::create(id(), json, (uint32_t)n);
+    if (!resp) {
+        LOG_MSG_ERROR(MOD_SPIFFS_LOG_EN, "file list: MsgFileListSpiffs::create failed");
+        return;
+    }
+    publish(resp);
+}
 
 // ── Cleanup handler ───────────────────────────────────────────────────────────
 
