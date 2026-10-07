@@ -17,6 +17,15 @@ function loadView(): View {
   try { return localStorage.getItem(LS_VIEW) === "tiles" ? "tiles" : "table"; } catch { return "table"; }
 }
 
+/** Filter state that survives switching tabs (the page unmounts) for this browser session. */
+function useSessionState<T>(key: string, fallback: T): [T, (v: T) => void] {
+  const [value, setValue] = useState<T>(() => {
+    try { const s = sessionStorage.getItem(key); return s === null ? fallback : (JSON.parse(s) as T); } catch { return fallback; }
+  });
+  useEffect(() => { try { sessionStorage.setItem(key, JSON.stringify(value)); } catch { /* storage unavailable */ } }, [key, value]);
+  return [value, setValue];
+}
+
 interface Props {
   devices: Device[]; onOpen: (id: string) => void; onOta: (ids: string[]) => void;
   onLogs: (mac: string) => void; onDevicesChanged: () => void;
@@ -28,9 +37,9 @@ export default function Fleet({ devices, onOpen, onOta, onLogs, onDevicesChanged
   const skew = useLive((s) => s.clockSkew);
   const connected = useLive((s) => s.mqtt?.connected ?? false);
   const now = useNow(5000) + skew;
-  const [filter, setFilter] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"" | Status | "unregistered">("");
-  const [siteFilter, setSiteFilter] = useState<SiteFilter>(NO_FILTER);
+  const [filter, setFilter] = useSessionState("ferp.fleet.filter", "");
+  const [statusFilter, setStatusFilter] = useSessionState<"" | Status | "unregistered">("ferp.fleet.status", "");
+  const [siteFilter, setSiteFilter] = useSessionState<SiteFilter>("ferp.fleet.site", NO_FILTER);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [view, setView] = useState<View>(loadView);
