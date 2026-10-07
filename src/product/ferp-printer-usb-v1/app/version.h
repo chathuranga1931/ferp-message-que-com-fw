@@ -7,7 +7,7 @@
  *           HTTP API on port 80, MQTT, cloud print queue, OTA over MQTT / HTTP
  */
 
-#define FW_VERSION          "45.0.0.1"
+#define FW_VERSION          "45.0.0.3"
 #define HW_VERSION          "S3-USB"
 
 #endif //__VERSION_H
