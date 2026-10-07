@@ -8,7 +8,7 @@
  *           cloud print queue, OTA over MQTT / HTTP
  */
 
-#define FW_VERSION          "44.0.0.1"
+#define FW_VERSION          "44.0.0.3"
 #define HW_VERSION          "2308"
 
 #endif //__VERSION_H
