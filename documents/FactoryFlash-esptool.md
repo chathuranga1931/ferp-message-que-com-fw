@@ -9,7 +9,7 @@ factory image over USB.
   <https://saslk-org.jp.larksuite.com/wiki/DNyzw4fDFiSWvgkd1vIjZCIjpPd?fromScene=spaceOverview#share-RinSdbkn5owHvFxffwljif56peM>
 - **Factory image** — the latest binaries on Lark:
   <https://saslk-org.jp.larksuite.com/wiki/DNyzw4fDFiSWvgkd1vIjZCIjpPd>
-  — file `ferp-esp32-factory-v3.0.0.x.bin`
+  — file `ferp-esp32-factory-v3.3.0.x.bin`
   - Its size is about **4 MB (4,194,304 bytes)** — the full flash size of the
     device. A file much smaller than that is not the factory image.
 
@@ -28,7 +28,7 @@ esptool.exe --chip esp32 --port COM9 erase_flash
 The start address must be **0x0**:
 
 ```bat
-esptool.exe --chip esp32 --port COM9 --baud 460800 write_flash 0x0 ferp-esp32-factory-v3.0.0.29.bin
+esptool.exe --chip esp32 --port COM9 --baud 460800 write_flash 0x0 ferp-esp32-factory-v3.3.0.3.bin
 ```
 
 When it finishes (`Hash of data verified.`), press RESET or power-cycle the
@@ -41,7 +41,7 @@ board.
 | `Failed to connect to ESP32: No serial data received` | The board is not in download mode. Hold **BOOT**, press and release **RESET** (or power-cycle), release **BOOT**, then run the command again. Also check the COM port. |
 | `could not open port 'COM9': Access is denied` | Another program is using the port. Close serial monitors and other flash tools. |
 | Which COM port is the board? | Device Manager → Ports (COM & LPT). The port appears when the USB cable is plugged in. |
-| The factory file is much smaller than 4 MB | It is not the factory image (it is the app-only `.bin`). Download `ferp-esp32-factory-v3.0.0.x.bin`. |
+| The factory file is much smaller than 4 MB | It is not the factory image (it is the app-only `.bin`). Download `ferp-esp32-factory-v3.3.0.x.bin`. |
 | Can I flash the factory image to `0x1000` or `0x10000`? | No. The factory image always starts at **0x0**. |
 | Is the erase step needed? | Yes, erase the full flash first so no old firmware or boot selection is left behind. |
 | After flashing, the serial monitor shows `waiting for download` | BOOT is still held, or IO0 is tied low. Release BOOT / remove the jumper and press RESET. |
