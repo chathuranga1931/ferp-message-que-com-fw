@@ -47,15 +47,18 @@ class FirmwareLibrary:
 
     def add(self, filename: str, data: bytes, user: str = "system", source: str = "upload",
             notes: str = "") -> dict:
-        """Store a bundle. Re-adding identical bytes returns the existing entry with duplicate=True."""
+        """Store a bundle in the active list. Re-adding identical bytes returns the existing entry
+        with duplicate=True (and moves it back to the active list if it was archived)."""
         hdr, fw = decode_bundle(data)          # raises ValueError for a bad bundle
         fid = _bundle_id(data)
         existing = self.meta(fid)
         if existing:
+            if not existing.get("active"):
+                existing = self.patch(fid, active=True)
             return {**existing, "duplicate": True}
         meta = {"id": fid, "filename": filename, "name": hdr.name, "version": hdr.version,
                 "built": hdr.timestamp, "size": len(fw), "uploaded": time.time(),
-                "uploaded_by": user, "source": source, "notes": notes}
+                "uploaded_by": user, "source": source, "notes": notes, "active": True}
         self._blobs.put(f"{_PREFIX}{fid}.bdl", data)
         self._blobs.put(f"{_PREFIX}{fid}.json", json.dumps(meta).encode())
         return meta
@@ -66,11 +69,15 @@ class FirmwareLibrary:
         except KeyError:
             return None
 
-    def set_notes(self, fid: str, notes: str) -> dict:
+    def patch(self, fid: str, notes: Optional[str] = None, active: Optional[bool] = None) -> dict:
+        """Change the notes and/or move the bundle between the active list and the archive."""
         meta = self.meta(fid)
         if meta is None:
             raise KeyError(f"Unknown bundle {fid}")
-        meta["notes"] = notes
+        if notes is not None:
+            meta["notes"] = notes
+        if active is not None:
+            meta["active"] = active
         self._blobs.put(f"{_PREFIX}{fid}.json", json.dumps(meta).encode())
         return meta
 
@@ -122,7 +129,9 @@ class FirmwareLibrary:
         for key in self._blobs.list(_PREFIX):
             if key.endswith(".json"):
                 try:
-                    items.append(json.loads(self._blobs.get(key)))
+                    m = json.loads(self._blobs.get(key))
+                    m["active"] = bool(m.get("active"))      # bundles from before the active list: archive
+                    items.append(m)
                 except Exception:
                     pass
         return sorted(items, key=lambda m: m.get("uploaded", 0), reverse=True)

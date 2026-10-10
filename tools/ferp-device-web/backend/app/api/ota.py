@@ -88,8 +88,13 @@ def download_firmware(firmware_id: str, c: Container = Depends(container)):
 
 
 @router.patch("/firmware/{firmware_id}")
-def patch_firmware(firmware_id: str, body: FirmwarePatchIn, c: Container = Depends(container)):
-    return guard(c.firmware.set_notes, firmware_id, body.notes)
+def patch_firmware(firmware_id: str, body: FirmwarePatchIn, c: Container = Depends(container),
+                   user: str = Depends(current_user)):
+    meta = guard(c.firmware.patch, firmware_id, body.notes, body.active)
+    if body.active is not None:
+        c.audit.record(user, "firmware.activate" if body.active else "firmware.archive",
+                       id=firmware_id, target=meta.get("name"), version=meta.get("version"))
+    return meta
 
 
 @router.delete("/firmware/{firmware_id}")

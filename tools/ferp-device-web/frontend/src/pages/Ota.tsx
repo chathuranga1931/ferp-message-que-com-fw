@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { api } from "../api";
 import { BundlePicker, compareVersions, dtKind } from "../components/BundlePicker";
 import { DeviceFilters, matchesFilter, NO_FILTER, SelectionNote, type SiteFilter } from "../components/DeviceFilters";
@@ -17,10 +17,13 @@ export default function Ota({ devices, preselect, onPreselectUsed }: Props) {
     api.otaSessions().then(seedOta).catch(() => undefined);
   }, []);
 
+  // only bundles in the active list are offered for OTA; the archive keeps the rest
+  const active = useMemo(() => library.filter((b) => b.active), [library]);
+
   return (
     <div className="stack">
       <FirmwareLibrary library={library} onChanged={refresh} />
-      <FlashDevices library={library} devices={devices} preselect={preselect} onPreselectUsed={onPreselectUsed} />
+      <FlashDevices library={active} devices={devices} preselect={preselect} onPreselectUsed={onPreselectUsed} />
       <OtaActivity devices={devices} />
     </div>
   );
@@ -45,7 +48,7 @@ function FirmwareLibrary({ library, onChanged }: { library: Firmware[]; onChange
       if (!f.name.toLowerCase().endsWith(".bdl")) { out.push({ ok: false, text: `${f.name}: not a .bdl file` }); continue; }
       try {
         const m = await api.uploadFirmware(f);
-        out.push({ ok: true, text: m.duplicate ? `${f.name}: already in the library` : `${f.name}: added (${m.name} v${m.version})` });
+        out.push({ ok: true, text: m.duplicate ? `${f.name}: already in the library (now active)` : `${f.name}: added (${m.name} v${m.version})` });
       } catch (e) { out.push({ ok: false, text: `${f.name}: ${(e as Error).message}` }); }
     }
     setMsgs(out); setBusy(false); onChanged();
@@ -65,15 +68,59 @@ function FirmwareLibrary({ library, onChanged }: { library: Firmware[]; onChange
     setEditNotes(null); onChanged();
   };
 
+  const setActive = async (id: string, active: boolean) => {
+    await api.setFirmwareActive(id, active).catch((e) => setMsgs([{ ok: false, text: e.message }]));
+    onChanged();
+  };
+
   const f = filter.trim().toLowerCase();
   const rows = library.filter((b) => !f || [b.name, b.version, b.filename, b.notes ?? ""].some((x) => x.toLowerCase().includes(f)));
+  const activeRows = rows.filter((b) => b.active);
+  const archiveRows = rows.filter((b) => !b.active);
+  const nActive = library.filter((b) => b.active).length;
+
+  const table = (list: Firmware[], empty: string, actions: (b: Firmware) => ReactNode) => (
+    <div className="table-wrap">
+      <table className="list">
+        <thead><tr><th>Target</th><th>Version</th><th>File</th><th>Built</th><th>Size</th><th>Added</th><th>Notes</th><th /></tr></thead>
+        <tbody>
+          {list.map((b) => (
+            <tr key={b.id}>
+              <td><b>{b.name}</b></td>
+              <td><code>{b.version}</code></td>
+              <td className="muted">{b.filename}</td>
+              <td>{fmtDateTime(b.built)}</td>
+              <td>{fmtBytes(b.size)}</td>
+              <td className="muted small">{fmtDateTime(b.uploaded)}{b.uploaded_by ? ` · ${b.uploaded_by}` : ""}
+                {b.source && b.source !== "upload" && <div title={b.source}>from folder</div>}</td>
+              <td className="wrap-cell">
+                {editNotes?.id === b.id ? (
+                  <span className="row">
+                    <input autoFocus value={editNotes.text} onChange={(e) => setEditNotes({ id: b.id, text: e.target.value })}
+                           onKeyDown={(e) => { if (e.key === "Enter") saveNotes(); if (e.key === "Escape") setEditNotes(null); }} />
+                    <button className="btn small" onClick={saveNotes}>Save</button>
+                  </span>
+                ) : (
+                  <button className="link-btn notes" onClick={() => setEditNotes({ id: b.id, text: b.notes ?? "" })} title="Edit notes">
+                    {b.notes || <span className="muted">add note</span>}
+                  </button>
+                )}
+              </td>
+              <td className="row-actions">{actions(b)}</td>
+            </tr>
+          ))}
+          {list.length === 0 && <tr><td colSpan={8} className="muted center">{empty}</td></tr>}
+        </tbody>
+      </table>
+    </div>
+  );
 
   return (
     <section className={`card ${drag ? "dropping" : ""}`}
              onDragOver={(e) => { e.preventDefault(); setDrag(true); }} onDragLeave={() => setDrag(false)}
              onDrop={(e) => { e.preventDefault(); setDrag(false); if (e.dataTransfer.files.length) upload(e.dataTransfer.files); }}>
       <div className="card-head">
-        <h3>Firmware library <span className="muted">({library.length})</span></h3>
+        <h3>Active bundles <span className="muted">({nActive})</span></h3>
         <div className="row wrap">
           <input className="search small" placeholder="Filter…" value={filter} onChange={(e) => setFilter(e.target.value)} />
           <input ref={fileRef} type="file" accept=".bdl" multiple hidden onChange={(e) => e.target.files && upload(e.target.files)} />
@@ -81,47 +128,27 @@ function FirmwareLibrary({ library, onChanged }: { library: Firmware[]; onChange
           <button className={`btn small ${scanOpen ? "" : "ghost"}`} onClick={() => setScanOpen(!scanOpen)}>Import from folder</button>
         </div>
       </div>
-      <p className="muted small">Drop .bdl files anywhere on this card. Scripts can upload too:
-        <code> curl -F file=@bundle.bdl -F notes="…" http://&lt;host&gt;:8700/api/firmware</code></p>
+      <p className="muted small">Only active bundles are offered for OTA. Uploads and imports are added here — drop .bdl files anywhere on this card.
+        Scripts can upload too: <code> curl -F file=@bundle.bdl -F notes="…" http://&lt;host&gt;:8700/api/firmware</code></p>
       {msgs.map((m, i) => <div key={i} className={m.ok ? "ok-text" : "inline-error"}>{m.text}</div>)}
       {scanOpen && <FolderImport onImported={(text) => { setMsgs([{ ok: true, text }]); onChanged(); }} />}
-      <div className="table-wrap">
-        <table className="list">
-          <thead><tr><th>Target</th><th>Version</th><th>File</th><th>Built</th><th>Size</th><th>Added</th><th>Notes</th><th /></tr></thead>
-          <tbody>
-            {rows.map((b) => (
-              <tr key={b.id}>
-                <td><b>{b.name}</b></td>
-                <td><code>{b.version}</code></td>
-                <td className="muted">{b.filename}</td>
-                <td>{fmtDateTime(b.built)}</td>
-                <td>{fmtBytes(b.size)}</td>
-                <td className="muted small">{fmtDateTime(b.uploaded)}{b.uploaded_by ? ` · ${b.uploaded_by}` : ""}
-                  {b.source && b.source !== "upload" && <div title={b.source}>from folder</div>}</td>
-                <td className="wrap-cell">
-                  {editNotes?.id === b.id ? (
-                    <span className="row">
-                      <input autoFocus value={editNotes.text} onChange={(e) => setEditNotes({ id: b.id, text: e.target.value })}
-                             onKeyDown={(e) => { if (e.key === "Enter") saveNotes(); if (e.key === "Escape") setEditNotes(null); }} />
-                      <button className="btn small" onClick={saveNotes}>Save</button>
-                    </span>
-                  ) : (
-                    <button className="link-btn notes" onClick={() => setEditNotes({ id: b.id, text: b.notes ?? "" })} title="Edit notes">
-                      {b.notes || <span className="muted">add note</span>}
-                    </button>
-                  )}
-                </td>
-                <td className="row-actions">
-                  <a className="btn small" href={api.firmwareDownloadUrl(b.id)} download>Download</a>
-                  <button className={`btn small ${confirmDel === b.id ? "danger" : "ghost"}`} onClick={() => del(b.id)}
-                          onBlur={() => setConfirmDel(null)}>{confirmDel === b.id ? "Confirm" : "Delete"}</button>
-                </td>
-              </tr>
-            ))}
-            {rows.length === 0 && <tr><td colSpan={8} className="muted center">No bundles yet — upload a .bdl or import from a folder.</td></tr>}
-          </tbody>
-        </table>
+      {table(activeRows, f ? "No active bundle matches the filter." : "No active bundles — upload, import, or activate one from the archive below.", (b) => (
+        <>
+          <a className="btn small" href={api.firmwareDownloadUrl(b.id)} download>Download</a>
+          <button className="btn small ghost" onClick={() => setActive(b.id, false)} title="Move to the archive (not offered for OTA)">Archive</button>
+        </>
+      ))}
+      <div className="card-head archive-head">
+        <h3>Archive <span className="muted">({library.length - nActive})</span></h3>
       </div>
+      {table(archiveRows, f ? "No archived bundle matches the filter." : "The archive is empty.", (b) => (
+        <>
+          <button className="btn small" onClick={() => setActive(b.id, true)} title="Move back to the active list">Activate</button>
+          <a className="btn small" href={api.firmwareDownloadUrl(b.id)} download>Download</a>
+          <button className={`btn small ${confirmDel === b.id ? "danger" : "ghost"}`} onClick={() => del(b.id)}
+                  onBlur={() => setConfirmDel(null)}>{confirmDel === b.id ? "Confirm" : "Delete"}</button>
+        </>
+      ))}
     </section>
   );
 }
@@ -323,7 +350,7 @@ function FlashDevices({ library, devices, preselect, onPreselectUsed }:
         })}
         <div className="row wrap">
           {steps.length < 3 && <button className="btn small ghost" onClick={() => { setSteps([...steps, ""]); setOpenStep(steps.length); }}>+ Add step {steps.length + 1}</button>}
-          {library.length === 0 && <span className="muted small">The library is empty — upload or import bundles above.</span>}
+          {library.length === 0 && <span className="muted small">No active bundles — upload, import or activate bundles above.</span>}
           {dtOrderBad && <span className="warn-text">Display-tap bundles are normally flashed boot → part → fw — check the step order.</span>}
         </div>
       </div>

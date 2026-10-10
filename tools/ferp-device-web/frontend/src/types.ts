@@ -89,6 +89,7 @@ export interface Job { job_id: string; device_id: string; kind: string; done: nu
 export interface Firmware {
   id: string; filename: string; name: string; version: string; built: number; size: number; uploaded: number;
   uploaded_by?: string; source?: string; notes?: string; duplicate?: boolean;
+  active: boolean;   // true = active list (offered for OTA), false = archive
 }
 export interface ScannedBundle {
   path: string; folder: string; relpath: string; filename: string; size: number; modified: number;

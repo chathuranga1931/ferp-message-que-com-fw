@@ -216,7 +216,8 @@ class FirmwareImportIn(BaseModel):
 
 
 class FirmwarePatchIn(BaseModel):
-    notes: str = ""
+    notes:  str | None = None
+    active: bool | None = None      # true = active list (offered for OTA), false = archive
 
 
 class LogFollowIn(BaseModel):

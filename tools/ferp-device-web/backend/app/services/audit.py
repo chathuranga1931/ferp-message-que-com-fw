@@ -5,7 +5,7 @@ Audit log — who changed what on which device. Recorded actions:
     device.add  device.update  device.delete
     message.send  config.write
     ota.start  ota.result  ota.abort  ota.batch.start  ota.batch.cancel
-    firmware.upload  firmware.delete
+    firmware.upload  firmware.delete  firmware.activate  firmware.archive
     snapshot.create  snapshot.delete  snapshot.apply
     favorite.add  favorite.delete  system.restart
 

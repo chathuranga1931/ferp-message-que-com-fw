@@ -76,6 +76,7 @@ export const api = {
   scanFirmware: () => req<{ folders: string[]; files: ScannedBundle[] }>("GET", "/firmware/scan"),
   importFirmware: (paths: string[]) => req<{ results: (Partial<Firmware> & { path: string; error?: string })[] }>("POST", "/firmware/import", { paths }),
   setFirmwareNotes: (fid: string, notes: string) => req<Firmware>("PATCH", `/firmware/${fid}`, { notes }),
+  setFirmwareActive: (fid: string, active: boolean) => req<Firmware>("PATCH", `/firmware/${fid}`, { active }),
   firmwareDownloadUrl: (fid: string) => `/api/firmware/${fid}/download`,
   otaSessions: () => req<OtaSession[]>("GET", "/ota"),
   health: () => req<{ ok: boolean; api_version: number; started: number }>("GET", "/health"),
