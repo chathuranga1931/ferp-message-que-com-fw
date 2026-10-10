@@ -1,58 +1,34 @@
 #ifndef _BOARD_H_
 #define _BOARD_H_
 
+// Board support package — common API.
+//
+// Every board has its own header (pin map, board-only API) and its own source
+// file (board_init and the low-level functions).  The product selects the
+// board with one BOARD_xxxx define and compiles only that board's .c file:
+//
+//   BOARD_2308  -> board_2308.h / board_2308.c   (ferp-com v1, ESP07 DT)
+//   BOARD_2404  -> board_2404.h / board_2404.c   (ferp-com v2, ESP07 DT)
+//   BOARD_2602  -> board_2602.h / board_2602.c   (ferp-com v3, ESP32 DT)
+
+#include <stdint.h>
+#include <stdbool.h>
 #include "driver/gpio.h"
 #include "esp_err.h"
 
-#ifdef BOARD_2404
-    #define BOARD_TYPE 2404
-#elif BOARD_2303
-    #define BOARD_TYPE 2303
-#elif BOARD_2602
-    #define BOARD_TYPE 2602
+#if defined(BOARD_2308)
+    #include "board_2308.h"
+#elif defined(BOARD_2404)
+    #include "board_2404.h"
+#elif defined(BOARD_2602)
+    #include "board_2602.h"
 #else
     #error "Define Board First"
 #endif
 
-// INPUTS
-#define INPUT1          GPIO_NUM_34
-#define INPUT2          GPIO_NUM_35
-#define INPUT3          GPIO_NUM_32
-#define INPUT4          GPIO_NUM_33
-#define INPUT5          GPIO_NUM_36
-#define SWITCH          INPUT5
-#define VIN_LOW         GPIO_NUM_39
-// OUTPUTS
-#define OUTPUT1         GPIO_NUM_25
-#define OUTPUT2         GPIO_NUM_26
-#define OUTPUT3         GPIO_NUM_27
-#define OUTPUT4         GPIO_NUM_14
-#define OUTPUT5         GPIO_NUM_12
-#define OUTPUT6         GPIO_NUM_13
-#define EN_4G           GPIO_NUM_2
-#define RESET_DISTAP    GPIO_NUM_0
-#define IO0_DISTAP      GPIO_NUM_4
-#define ESP_LED1        GPIO_NUM_5
-#define ESP_LED2        IO0_DISTAP
-// UART_NUM_2
-#define UART2_TX        GPIO_NUM_17 
-#define UART2_RX        GPIO_NUM_16
-// SPI
-#define SPI_MOSI        GPIO_NUM_23
-#define SPI_MISO        GPIO_NUM_19
-#define SPI_SCLK        GPIO_NUM_18
-#define SPI_CS_SD       GPIO_NUM_15
-// I2C
-#define I2C_SCL         GPIO_NUM_22
-#define I2C_SDA         GPIO_NUM_21
-
-//UART2
-#define UART2_BAUDRATE 115200 //230400 //115200
 // RTC EEPROM ADDRESSES
 #define EEPROM_ADD_BOARD 0
 #define EEPROM_ADD_DEVICE sizeof(board_meta_data_t)  //offset by board meta data size
-
-
 
 typedef struct
 {
@@ -71,9 +47,7 @@ extern "C"
 
 
 /**
- * Initialise sample
- *
- * @param 
+ * Initialise the board GPIOs and UART2 (DT link).
  *
  * @return
  *          - ESP_OK if successful
@@ -93,21 +67,10 @@ void gpio_set_output3(const bool level);
 void gpio_set_output4(const bool level);
 void gpio_set_output5(const bool level);
 void gpio_set_output6(const bool level);
-void gpio_set_led1(const bool level);
-void gpio_set_led2(const bool level);
 void gpio_set_en4g(const bool level);
-void gpio_set_reset_distap(const bool level);
 
-/**
- * Board variant, applied once at boot (from config DT_TYPE, before the DT
- * board is started).  The 2308-modified board drives the DT chip's reset line
- * with the opposite polarity and has no default button fitted (GPIO36 floats).
- * Until it is set, gpio_set_reset_distap() uses the compile-time board
- * (BOARD_2303 = inverted) and board_variant_known() returns false.
- */
-void board_set_variant_2308(bool is_2308);
-bool board_is_variant_2308(void);
-bool board_variant_known(void);
+/** DT chip reset: true = hold in reset, false = run (polarity is board specific). */
+void gpio_set_reset_distap(const bool level);
 
 void gpio_set_io0_distap(const bool level);
 void gpio_set_mode_output_io0_distap();

@@ -205,7 +205,6 @@ void app_config_load_defaults(app_config_t *cfg)
     cfg->tot_dur = 300000;   // 5 minutes
     strncpy(cfg->nozzle_0_id, "P01", sizeof(cfg->nozzle_0_id) - 1);
     strncpy(cfg->nozzle_1_id, "P02", sizeof(cfg->nozzle_1_id) - 1);
-    cfg->dt_type = DT_TYPE_ESP32_A;   // 3 = ESP32-A (2602)
     strncpy(cfg->printer_url, "http://printer.local", sizeof(cfg->printer_url) - 1);
     cfg->printer_copy_count = 1;
     cfg->print_delay_ms = 0;
@@ -251,7 +250,6 @@ static config_t k_config_table[] = {
     { CFG_KEY_TOT_DUR,             "tot_dur",       HSYS_TYPE_UINT32, &_app_config.tot_dur,             sizeof(_app_config.tot_dur)              },
     { CFG_KEY_NOZZLE_0_ID,         "nozzle_0_id",   HSYS_TYPE_STRING, _app_config.nozzle_0_id,          sizeof(_app_config.nozzle_0_id)          },
     { CFG_KEY_NOZZLE_1_ID,         "nozzle_1_id",   HSYS_TYPE_STRING, _app_config.nozzle_1_id,          sizeof(_app_config.nozzle_1_id)          },
-    { CFG_KEY_DT_TYPE,             "dt_type",       HSYS_TYPE_UINT32, &_app_config.dt_type,             sizeof(_app_config.dt_type)              },
 };
 #define CONFIG_TABLE_SIZE  (sizeof(k_config_table) / sizeof(k_config_table[0]))
 

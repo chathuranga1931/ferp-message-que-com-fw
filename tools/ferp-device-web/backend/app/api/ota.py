@@ -4,11 +4,42 @@ from fastapi import Depends, File, Form, HTTPException, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import Response
 
+from ferp_core import topics
+
 from ..container import Container
-from ..models import BatchOtaIn, FirmwareImportIn, FirmwarePatchIn, OtaStartIn
+from ..models import BatchOtaIn, Device, FirmwareImportIn, FirmwarePatchIn, OtaStartIn
 from .deps import container, current_user, get_device, get_devices, guard, protected
 
 router = protected()
+
+
+def _device_board(c: Container, dev: Device) -> str:
+    """The device's board (HW_VERSION): last reported value, else the registry, else read it now."""
+    known = {k.strip().lower() for k in c.config.ota.board_targets}
+    if dev.mqtt_id:
+        hw = c.fleet.info(topics.topic_id(dev.mqtt_id)).get("hw_version", "")
+        if hw:
+            return hw
+    if dev.board_version.strip().lower() in known:
+        return dev.board_version.strip()
+    if dev.mqtt_id:
+        try:
+            key = next((k for k, _, f in c.catalog.devinfo_keys if f == "hw_version"), 0xA005)
+            r = c.ops.read_devinfo(dev, key, timeout=3)
+            return r["value"] if r["valid"] else ""
+        except Exception:
+            return ""
+    return ""
+
+
+def _check_boards(c: Container, devices: list[Device], firmware_ids: list[str]) -> None:
+    from ..services.ota import board_mismatches
+    metas = [m for m in (c.firmware.meta(fid) for fid in firmware_ids) if m]
+    bad = board_mismatches([(d, _device_board(c, d)) for d in devices], metas, c.config.ota.board_targets)
+    if bad:
+        raise HTTPException(400, "Bundle does not fit the board: " + "; ".join(bad[:10])
+                            + (f" (+{len(bad) - 10} more)" if len(bad) > 10 else "")
+                            + " — tick 'flash anyway' to override")
 
 
 @router.get("/firmware")
@@ -76,7 +107,10 @@ def ota_sessions(c: Container = Depends(container)):
 
 @router.post("/devices/{device_id}/ota")
 def ota_start(device_id: str, body: OtaStartIn, c: Container = Depends(container), user: str = Depends(current_user)):
-    return guard(c.ota.start, get_device(c, device_id), body.firmware_id, body.chunk_size, user=user)
+    dev = get_device(c, device_id)
+    if not body.allow_board_mismatch:
+        _check_boards(c, [dev], [body.firmware_id])
+    return guard(c.ota.start, dev, body.firmware_id, body.chunk_size, user=user)
 
 
 @router.post("/devices/{device_id}/ota/abort")
@@ -101,6 +135,8 @@ def start_batch(body: BatchOtaIn, c: Container = Depends(container), user: str =
             raise HTTPException(400, "Bundle does not fit the device type: " + "; ".join(bad[:10])
                                 + (f" (+{len(bad) - 10} more)" if len(bad) > 10 else "")
                                 + " — tick 'flash anyway' to override")
+    if not body.allow_board_mismatch:
+        _check_boards(c, devices, steps)
     return guard(c.batch_ota.start, user, devices, steps, body.chunk_size, body.concurrency, body.stop_on_failure,
                  body.step_delay_s, body.wait_online, body.online_timeout_s)
 

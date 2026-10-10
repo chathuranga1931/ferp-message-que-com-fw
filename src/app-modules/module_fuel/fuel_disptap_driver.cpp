@@ -88,19 +88,6 @@ void FuelDispTapDriver::_dis2_l2_raw_event(const raw_capture_chunk_t *chunk)
 // ---------------------------------------------------------------------------
 
 #include "board.h"
-
-uint32_t FuelDispTapDriver::apply_dt_type(uint32_t configured)
-{
-#ifndef FERP_SIMULATOR
-    board_set_variant_2308(configured == DT_TYPE_ESP07_A);
-#endif
-    MLOG("dt_type = %lu%s", (unsigned long)configured,
-         configured == DT_TYPE_ESP07_A ? " (ESP07-A, 2308-modified)" :
-         configured == DT_TYPE_ESP07_B ? " (ESP07-B, 2404)" :
-         configured == DT_TYPE_ESP32_A ? " (ESP32-A, 2602)" : " (unknown)");
-    return configured;
-}
-
 void FuelDispTapDriver::start(display_type_t display_type, frame_cb_t on_frame,
                               char *version_out, size_t version_out_len)
 {

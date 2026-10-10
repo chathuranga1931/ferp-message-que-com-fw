@@ -81,13 +81,14 @@ export const api = {
   health: () => req<{ ok: boolean; api_version: number; started: number }>("GET", "/health"),
   restartServer: () => req("POST", "/system/restart"),
   deleteFirmware: (fid: string) => req("DELETE", `/firmware/${fid}`),
-  startOta: (id: string, firmware_id: string, chunk_size?: number) =>
-    req<OtaSession>("POST", `/devices/${id}/ota`, { firmware_id, chunk_size }),
+  startOta: (id: string, firmware_id: string, chunk_size?: number, allow_board_mismatch?: boolean) =>
+    req<OtaSession>("POST", `/devices/${id}/ota`, { firmware_id, chunk_size, allow_board_mismatch }),
   abortOta: (id: string) => req("POST", `/devices/${id}/ota/abort`),
   batches: () => req<Batch[]>("GET", "/ota/batches"),
   startBatch: (b: {
     firmware_ids: string[]; device_ids: string[]; chunk_size?: number; concurrency: number; stop_on_failure: boolean;
     step_delay_s?: number; wait_online?: boolean; online_timeout_s?: number; allow_type_mismatch?: boolean;
+    allow_board_mismatch?: boolean;
   }) =>
     req<Batch>("POST", "/ota/batches", b),
   cancelBatch: (bid: string) => req("POST", `/ota/batches/${bid}/cancel`),

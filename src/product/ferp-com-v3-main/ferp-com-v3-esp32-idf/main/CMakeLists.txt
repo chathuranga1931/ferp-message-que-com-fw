@@ -195,7 +195,7 @@ idf_component_register(
         "${D_SUB}/pal/esp-idf/pal_esp_idf_crash_log.cpp"
 
         # ── DISTAP device library (protocol only, from ferp_board) ───────
-        "${D_SUB}/ferp-device-firmware/ferp_board/main-esp32/lib/device/board.c"
+        "${D_SUB}/ferp-device-firmware/ferp_board/main-esp32/lib/device/board_2602.c"
         "${D_SUB}/ferp-device-firmware/ferp_board/main-esp32/lib/device/com_distap.c"
         "${D_SUB}/ferp-device-firmware/ferp_board/main-esp32/lib/device/cmd_distap.c"
 
@@ -329,8 +329,8 @@ set_source_files_properties(
     PROPERTIES COMPILE_OPTIONS "-Wno-missing-field-initializers;-Wno-type-limits"
 )
 
-# Note: BOARD_2602 is defined globally via add_compile_definitions() in the
-# top-level CMakeLists.txt. No per-file board override needed for distap files.
+# Note: BOARD_2602 is defined in app/user_config.h (force-included in every file);
+# only this board's board_2602.c is compiled.
 
 set_source_files_properties(
     "${D_SUB}/pal/esp-idf/pal_esp_idf_http_client.cpp"

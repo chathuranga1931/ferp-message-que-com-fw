@@ -45,8 +45,7 @@
         { "key": "0x6005", "name": "TOT_CNT",             "type": "UINT32",  "label": "Total Count",    "description": "Total transaction count" },
         { "key": "0x6006", "name": "TOT_DUR",             "type": "UINT32",  "label": "Total Duration", "description": "Total duration accumulator" },
         { "key": "0x6007", "name": "NOZZLE_0_ID",         "type": "STRING",  "label": "Nozzle 1 ID",    "description": "Nozzle 1 string ID (max 4 chars, e.g. P01)" },
-        { "key": "0x6008", "name": "NOZZLE_1_ID",         "type": "STRING",  "label": "Nozzle 2 ID",    "description": "Nozzle 2 string ID (max 4 chars, e.g. P02)" },
-        { "key": "0x6009", "name": "DT_TYPE",             "type": "UINT32",  "label": "DisplayTap type","description": "DT board variant, applied at boot: 1 = ESP07-A (2308-modified), 2 = ESP07-B (2404), 3 = ESP32-A (2602). a value that does not match the board leaves the DT unanswered (DT status ERROR)", "min": 1, "max": 3 }
+        { "key": "0x6008", "name": "NOZZLE_1_ID",         "type": "STRING",  "label": "Nozzle 2 ID",    "description": "Nozzle 2 string ID (max 4 chars, e.g. P02)" }
       ]
     },
     {

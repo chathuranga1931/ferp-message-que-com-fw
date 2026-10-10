@@ -205,6 +205,9 @@ function FlashDevices({ library, devices, preselect, onPreselectUsed }:
   const [onlineTimeout, setOnlineTimeout] = useState(180);
   const [typeTargets, setTypeTargets] = useState<Record<string, string[]>>({});
   const [allowMismatch, setAllowMismatch] = useState(false);
+  // set when the server refuses a bundle for a device's board (Settings → OTA board targets)
+  const [boardRefused, setBoardRefused] = useState(false);
+  const [allowBoard, setAllowBoard] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [chunk, setChunk] = useState(4096);
   const [concurrency, setConcurrency] = useState(1);
@@ -275,9 +278,14 @@ function FlashDevices({ library, devices, preselect, onPreselectUsed }:
     try {
       await api.startBatch({ firmware_ids: steps, device_ids: [...selected], chunk_size: chunk, concurrency,
         stop_on_failure: stopOnFailure, step_delay_s: stepDelay, wait_online: waitOnline, online_timeout_s: onlineTimeout,
-        allow_type_mismatch: allowMismatch });
+        allow_type_mismatch: allowMismatch, allow_board_mismatch: allowBoard });
       setMsg({ ok: true, text: `Started — progress below` });
-    } catch (e) { setMsg({ ok: false, text: (e as Error).message }); }
+      setBoardRefused(false); setAllowBoard(false);
+    } catch (e) {
+      const text = (e as Error).message;
+      if (text.includes("does not fit the board")) setBoardRefused(true);
+      setMsg({ ok: false, text });
+    }
   };
 
   return (
@@ -391,6 +399,12 @@ function FlashDevices({ library, devices, preselect, onPreselectUsed }:
             {mismatched.length} selected device(s) don't take {mismatched.length === 1 ? "this bundle" : "these bundles"} by type
             ({mismatched.slice(0, 3).map((d) => `${d.label} (${d.device_type})`).join(", ")}{mismatched.length > 3 ? "…" : ""})
             <label className="check inline-check"><input type="checkbox" checked={allowMismatch} onChange={(e) => setAllowMismatch(e.target.checked)} /> flash anyway</label>
+          </span>
+        )}
+        {boardRefused && (
+          <span className="warn-text">
+            A bundle does not fit a selected device's board (see the message)
+            <label className="check inline-check"><input type="checkbox" checked={allowBoard} onChange={(e) => setAllowBoard(e.target.checked)} /> flash anyway</label>
           </span>
         )}
         <button className={`btn ${confirm ? "danger" : "primary"}`} disabled={!ready || !fw || selected.size === 0 || (mismatched.length > 0 && !allowMismatch)} onClick={start}>

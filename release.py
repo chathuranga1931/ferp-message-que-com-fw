@@ -7,7 +7,7 @@ Modes:
                    Output defaults to releases/<product>-esp32/<version>/ —
                    pass --out <dir> to override (relative paths resolve
                    against the invocation directory). --product selects v3
-                   (default), v2, printer-com or printer-usb.
+                   (default), v2, v1, printer-com or printer-usb.
   --create-bundle  Bundle only from existing build artifacts (no build, no git).
                    Bundle version is (255-V1).V2.V3.V4 of current version.h.
                    Output goes to the build directory.
@@ -32,6 +32,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 # OTA target name and chip.
 #   v3          : ferp-com-v3-main      (esp32<>esp32, HW 2602)
 #   v2          : ferp-com-v2-main      (esp32<>esp07, HW 2404)
+#   v1          : ferp-com-v1-main      (esp32<>esp07, HW 2308)
 #   printer-com : ferp-printer-com-v1   (ESP32, UART printer,   44.x)
 #   printer-usb : ferp-printer-usb-v1   (ESP32-S3, USB printer, 45.x)
 _COM = {"bin": "ferp-com", "target": "esp32-main", "chip": "esp32", "boot_offset": "0x1000",
@@ -48,6 +49,12 @@ PRODUCTS = {
         "project":  "src/product/ferp-com-v2-main/ferp-com-v2-esp32-idf",
         "app":      "src/product/ferp-com-v2-main/app",
         "releases": "v2-esp32",
+    },
+    "v1": {
+        **_COM,
+        "project":  "src/product/ferp-com-v1-main/ferp-com-v1-esp32-idf",
+        "app":      "src/product/ferp-com-v1-main/app",
+        "releases": "v1-esp32",
     },
     "printer-com": {
         "project":  "src/product/ferp-printer-com-v1/ferp-printer-com-v1-esp32-idf",

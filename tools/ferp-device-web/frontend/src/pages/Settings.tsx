@@ -139,6 +139,11 @@ export default function Settings({ catalog, onReloadCatalog }: { catalog: Catalo
                       onChange={(e) => upd("ota", { type_targets: Object.fromEntries(e.target.value.split("\n")
                         .map((l) => l.split(":")).filter((x) => x.length >= 2 && x[0].trim())
                         .map(([t, ...rest]) => [t.trim(), rest.join(":").split(",").map((p) => p.trim()).filter(Boolean)])) })} /></label>
+          <label className="field wide"><span>Bundles per board (HW_VERSION) — one board per line, e.g. <code>2308: esp32-main@3.1.*, esp07-*</code>; a pattern with <code>@</code> also matches the version (a board without patterns accepts any bundle)</span>
+            <textarea rows={3} value={Object.entries(cfg.ota.board_targets ?? {}).map(([b, p]) => `${b}: ${p.join(", ")}`).join("\n")}
+                      onChange={(e) => upd("ota", { board_targets: Object.fromEntries(e.target.value.split("\n")
+                        .map((l) => l.split(":")).filter((x) => x.length >= 2 && x[0].trim())
+                        .map(([b, ...rest]) => [b.trim(), rest.join(":").split(",").map((p) => p.trim()).filter(Boolean)])) })} /></label>
           <label className="field"><span>Default OTA chunk size</span>
             <select value={cfg.ota.chunk_size} onChange={(e) => upd("ota", { chunk_size: Number(e.target.value) })}>
               {[1024, 2048, 4096, 8192].map((c) => <option key={c} value={c}>{c}</option>)}

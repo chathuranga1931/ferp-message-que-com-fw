@@ -269,7 +269,6 @@ add_library(app_modules STATIC
     ${APP_MODS}/module_spiffs/module_spiffs.cpp
     ${APP_MODS}/module_config/module_config.cpp
     ${APP_MODS}/module_timer/module_timer.cpp
-    ${APP_MODS}/module_leds/module_leds.cpp
     ${APP_MODS}/module_default_btn/module_default_btn.cpp
     ${APP_MODS}/module_print_btn/module_print_btn.cpp
     # Fuel module
@@ -332,7 +331,6 @@ target_include_directories(app_modules PUBLIC
     ${APP_MODS}/module_spiffs
     ${APP_MODS}/module_config
     ${APP_MODS}/module_timer
-    ${APP_MODS}/module_leds
     ${APP_MODS}/module_default_btn
     ${APP_MODS}/module_print_btn
     ${APP_MODS}/module_fuel
@@ -386,7 +384,6 @@ target_include_directories(app_product PUBLIC
     ${APP_MODS}/module_spiffs
     ${APP_MODS}/module_config
     ${APP_MODS}/module_timer
-    ${APP_MODS}/module_leds
     ${APP_MODS}/module_default_btn
     ${APP_MODS}/module_print_btn
     ${APP_MODS}/module_fuel

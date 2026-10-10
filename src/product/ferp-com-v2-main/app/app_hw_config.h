@@ -24,19 +24,17 @@
 #define APP_HW_SD_SCK            18   ///< GPIO_NUM_18
 #define APP_HW_SD_CS             15   ///< GPIO_NUM_15
 
-// GPIO pin assignments (board_2602: INPUT1 / PRINT1, INPUT2 / PRINT2)
+// GPIO pin assignments (board_2404: INPUT1 / PRINT1, INPUT2 / PRINT2)
 #define PRINT1_BTN_GPIO         35
 #define PRINT2_BTN_GPIO         34
 
-// GPIO pin assignment — OUTPUT2 on board_2602
+// GPIO pin assignment — OUTPUT2 on board_2404
 #define BUZ_GPIO  26
 
-// GPIO pin assignment (board_2602: INPUT5 / DEFAULT_BUTTON_GPIO_PIN)
+// GPIO pin assignment (board_2404: INPUT5 / DEFAULT_BUTTON_GPIO_PIN)
 #define DEFAULT_BTN_GPIO  36
 
-// GPIO pin assignments (matches board_2602 aliases / pal_mac_gpio pin table)
-#define LED1_GPIO  5
-#define LED2_GPIO  4
+// No status LEDs on board 2404 (GPIO5 = ESP32 reset, GPIO4 = ESP07 IO0).
 
-#define NOZZLE1_GPIO 32   ///< GPIO_NUM_32, INPUT3 on board_2602
+#define NOZZLE1_GPIO 32   ///< GPIO_NUM_32, INPUT3 on board_2404
 #define NOZZLE2_GPIO 33   ///< GPIO_NUM_33, INPUT4 on board

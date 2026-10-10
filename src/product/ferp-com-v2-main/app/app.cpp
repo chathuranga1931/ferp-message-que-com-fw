@@ -204,7 +204,6 @@ void app_config_load_defaults(app_config_t *cfg)
     cfg->tot_dur = 300000;   // 5 minutes
     strncpy(cfg->nozzle_0_id, "P01", sizeof(cfg->nozzle_0_id) - 1);
     strncpy(cfg->nozzle_1_id, "P02", sizeof(cfg->nozzle_1_id) - 1);
-    cfg->dt_type = DT_TYPE_ESP07_B;   // 2 = ESP07-B (2404)
     strncpy(cfg->printer_url, "http://printer.local", sizeof(cfg->printer_url) - 1);
     cfg->printer_copy_count = 1;
     cfg->print_delay_ms = 0;
@@ -250,7 +249,6 @@ static config_t k_config_table[] = {
     { CFG_KEY_TOT_DUR,             "tot_dur",       HSYS_TYPE_UINT32, &_app_config.tot_dur,             sizeof(_app_config.tot_dur)              },
     { CFG_KEY_NOZZLE_0_ID,         "nozzle_0_id",   HSYS_TYPE_STRING, _app_config.nozzle_0_id,          sizeof(_app_config.nozzle_0_id)          },
     { CFG_KEY_NOZZLE_1_ID,         "nozzle_1_id",   HSYS_TYPE_STRING, _app_config.nozzle_1_id,          sizeof(_app_config.nozzle_1_id)          },
-    { CFG_KEY_DT_TYPE,             "dt_type",       HSYS_TYPE_UINT32, &_app_config.dt_type,             sizeof(_app_config.dt_type)              },
 };
 #define CONFIG_TABLE_SIZE  (sizeof(k_config_table) / sizeof(k_config_table[0]))
 
@@ -285,10 +283,6 @@ const uint8_t          k_dev_info_perm_cloud_write_count = 1;
 
 const hsys_module_id_t k_dev_info_perm_ota_write[]         = { MODULE_OTA_ID };
 const uint8_t          k_dev_info_perm_ota_write_count      = 1;
-
-/** Fuel sets hw_version from DT_TYPE ("2308" on the 2308-modified board). */
-static const hsys_module_id_t k_dev_info_perm_hw_ver_write[] = { MODULE_FUEL_ID };
-static const uint8_t          k_dev_info_perm_hw_ver_count   = 1;
 
 /** Fuel and OTA both report the DT board firmware version. */
 static const hsys_module_id_t k_dev_info_perm_dt_ver_write[] = { MODULE_FUEL_ID, MODULE_OTA_ID };
@@ -338,7 +332,7 @@ static dev_info_entry_t k_dev_info_table[] = {
     {
         DEV_INFO_KEY_HW_VERSION,
         "hw_version",
-        k_dev_info_perm_hw_ver_write, k_dev_info_perm_hw_ver_count,   // ModuleFuel, from DT_TYPE
+        nullptr, 0,   // no writers — compile-time constant, never changed at runtime
         nullptr, 0,
         HSYS_TYPE_STRING,
         s_device_info.hw_version,

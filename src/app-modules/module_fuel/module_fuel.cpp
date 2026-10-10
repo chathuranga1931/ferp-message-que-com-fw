@@ -37,7 +37,6 @@
 #include "pal_time.h"
 #include "hsys_task.h"
 #include "app_hw_config.h"
-#include "version.h"      // HW_VERSION
 #include <string.h>
 
 #define __TAG__     "FUEL    "
@@ -308,31 +307,15 @@ void ModuleFuel::_start(const hsys_msg_t &cfg_msg)
     _stabilize_delay_ms = p.stabilize_delay_ms;
     g_pump_stabilize_delay_ms = _stabilize_delay_ms;
 
-#ifdef CFG_KEY_DT_TYPE
-    // DT_TYPE: board variant (DT reset polarity, default button) — applied
-    // before the DT board is released from reset.  The 2308-modified board
-    // reports hw_version "2308"; the others keep the compile-time HW_VERSION.
-    {
-        const app_config_t *cfg = app_config_get();
-        const uint32_t dt_type = FuelDispTapDriver::apply_dt_type(cfg ? cfg->dt_type : 0);
-        const char *hw = (dt_type == DT_TYPE_ESP07_A) ? "2308"
-                       : (dt_type == DT_TYPE_ESP07_B) ? "2404" : HW_VERSION;
-        if (strcmp(hw, HW_VERSION) != 0) {
-            hsys_msg_t *w = MsgDevInfoWrite::create_str(id(), DEV_INFO_KEY_HW_VERSION, hw);
-            if (w) publish(w);
-        }
-    }
-#endif
-
     char dt_version[24] = {};
     _driver.start(_display_type, _distap_frame_cb, dt_version, sizeof(dt_version));
     _started = true;
 
     // Publish the DT board firmware version to the device-info registry so
     // it appears in the web UI and is accessible to other modules.  No answer
-    // from the DT board (wrong DT_TYPE, board fault) is reported as "ERROR".
+    // from the DT board (wrong DT board for this firmware, board fault) is reported as "ERROR".
     if (dt_version[0] == '\0') {
-        log_error("DT board did not answer - DT status ERROR (check DT_TYPE / DT board)");
+        log_error("DT board did not answer - DT status ERROR (check DT board)");
         strncpy(dt_version, "ERROR", sizeof(dt_version) - 1);
     }
     {

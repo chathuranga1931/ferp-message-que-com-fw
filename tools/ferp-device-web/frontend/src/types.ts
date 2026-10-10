@@ -14,7 +14,7 @@ export interface AppConfig {
     keepalive: number; dev_type: string; auto_connect: boolean; brokers: string[];
   };
   device: { response_timeout_s: number; verify_writes: boolean };
-  ota: { chunk_size: number; bundle_dirs: string[]; type_targets: Record<string, string[]> };
+  ota: { chunk_size: number; bundle_dirs: string[]; type_targets: Record<string, string[]>; board_targets: Record<string, string[]> };
   console: { buffer_lines: number };
   fleet: { online_timeout_s: number; probe_timeout_s: number; auto_probe_interval_s: number };
   history: { persist_console: boolean; console_retention_days: number; audit_retention_days: number };

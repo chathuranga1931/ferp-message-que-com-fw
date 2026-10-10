@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <link rel="stylesheet" type="text/css" href="styles.css">
+</head>
+<body onload="onLoadBody()">
+
+<div class="topnav">
+    <a class="active" href="/">Home</a>
+    <a href="/deviceConfigurations">Device Configurations</a>
+    <a href="/update" target="_blank">Update Firmware</a>
+    <a href="/webserial" target="_blank">Web Serial</a>
+    <a href="contact">Contact</a>
+    <a href="about">About</a>
+</div>
+  
+<h1 class="configListheading" style="font-size: 25px;">Device Information</h1>
+
+<li class="InfoListInputLine">
+    <label >Device Firmware Version (Main) :</label>
+    <label id="id_device_version" ></label>
+</li>
+<li class="InfoListInputLine">
+    <label >Device Firmware Version (Sub) :</label>
+    <label id="display_tap_version" ></label>
+</li>
+<li class="InfoListInputLine">
+    <label >Device IP Address :</label>
+    <label id="id_ip_address" ></label>
+</li>
+<li class="InfoListInputLine">
+    <label >SSID :</label>
+    <label id="id_ssid" ></label>
+</li>
+<li class="InfoListInputLine">
+    <label >RSSI :</label>
+    <label id="id_rssi" ></label>
+</li>
+<li class="InfoListInputLine">
+    <label >Nozzel 1 Display Value :</label>
+    <label id="id_display_value_1" ></label>
+</li>
+<li class="InfoListInputLine">
+    <label >Nozzel 1 Fuel Type :</label>
+    <label id="id_fuel_type_1" ></label>
+</li>
+<li class="InfoListInputLine">
+    <label >Nozzel 2 Display Value :</label>
+    <label id="id_display_value_2" ></label>
+</li>
+<li class="InfoListInputLine">
+    <label >Nozzel 2 Fuel Type :</label>
+    <label id="id_fuel_type_2" ></label>
+</li>
+<li class="InfoListInputLine">
+    <label >SD Card Size :</label>
+    <label id="id_sd_card_size" ></label>
+</li>
+<li class="InfoListInputLine">
+    <label >On Time :</label>
+    <label id="id_power_on_time" ></label>
+</li>
+
+<!-- <li class="InfoListInputLine">
+    <label >Printer IP Address :</label>
+    <label id="id_printer_ip_address" ></label>
+</li> -->
+
+
+<script>
+    /*
+     * Neet to get the current settings from the device 
+     */
+    function onLoadBody(){
+
+        var xhttp = new XMLHttpRequest();
+        xhttp.onreadystatechange = function() {
+            if (this.readyState == 4 && this.status == 200) {
+
+                var obj = JSON.parse(this.responseText);
+
+                let ssid = obj.ssid;
+                let password = obj.password;
+
+                document.getElementById("id_ssid").innerHTML =  obj.ssid;
+                document.getElementById("id_rssi").innerHTML =  obj.rssi;
+                document.getElementById("id_ip_address").innerHTML =  obj.ipaddress;
+                document.getElementById("id_device_version").innerHTML =  obj.device_version;
+                document.getElementById("display_tap_version").innerHTML =  obj.display_tap_version;
+                document.getElementById("id_display_value_1").innerHTML = obj.displayvalue_0;
+                document.getElementById("id_fuel_type_1").innerHTML = obj.fuel_type_0;
+                document.getElementById("id_display_value_2").innerHTML = obj.displayvalue_1;
+                document.getElementById("id_fuel_type_2").innerHTML = obj.fuel_type_1;
+                document.getElementById("id_sd_card_size").innerHTML = obj.sd_card_size;
+                document.getElementById("id_power_on_time").innerHTML = obj.power_on_time;
+                document.getElementById("id_reset_reason").innerHTML = obj.reset_reason;
+            }
+        };
+        xhttp.open("GET", "getDeviceInformation", true);
+        xhttp.send();
+    }
+</script>
+
+
+<footer>
+    <p style="font-size: 16px;">SMART AUTOMATION SOLUTIONS (PVT) LTD.<br>
+    <p style="font-size: 13px;">131/11, Dhammananda Mw, Templers Road, Mount Lavinia.<br>
+    <a href="mailto:chathurangadissa@gmail.com">chathurangadissa@gmail.com</a></p>
+</footer>
+
+
+</body>
+</html>

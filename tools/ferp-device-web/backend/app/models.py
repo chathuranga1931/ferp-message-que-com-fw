@@ -51,11 +51,22 @@ DEFAULT_TYPE_TARGETS = {
 }
 
 
+# which bundles each board (device info HW_VERSION) may receive: glob patterns, case-insensitive,
+# matched against the bundle target ("esp07-*") or, with an "@", against "target@version"
+# ("esp32-main@3.1.*").  A board that is not listed accepts any bundle.
+DEFAULT_BOARD_TARGETS = {
+    "2308": ["esp32-main@3.1.*", "esp07-*", "printer-com-*"],   # printer-com also runs on the 2308 board
+    "2404": ["esp32-main@2.*", "esp32-main@3.2.*", "esp07-*"],
+    "2602": ["esp32-main@3.0.*", "esp32-main@3.3.*", "esp32-dt-*"],
+}
+
+
 class OtaConfig(BaseModel):
     chunk_size: int = Field(4096, ge=256, le=65536)
     # which bundle targets (glob patterns, case-insensitive) each device type may receive;
     # a type that is not listed (or has no patterns) accepts any bundle
     type_targets: dict[str, list[str]] = Field(default_factory=lambda: {k: list(v) for k, v in DEFAULT_TYPE_TARGETS.items()})
+    board_targets: dict[str, list[str]] = Field(default_factory=lambda: {k: list(v) for k, v in DEFAULT_BOARD_TARGETS.items()})
     bundle_dirs: list[str] = []   # folders scanned for .bdl files to import; empty → repo releases/ folder
 
 
@@ -174,6 +185,7 @@ class ConfigWriteIn(BaseModel):
 class OtaStartIn(BaseModel):
     firmware_id: str
     chunk_size:  int | None = Field(None, ge=256, le=65536)
+    allow_board_mismatch: bool = False    # flash even if the bundle doesn't fit the device's board
 
 
 class ProbeIn(BaseModel):
@@ -225,6 +237,7 @@ class BatchOtaIn(BaseModel):
     wait_online:     bool = True                          # then wait until the device answers again
     online_timeout_s: float = Field(180, ge=10, le=1800)
     allow_type_mismatch: bool = False                     # flash even if a bundle target doesn't fit a device type
+    allow_board_mismatch: bool = False                    # flash even if a bundle doesn't fit a device's board
 
     def steps(self) -> list[str]:
         ids = self.firmware_ids or ([self.firmware_id] if self.firmware_id else [])

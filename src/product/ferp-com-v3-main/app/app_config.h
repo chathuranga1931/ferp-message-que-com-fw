@@ -64,7 +64,6 @@ typedef struct {
     uint32_t tot_dur;               ///< Totalizer stabilisation duration (ms)
     char     nozzle_0_id[8];        ///< Nozzle 1 string ID (max 4 chars, e.g. "P01")
     char     nozzle_1_id[8];        ///< Nozzle 2 string ID (max 4 chars, e.g. "P02")
-    uint32_t dt_type;               ///< DisplayTap board variant: 1 = ESP07-A (2308-modified), 2 = ESP07-B (2404), 3 = ESP32-A (2602)
 
     // Printer
     char     printer_url[128];
@@ -129,7 +128,6 @@ typedef struct {
 #define CFG_KEY_TOT_DUR                0x6006u
 #define CFG_KEY_NOZZLE_0_ID            0x6007u
 #define CFG_KEY_NOZZLE_1_ID            0x6008u
-#define CFG_KEY_DT_TYPE                0x6009u
 
 // Printer
 #define CFG_KEY_PRINTER_URL            0x7001u

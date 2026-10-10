@@ -27,7 +27,6 @@
 #include "msg_http_result.h"
 #include "msg_http_response_header.h"
 #include "msg_dev_info_write.h"
-#include "msg_dev_info_value.h"
 #include "app_device_info.h"
 
 #include "pal_logger.h"
@@ -91,8 +90,6 @@ static const char *_reset_reason_str(pal_reset_reason_t r)
 
 void ModuleCubeSphere::init()
 {
-    strncpy(_hw_version, HW_VERSION, sizeof(_hw_version) - 1);
-
     // Notifications
     subscribe(MsgConfigReady::ID);
     subscribe(MsgConfigCloud::ID);
@@ -108,7 +105,6 @@ void ModuleCubeSphere::init()
     subscribe(MSG_ID_TICK_1000MS);
     subscribe(MSG_ID_SYSTEM_STATUS);
     subscribe(MsgOtaEvent::ID);
-    subscribe(MsgDevInfoValue::ID);        // hw_version written at boot (DT_TYPE)
 
     // DIRECT responses from ModuleHttp
     subscribe(MSG_ID_HTTP_RESPONSE_HEADER);
@@ -144,7 +140,6 @@ void ModuleCubeSphere::on_msg_received(const hsys_msg_t &msg)
         case MSG_ID_TICK_1000MS:           _on_tick();                   break;
         case MSG_ID_SYSTEM_STATUS:         _on_system_status(msg);       break;
         case MsgOtaEvent::ID:              _on_ota_event(msg);           break;
-        case MsgDevInfoValue::ID:          _on_dev_info_value(msg);      break;
         // HTTP session responses (DIRECT from ModuleHttp)
         case MSG_ID_HTTP_RESPONSE_HEADER:  _on_http_response_header(msg);break;
         case MSG_ID_HTTP_RESULT:           _on_http_result(msg);         break;
@@ -1062,7 +1057,7 @@ bool ModuleCubeSphere::_build_event_json(evt_type_t evt)
             e0["event"]     = (evt == EVT_STARTUP) ? "core/startup" : "core/status-updated";
             JsonObject body = e0["body"].to<JsonObject>();
             body["hw_type"]       = "ferp-com";
-            body["hw_version"]    = _hw_version;
+            body["hw_version"]    = HW_VERSION;
             body["sw_version"]    = FW_VERSION;
             body["local_ip"]      = _wifi_ip;
             body["mac"]           = _wifi_mac;
@@ -1482,21 +1477,6 @@ void ModuleCubeSphere::_arm_timer(uint32_t duration_ms)
     if (msg) publish(msg);
 }
 
-// ── Device info ───────────────────────────────────────────────────────────────
-
-// ModuleDeviceInfo broadcasts every successful write; keep the hardware
-// version reported to the cloud in step with it.  (publish() stamps
-// receiver_id per subscriber, so broadcasts are not told apart by receiver;
-// any MsgDevInfoValue for this key carries the current value.)
-void ModuleCubeSphere::_on_dev_info_value(const hsys_msg_t &msg)
-{
-    auto p = MsgDevInfoValue::deserialize(msg);
-    if (p.key != DEV_INFO_KEY_HW_VERSION || !p.is_valid || p.value.as_str[0] == '\0') return;
-    strncpy(_hw_version, p.value.as_str, sizeof(_hw_version) - 1);
-    _hw_version[sizeof(_hw_version) - 1] = '\0';
-    LOG_MSG_INFO(CSP_LOG_EN, "hw_version -> %s", _hw_version);
-}
-
 // ── Payload builders ──────────────────────────────────────────────────────────
 
 cs_startup_info_t ModuleCubeSphere::_build_startup_info() const
@@ -1507,8 +1487,8 @@ cs_startup_info_t ModuleCubeSphere::_build_startup_info() const
     strncpy(s.ip_address,     _wifi_ip,      sizeof(s.ip_address)     - 1);
     strncpy(s.mac_address_str,_wifi_mac,     sizeof(s.mac_address_str)- 1);
     strncpy(s.fw_version,     "1.0.0",       sizeof(s.fw_version)     - 1);
-    strncpy(s.hw_version,     _hw_version,   sizeof(s.hw_version)     - 1);
-    strncpy(s.board_version,  _hw_version,   sizeof(s.board_version)  - 1);
+    strncpy(s.hw_version,     HW_VERSION,    sizeof(s.hw_version)     - 1);
+    strncpy(s.board_version,  HW_VERSION,    sizeof(s.board_version)  - 1);
     strncpy(s.device_type,    "ferp-com",    sizeof(s.device_type)    - 1);
     strncpy(s.sd_card_status, "unknown",     sizeof(s.sd_card_status) - 1);
     s.rssi               = _wifi_rssi;

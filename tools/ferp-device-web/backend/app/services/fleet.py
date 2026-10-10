@@ -100,6 +100,11 @@ class Fleet:
                 "last_msg": p.get("last_msg"), "last_kind": p.get("last_kind"),
                 "msg_count": p.get("msg_count", 0), "info": p.get("info", {}), "probe": p.get("probe")}
 
+    def info(self, topic_id: str) -> dict:
+        """Device-info fields last seen from the device (e.g. hw_version), {} if none."""
+        with self._lock:
+            return dict((self._presence.get(topic_id) or {}).get("info") or {})
+
     def forget(self, topic_id: str) -> bool:
         """Drop presence for an unregistered device (it reappears if it sends again)."""
         with self._lock:

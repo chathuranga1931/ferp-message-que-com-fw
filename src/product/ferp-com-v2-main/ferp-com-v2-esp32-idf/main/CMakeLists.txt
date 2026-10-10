@@ -23,7 +23,6 @@ idf_component_register(
         "${D_MODS}/module_spiffs/module_spiffs.cpp"
         "${D_MODS}/module_config/module_config.cpp"
         "${D_MODS}/module_timer/module_timer.cpp"
-        "${D_MODS}/module_leds/module_leds.cpp"
         "${D_MODS}/module_default_btn/module_default_btn.cpp"
         "${D_MODS}/module_print_btn/module_print_btn.cpp"
         "${D_MODS}/module_fuel/module_fuel.cpp"
@@ -195,7 +194,7 @@ idf_component_register(
         "${D_SUB}/pal/esp-idf/pal_esp_idf_crash_log.cpp"
 
         # ── DISTAP device library (protocol only, from ferp_board) ───────
-        "${D_SUB}/ferp-device-firmware/ferp_board/main-esp32/lib/device/board.c"
+        "${D_SUB}/ferp-device-firmware/ferp_board/main-esp32/lib/device/board_2404.c"
         "${D_SUB}/ferp-device-firmware/ferp_board/main-esp32/lib/device/com_distap.c"
         "${D_SUB}/ferp-device-firmware/ferp_board/main-esp32/lib/device/cmd_distap.c"
 
@@ -221,7 +220,6 @@ idf_component_register(
         "${D_MODS}/module_spiffs"
         "${D_MODS}/module_config"
         "${D_MODS}/module_timer"
-        "${D_MODS}/module_leds"
         "${D_MODS}/module_default_btn"
         "${D_MODS}/module_print_btn"
         "${D_MODS}/module_fuel"
@@ -329,8 +327,8 @@ set_source_files_properties(
     PROPERTIES COMPILE_OPTIONS "-Wno-missing-field-initializers;-Wno-type-limits"
 )
 
-# Note: BOARD_2602 is defined globally via add_compile_definitions() in the
-# top-level CMakeLists.txt. No per-file board override needed for distap files.
+# Note: BOARD_2404 is defined in app/user_config.h (force-included in every file);
+# only this board's board_2404.c is compiled.
 
 set_source_files_properties(
     "${D_SUB}/pal/esp-idf/pal_esp_idf_http_client.cpp"

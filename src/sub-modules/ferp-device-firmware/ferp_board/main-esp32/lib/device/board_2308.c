@@ -1,3 +1,8 @@
+// Board 2308 — ferp-com v1, ESP07 DisplayTap (see board_2308.h).
+//
+// board_init() follows the earlier ferp-com firmware for this board: GPIO5
+// (ESP32 reset) is never touched and GPIO4 (ESP07 IO0) is left as an input.
+// No LEDs.
 #include <stdio.h>
 #include <driver/gpio.h>
 #include <driver/uart.h>
@@ -17,29 +22,12 @@ inline void gpio_set_output3(const bool level) { gpio_set_level(OUTPUT3, level);
 inline void gpio_set_output4(const bool level) { gpio_set_level(OUTPUT4, level); }
 inline void gpio_set_output5(const bool level) { gpio_set_level(OUTPUT5, level); }
 inline void gpio_set_output6(const bool level) { gpio_set_level(OUTPUT6, level); }
-inline void gpio_set_led1(const bool level) { gpio_set_level(ESP_LED1, !level); }
-inline void gpio_set_led2(const bool level) { gpio_set_level(ESP_LED2, !level); }
 inline void gpio_set_en4g(const bool level) { gpio_set_level(EN_4G, level); }
-#if BOARD_2303
-static bool s_reset_inverted = true;
-#else
-static bool s_reset_inverted = false;
-#endif
-static bool s_variant_known  = false;
+// 2308-modified: the ESP07 reset line is driven with the opposite polarity
+void gpio_set_reset_distap(const bool level) { gpio_set_level(RESET_DISTAP, !level); }
 
-void gpio_set_reset_distap(const bool level) { gpio_set_level(RESET_DISTAP, s_reset_inverted ? !level : level); }
-
-void board_set_variant_2308(bool is_2308)
-{
-    s_reset_inverted = is_2308;
-    s_variant_known  = true;
-}
-bool board_is_variant_2308(void) { return s_reset_inverted; }
-bool board_variant_known(void)   { return s_variant_known; }
-
-void gpio_set_io0_distap(const bool level) { 
-    // gpio_set_direction(IO0_DISTAP, GPIO_MODE_OUTPUT);
-    gpio_set_level(IO0_DISTAP, level); 
+void gpio_set_io0_distap(const bool level) {
+    gpio_set_level(IO0_DISTAP, level);
 }
 void gpio_set_mode_output_io0_distap()
 {
@@ -55,9 +43,9 @@ void gpio_reset_io0_distap()
 esp_err_t board_init()
 {
     printf("======================\r\n");
-    printf("Starting board init...\r\n");
+    printf("Starting board init (2308)...\r\n");
     printf("======================\r\n");
-    
+
     esp_err_t ret = ESP_OK;
     //Set Inputs
     gpio_reset_pin(INPUT1);
@@ -70,8 +58,6 @@ esp_err_t board_init()
     gpio_set_direction(INPUT4, GPIO_MODE_INPUT);
     gpio_reset_pin(INPUT5);
     gpio_set_direction(INPUT5, GPIO_MODE_INPUT);
-    // gpio_reset_pin(SWITCH);
-    // gpio_set_direction(SWITCH, GPIO_MODE_INPUT);
     gpio_reset_pin(VIN_LOW);
     gpio_set_direction(VIN_LOW, GPIO_MODE_INPUT);
 
@@ -94,10 +80,6 @@ esp_err_t board_init()
     gpio_reset_pin(OUTPUT6);
     gpio_set_direction(OUTPUT6, GPIO_MODE_OUTPUT);
     gpio_set_level(OUTPUT6, false);
-    gpio_reset_pin(ESP_LED1);
-    gpio_set_direction(ESP_LED1, GPIO_MODE_OUTPUT);
-    gpio_set_level(ESP_LED1, true); // make LED OFF by default
-
     gpio_reset_pin(EN_4G);
     gpio_set_direction(EN_4G, GPIO_MODE_OUTPUT);
     gpio_set_level(EN_4G, false);
@@ -107,9 +89,7 @@ esp_err_t board_init()
     gpio_reset_pin(RESET_DISTAP);
     gpio_set_direction(RESET_DISTAP, GPIO_MODE_OUTPUT);
     gpio_set_level(RESET_DISTAP, false);
-    gpio_reset_pin(IO0_DISTAP); //use this as ESP_LED2 output
-    gpio_set_direction(IO0_DISTAP, GPIO_MODE_OUTPUT);
-    gpio_set_level(IO0_DISTAP, true); // make LED OFF by default
+    gpio_reset_pin(IO0_DISTAP); // ESP07 IO0 — input (display tap signal input on the ESP07)
 
     //Init UART2
     if(uart_is_driver_installed(UART_NUM_2))

@@ -152,6 +152,37 @@ def type_mismatches(devices: list[Device], metas: list[dict], type_targets: dict
     return out
 
 
+def bundle_fits_board(meta: dict, patterns: list[str]) -> bool:
+    """True when the bundle matches one of the board's patterns ("esp07-*" or "esp32-main@3.1.*")."""
+    from fnmatch import fnmatch
+    name = meta["name"].lower()
+    full = f"{name}@{meta['version']}".lower()
+    return any(fnmatch(full if "@" in p else name, p) for p in patterns)
+
+
+def board_mismatches(devices: list[tuple[Device, str]], metas: list[dict],
+                     board_targets: dict[str, list[str]]) -> list[str]:
+    """['FRP-COM-0015 (2308) ← esp32-main v2.0.0.29', ...] for bundles that don't fit the device's board.
+
+    `devices` pairs each device with its board (HW_VERSION, "" if unknown).  A board without rules
+    accepts anything; an unknown board is reported, since the bundle can't be checked.
+    """
+    rules = {k.strip().lower(): [p.strip().lower() for p in v if p.strip()] for k, v in board_targets.items()}
+    out = []
+    for d, board in devices:
+        b = (board or "").strip().lower()
+        if not b:
+            out.append(f"{d.label}: board unknown (device did not report HW_VERSION)")
+            continue
+        pats = rules.get(b)
+        if not pats:
+            continue
+        for m in metas:
+            if not bundle_fits_board(m, pats):
+                out.append(f"{d.label} ({board}) ← {m['name']} v{m['version']}")
+    return out
+
+
 class OtaManager:
     def __init__(self, library: FirmwareLibrary, console: Console, bus: EventBus,
                  get_config: Callable[[], AppConfig], audit: Optional[Audit] = None):
