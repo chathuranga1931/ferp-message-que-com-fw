@@ -11,6 +11,9 @@
 
 #include "module_default_btn.h"
 #include "msg_default_btn.h"
+#ifndef FERP_SIMULATOR
+#include "board.h"        // board_variant_known() / board_is_variant_2308()
+#endif
 #include "hsys_queue.h"
 #include "pal_gpio.h"
 #include "pal_time.h"
@@ -85,6 +88,15 @@ void ModuleDefaultBtn::_gpio_isr(pal_gpio_num_t gpio, void * /*arg*/)
 void ModuleDefaultBtn::on_wake()
 {
     _btn_event_t evt;
+#ifndef FERP_SIMULATOR
+    // The 2308-modified board has no default button fitted — GPIO36 floats
+    // and would look like a held button.  Ignore it there (as the earlier
+    // 2308 firmware did), and until the board variant is known at boot.
+    if (!board_variant_known() || board_is_variant_2308()) {
+        while (hsys_queue_receive(&_event_queue, &evt, 0)) {}
+        return;
+    }
+#endif
     while (hsys_queue_receive(&_event_queue, &evt, 0)) {
         if (evt.is_pressed)
             hsys_button_press_event(&_button, evt.timestamp_us);

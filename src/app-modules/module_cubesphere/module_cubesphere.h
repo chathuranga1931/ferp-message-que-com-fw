@@ -183,6 +183,7 @@ private:
     char   _wifi_password[CS_SIZE_WIFI_PASSWORD] = {};
     char   _wifi_ip[CS_SIZE_IP_ADDRESS]          = {};
     char   _wifi_mac[CS_SIZE_MAC]                = {};
+    char   _hw_version[16]                       = {};   ///< HW_VERSION, updated from MsgDevInfoValue (e.g. "2308" from DT_TYPE)
     int8_t _wifi_rssi                            = -100;
 
     // const char *_cloud_root_ca  = nullptr;  ///< From cloud config (runtime override)
@@ -296,6 +297,7 @@ private:
     void _on_sd_ready();
     void _on_system_status(const hsys_msg_t &msg);
     void _on_ota_event(const hsys_msg_t &msg);
+    void _on_dev_info_value(const hsys_msg_t &msg);
 
     // ── HTTP response handlers (DIRECT from ModuleHttp) ───────────────────────
     void _on_http_response_header(const hsys_msg_t &msg);

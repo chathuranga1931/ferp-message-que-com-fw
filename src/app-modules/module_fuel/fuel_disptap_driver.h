@@ -20,8 +20,17 @@
 #pragma once
 
 #include <stddef.h>
+#include <stdint.h>
 #include "fuel_pump_types.h"   // display_type_t, display_data_t
 #include "com_distap.h"        // raw_capture_chunk_t
+
+// DT_TYPE config values — the DisplayTap board variant.  The chip family is
+// fixed by the product build; only the board variant is configured.
+enum : uint32_t {
+    DT_TYPE_ESP07_A = 1,   ///< ESP07 DT on the 2308-modified board (inverted reset, no default button)
+    DT_TYPE_ESP07_B = 2,   ///< ESP07 DT on the 2404 board
+    DT_TYPE_ESP32_A = 3,   ///< ESP32 DT on the 2602 board
+};
 
 class FuelDispTapDriver
 {
@@ -51,6 +60,15 @@ public:
 
     /** Suspend comms (called on module stop or reconfiguration). */
     void stop();
+
+    /**
+     * Apply the configured DT_TYPE: board variant (DT reset polarity, default
+     * button).  Call once, before start().  The value is not validated here —
+     * a wrong one leaves the DT board unanswered, reported as DT status ERROR.
+     *
+     * @return the DT_TYPE applied
+     */
+    static uint32_t apply_dt_type(uint32_t configured);
 
 private:
     // Static storage — one singleton driver per firmware image is enough.

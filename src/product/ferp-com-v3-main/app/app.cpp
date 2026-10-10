@@ -205,6 +205,7 @@ void app_config_load_defaults(app_config_t *cfg)
     cfg->tot_dur = 300000;   // 5 minutes
     strncpy(cfg->nozzle_0_id, "P01", sizeof(cfg->nozzle_0_id) - 1);
     strncpy(cfg->nozzle_1_id, "P02", sizeof(cfg->nozzle_1_id) - 1);
+    cfg->dt_type = DT_TYPE_ESP32_A;   // 3 = ESP32-A (2602)
     strncpy(cfg->printer_url, "http://printer.local", sizeof(cfg->printer_url) - 1);
     cfg->printer_copy_count = 1;
     cfg->print_delay_ms = 0;
@@ -250,6 +251,7 @@ static config_t k_config_table[] = {
     { CFG_KEY_TOT_DUR,             "tot_dur",       HSYS_TYPE_UINT32, &_app_config.tot_dur,             sizeof(_app_config.tot_dur)              },
     { CFG_KEY_NOZZLE_0_ID,         "nozzle_0_id",   HSYS_TYPE_STRING, _app_config.nozzle_0_id,          sizeof(_app_config.nozzle_0_id)          },
     { CFG_KEY_NOZZLE_1_ID,         "nozzle_1_id",   HSYS_TYPE_STRING, _app_config.nozzle_1_id,          sizeof(_app_config.nozzle_1_id)          },
+    { CFG_KEY_DT_TYPE,             "dt_type",       HSYS_TYPE_UINT32, &_app_config.dt_type,             sizeof(_app_config.dt_type)              },
 };
 #define CONFIG_TABLE_SIZE  (sizeof(k_config_table) / sizeof(k_config_table[0]))
 
@@ -379,7 +381,6 @@ static const app_msg_codec_entry_t k_codec_table[] = {
     { "MsgConfigGetWifi",        MSG_ID_CONFIG_GET_WIFI,       MsgConfigGetWifi::from_json,        MsgConfigGetWifi::to_json       },
     { "MsgConfigGetCloud",       MSG_ID_CONFIG_GET_CLOUD,      MsgConfigGetCloud::from_json,       MsgConfigGetCloud::to_json      },
     { "MsgConfigGetOta",         MSG_ID_CONFIG_GET_OTA,        MsgConfigGetOta::from_json,         MsgConfigGetOta::to_json        },
-    { "MsgConfigGetDT",          MSG_ID_CONFIG_GET_DT,         MsgConfigGetDT::from_json,          MsgConfigGetDT::to_json         },
     { "MsgConfigGet",            MSG_ID_CONFIG_GET,            MsgConfigGet::from_json,            MsgConfigGet::to_json           },
     { "MsgConfigGetKey",         MSG_ID_CONFIG_GET_KEY,        MsgConfigGetKey::from_json,         MsgConfigGetKey::to_json        },
     { "MsgConfigSet",            MSG_ID_CONFIG_SET,            MsgConfigSet::from_json,            MsgConfigSet::to_json           },
@@ -468,7 +469,6 @@ static const app_msg_mqtt_route_t k_mqtt_route_table[] = {
     { MSG_ID_CONFIG_GET_WIFI,       MODULE_CONFIG_ID,     false },
     { MSG_ID_CONFIG_GET_CLOUD,      MODULE_CONFIG_ID,     false },
     { MSG_ID_CONFIG_GET_OTA,        MODULE_CONFIG_ID,     false },
-    { MSG_ID_CONFIG_GET_DT,         MODULE_CONFIG_ID,     false },
     { MSG_ID_CONFIG_GET,            MODULE_CONFIG_ID,     false },
     { MSG_ID_CONFIG_GET_KEY,        MODULE_CONFIG_ID,     false },
     { MSG_ID_CONFIG_SET,            (hsys_module_id_t)0,  true  }, // broadcast, multicast

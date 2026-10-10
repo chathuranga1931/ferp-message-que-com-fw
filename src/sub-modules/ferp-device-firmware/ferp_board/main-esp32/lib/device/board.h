@@ -98,6 +98,17 @@ void gpio_set_led2(const bool level);
 void gpio_set_en4g(const bool level);
 void gpio_set_reset_distap(const bool level);
 
+/**
+ * Board variant, applied once at boot (from config DT_TYPE, before the DT
+ * board is started).  The 2308-modified board drives the DT chip's reset line
+ * with the opposite polarity and has no default button fitted (GPIO36 floats).
+ * Until it is set, gpio_set_reset_distap() uses the compile-time board
+ * (BOARD_2303 = inverted) and board_variant_known() returns false.
+ */
+void board_set_variant_2308(bool is_2308);
+bool board_is_variant_2308(void);
+bool board_variant_known(void);
+
 void gpio_set_io0_distap(const bool level);
 void gpio_set_mode_output_io0_distap();
 void gpio_reset_io0_distap();

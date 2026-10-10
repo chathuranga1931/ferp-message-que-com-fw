@@ -21,10 +21,21 @@ inline void gpio_set_led1(const bool level) { gpio_set_level(ESP_LED1, !level); 
 inline void gpio_set_led2(const bool level) { gpio_set_level(ESP_LED2, !level); }
 inline void gpio_set_en4g(const bool level) { gpio_set_level(EN_4G, level); }
 #if BOARD_2303
-    inline void gpio_set_reset_distap(const bool level) { gpio_set_level(RESET_DISTAP, !level); }
+static bool s_reset_inverted = true;
 #else
-    inline void gpio_set_reset_distap(const bool level) { gpio_set_level(RESET_DISTAP, level); }
+static bool s_reset_inverted = false;
 #endif
+static bool s_variant_known  = false;
+
+void gpio_set_reset_distap(const bool level) { gpio_set_level(RESET_DISTAP, s_reset_inverted ? !level : level); }
+
+void board_set_variant_2308(bool is_2308)
+{
+    s_reset_inverted = is_2308;
+    s_variant_known  = true;
+}
+bool board_is_variant_2308(void) { return s_reset_inverted; }
+bool board_variant_known(void)   { return s_variant_known; }
 
 void gpio_set_io0_distap(const bool level) { 
     // gpio_set_direction(IO0_DISTAP, GPIO_MODE_OUTPUT);
