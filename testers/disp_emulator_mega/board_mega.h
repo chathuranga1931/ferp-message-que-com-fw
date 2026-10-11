@@ -25,7 +25,12 @@ const char c_pin_button=50; //for censtar
 const char c_pin_nozzle1_io_port=10;  // remapped from 11 (pin 11/PB5 hardware fault on board)
 const char c_pin_nozzle2_io_port=12;
 
-const char c_pin_encoder_btn=17;
+// Front-panel buttons (active LOW, INPUT_PULLUP)
+const char c_pin_btn_up=44;       // menu: previous display type
+const char c_pin_btn_down=42;     // menu: next display type
+const char c_pin_btn_enter=40;    // menu: start the selected display type
+const char c_pin_btn_back=38;     // running: back to the display-type menu (restarts the board)
+const char c_pin_encoder_btn=c_pin_btn_enter;   // name used by the menu code
 
 
 // // Set pins 2, 3, 4, 5, and 6 LOW

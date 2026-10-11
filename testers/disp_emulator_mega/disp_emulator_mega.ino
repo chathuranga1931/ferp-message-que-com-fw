@@ -8,7 +8,9 @@
 #include "Encoder.h"
 #include "sanki-6.h"
 #include "censtar-6.h"
+#include "pumps_extra.h"
 #include "board_mega.h"
+#include "control.h"
 
 typedef enum {
     device_configuring,
@@ -21,15 +23,19 @@ typedef enum{
     display_type_censtar_7digit,
     display_type_wayne_6digit,
     display_type_hongyang_8digit,
+    display_type_censtar_7digit_cs,
+    display_type_wayne_6digit_2,
 } display_type_t;
 
-const int pump_type_count = 5;
+const int pump_type_count = 7;
 const String pump_types[pump_type_count] = {
     "SANKI-6-DIGIT",
     "CENSTAR-6-DIGIT",
     "CENSTAR-7-DIGIT",
     "WAYNE-6-DIGIT",
     "HONGYANG-8-DIGIT",
+    "CENSTAR-7-CS",
+    "WAYNE-6-DIGIT-2",
 };
 
 display_type_t display_type = display_type_sanki_6digit;
@@ -111,26 +117,97 @@ void setup(){
     oled.display();               // show on OLED
     display_mode_curser_x = 0;
     display_mode_curser_y = 30;
+    // show the current choice straight away (Up / Down change it, Enter starts it)
+    oled.setCursor(display_mode_curser_x, display_mode_curser_y);
+    oled.println(pump_types[0]);
+    oled.display();
 
     setupRotaryEncoder();
-    sanki_init();
+    control_init();
+
+    // after a MODE command the board restarts straight into that display type
+    int8_t boot = control_boot_mode();
+    switch (boot) {
+      case CTL_SAN6: start_mode(display_type_sanki_6digit); break;
+      case CTL_CEN6: start_mode(display_type_censtar_6digit); break;
+      case CTL_CEN7: start_mode(display_type_censtar_7digit); break;
+      case CTL_C7CS: start_mode(display_type_censtar_7digit_cs); break;
+      case CTL_WAY6: start_mode(display_type_wayne_6digit); break;
+      case CTL_HY8:  start_mode(display_type_hongyang_8digit); break;
+      case CTL_WAY2: start_mode(display_type_wayne_6digit_2); break;
+      default: break;
+    }
+}
+
+// Start a display type: driver init + status screen.  Not implemented types restart into the menu.
+void start_mode(int idx){
+    display_type = (display_type_t)idx;
+    device_state = device_running;
+    switch (display_type){
+      case display_type_sanki_6digit:
+          sanki_init();
+          break;
+      case display_type_censtar_6digit:
+          censtar_6dig_init();
+          break;
+      case display_type_censtar_7digit:
+          censtar7_init(false);
+          break;
+      case display_type_censtar_7digit_cs:
+          censtar7_init(true);
+          break;
+      case display_type_wayne_6digit:
+          wayne6_init();
+          break;
+      case display_type_hongyang_8digit:
+          hongyang8_init();
+          break;
+      case display_type_wayne_6digit_2:
+          wayne2_init();
+          break;
+      default:
+          Serial.println(F("ERR display type not supported, restarting to the menu"));
+          control_restart(-1);
+          break;
+    }
+    control_event("MODE", control_mode_name(emu.mode));
+    control_screen(true);
 }
 
 void loop(){  
 
+    control_poll();                 // serial commands + front-panel events
     switch(device_state){
         case device_configuring:
             process_config();
             break;
         case device_running:
+            // Back button (or BUTTON BACK / MENU from the PC): restart into the display-type menu
+            if (LOW == digitalRead(c_pin_btn_back) || control_take_back()) {
+                control_event("MENU");
+                control_restart(-1);
+            }
             switch (display_type)
             {
             case display_type_sanki_6digit:
                 sanki_run();
                 break;
             case display_type_censtar_6digit:
-                censtar_6dig_run();   
-                break;      
+                censtar_6dig_run();
+                break;
+            case display_type_censtar_7digit:
+            case display_type_censtar_7digit_cs:
+                censtar7_run();
+                break;
+            case display_type_wayne_6digit:
+                wayne6_run();
+                break;
+            case display_type_hongyang_8digit:
+                hongyang8_run();
+                break;
+            case display_type_wayne_6digit_2:
+                wayne2_run();
+                break;
             default:
                 // restarting
                 Serial.println("Display Not Supported,Restarting...");
@@ -142,14 +219,18 @@ void loop(){
         default:
             device_state = device_configuring;
             break;
-    }    
+    }
+    if (device_state == device_running) control_screen();
 }
 
 void process_config(){
 
     static int16_t lastPosition = 0;
-    // Get the current position of the rotary encoder
-    int16_t position = getEncoderPosition();
+    static int16_t remote_steps = 0;
+    // Up / Down buttons, plus BUTTON UP / DOWN from the PC
+    remote_steps += control_take_steps();
+    control_take_back();                       // Back does nothing in the menu
+    int16_t position = getEncoderPosition() + remote_steps;
     static const String * menu = pump_types;
     static int menu_idx = 0;
     if (position != lastPosition) {
@@ -160,7 +241,7 @@ void process_config(){
         menu_idx = menu_idx < 0 ? 0 : menu_idx;
         menu_idx = menu_idx >= pump_type_count ? pump_type_count-1 : menu_idx;
 
-        Serial.println("Menu IDX = " + String(menu_idx));
+        control_event("MENU_IDX", String(menu_idx).c_str());
        
         oled.fillRect(display_mode_curser_x, display_mode_curser_y, 128, 10, BLACK); // Clear the specific area
         oled.setCursor(10, 10);
@@ -171,34 +252,8 @@ void process_config(){
         lastPosition = position;        
     }
 
-    if(LOW == digitalRead(c_pin_encoder_btn)){
-
+    if(LOW == digitalRead(c_pin_encoder_btn) || control_take_enter()){
       delay(50);
-      display_type = menu_idx;
-      device_state = device_running;
-
-      oled.clearDisplay();
-      oled.setTextSize(1);          // text size
-      oled.setTextColor(WHITE);     // text color
-      oled.setCursor(0, 10);        // position to display
-      oled.println("Running...");
-      oled.println("Display Mode: ");
-      oled.println(String(menu[display_type]));
-      oled.display();               // show on OLED
-
-      switch (display_type){
-        case display_type_sanki_6digit:
-            sanki_init();
-            break;
-        case display_type_censtar_6digit:
-            censtar_6dig_init();
-            break;
-        default:
-            // restarting
-            Serial.println("Display Not Supported,Restarting...");
-            wdt_enable(WDTO_15MS); // Set the watchdog timer to timeout in 15ms
-            while (true);          // Wait for the WDT to reset the board
-            break;
-      }
+      start_mode(menu_idx);
     }
 }

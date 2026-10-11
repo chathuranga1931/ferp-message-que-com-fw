@@ -49,8 +49,7 @@ static inline void fuel_types_from_frame(
         case DIS_CENSTAR_7_DIGIT_CS:
         case DIS_HONGYANG_8_DIGIT:
         case DIS_LONGFENG_8_DIGIT:
-        case DIS_WAYNE_6_DIGIT:
-        case DIS_SANKI_6_DIGIT:        
+        case DIS_SANKI_6_DIGIT:
         {
             out->unit_pricex100 = (uint64_t)frame->unit_price;
             out->total_pricex100= (uint64_t)frame->total_price;
@@ -62,6 +61,16 @@ static inline void fuel_types_from_frame(
             out->unit_pricex100 = (uint64_t)frame->unit_price*10;
             out->total_pricex100= (uint64_t)frame->total_price*10;
             out->volume_lx1000  = (uint64_t)frame->volume_l;
+        }
+        break;
+        case DIS_WAYNE_6_DIGIT:
+        {
+            // The DT (ESP07 and ESP32) sends the raw display counts. Wayne-6 shows unit
+            // price and total with 1 decimal (value*10) and volume with 2 decimals
+            // (value*100), so all three need *10 to reach the canonical x100 / x1000.
+            out->unit_pricex100 = (uint64_t)frame->unit_price*10;
+            out->total_pricex100= (uint64_t)frame->total_price*10;
+            out->volume_lx1000  = (uint64_t)frame->volume_l*10;
         }
         break;
         case DIS_WAYNE_6_DIGIT_2:

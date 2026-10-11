@@ -1,6 +1,7 @@
 
 #include "censtar-6.h"
 #include "board_mega.h"
+#include "control.h"
 #include "Arduino.h"
 
 #define PACKET_SIZE 16
@@ -15,8 +16,9 @@ const unsigned char waiting_for_900ms = 3;
 const unsigned char verify_data = 4;
 static bool is_nozzel_up = false;
 bool is_running_button_pressed = false;
-static uint32_t volume_mil = 0;
-static uint32_t unit_price = 12345;
+// sale values live in the shared state (set by the PC commands, shown on the screen)
+static uint32_t &volume_mil = emu.volume_ml;
+static uint32_t &unit_price = emu.unit_price;
 unsigned int buffer_idx = 0;
 unsigned int blink_delay = 500;
 unsigned char repeat_count = 0;
@@ -43,9 +45,9 @@ void create_buffer_censtar_6(uint32_t mili_volume, uint32_t unit_pricex100, bool
     
     uint32_t total = (uint32_t)(mili_volume/1000.0 * unit_pricex100 * 1.0);
 
-#if defined(SHOW_CENSTAR_BUFFER_GEN_DEGUB)
+if (emu.debug) {
     Serial.println("VOL: " + String(mili_volume) + "\t UNIT: " + String(unit_pricex100) + "\t Total : " + String(total));
-#endif
+}
     
     uint8_t total_in_array[8];
     uint8_t unit_price_in_array[6];
@@ -80,7 +82,7 @@ void create_buffer_censtar_6(uint32_t mili_volume, uint32_t unit_pricex100, bool
         value /= 10;
     }
 
-#if defined(SHOW_CENSTAR_BUFFER_GEN_DEGUB)
+if (emu.debug) {
     // Serial.print the resulting array
     for (int i = 0; i < 8; i++) {
         Serial.print(total_in_array[i], HEX);
@@ -96,7 +98,7 @@ void create_buffer_censtar_6(uint32_t mili_volume, uint32_t unit_pricex100, bool
         Serial.print(volume_in_array[i], HEX);
     }
     Serial.print("\n");
-#endif
+}
 
     uint32_t idx = 0;
     uint32_t sub_idx = 3;
@@ -119,7 +121,7 @@ void create_buffer_censtar_6(uint32_t mili_volume, uint32_t unit_pricex100, bool
     channel1_tx_buffer[idx++] = ((volume_in_array[3] << 4) | (idx & 0x0F));
     channel1_tx_buffer[idx++] = ((volume_in_array[2] << 4) | (idx & 0x0F));
 
-#if defined(SHOW_CENSTAR_BUFFER_GEN_DEGUB)
+if (emu.debug) {
     for (int i = 0; i < 16; i++) {
       if(channel1_tx_buffer[i] <= 0xF){
         Serial.print("0");
@@ -128,10 +130,13 @@ void create_buffer_censtar_6(uint32_t mili_volume, uint32_t unit_pricex100, bool
       Serial.print(" ");
     }
     Serial.print("\n");
-#endif
+}
 }
 
 void censtar_6dig_init(){
+    emu.mode = CTL_CEN6;
+    if (!emu.price_set) unit_price = 12345;
+    if (!emu.step_set) emu.step_ml = 49;
 
     digitalWrite(c_pin_sdata1, LOW); 
     digitalWrite(c_pin_sdata2, LOW);
@@ -172,8 +177,10 @@ void send_byte_censtar_6(unsigned char bite1)
 
 void censtar_6dig_run(){  
 
-    bool nozzle_state = digitalRead(c_pin_btn_nzl_status) == LOW ? true : false;
-    bool pumping_state = digitalRead(c_pin_btn_pumping) == LOW ? true : false;
+    // switch / button, unless the PC has taken over (NOZZLE / PUMP commands)
+    bool nozzle_state = control_nozzle(digitalRead(c_pin_btn_nzl_status) == LOW);
+    bool pumping_state = control_pumping(digitalRead(c_pin_btn_pumping) == LOW);
+    if (emu.dirty) { emu.dirty = false; create_buffer_censtar_6(volume_mil, unit_price, is_nozzel_up); }
 
     is_nozzel_up = nozzle_state;
 
@@ -190,7 +197,7 @@ void censtar_6dig_run(){
       if(nozzle_state){
         volume_mil = 0;
         create_buffer_censtar_6(volume_mil, unit_price, is_nozzel_up);
-        Serial.println("Set to Zero");
+        control_event("ZERO");
       }
       nozzle_state_prev = nozzle_state;      
     }
@@ -199,8 +206,8 @@ void censtar_6dig_run(){
         static unsigned long ts_sync = 0;
         if(millis() - ts_sync > 100){
             ts_sync = millis();
+            volume_mil += emu.step_ml;           // step first: the frame (and STATUS / the screen) show the same value
             create_buffer_censtar_6(volume_mil, unit_price, is_nozzel_up);
-            volume_mil+= 49;
         }
         
         static bool green_led_state = false;

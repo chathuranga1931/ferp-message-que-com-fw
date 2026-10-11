@@ -1,103 +1,35 @@
-
 #include "Encoder.h"
+#include "board_mega.h"
 
-// Rotary Encoder Pins (Change these as needed)
-#define ENCODER_PIN_A 18
-#define ENCODER_PIN_B 19
-#define ENCODER_BUTTON_PIN -1 // Set to -1 if no button is used
+// Menu navigation with the front-panel Up / Down buttons (pins in board_mega.h).
+// Keeps the old rotary-encoder interface: the "position" goes down one step per Up press
+// and up one step per Down press, so the menu moves to the previous / next display type.
 
-void handleEncoderInterruptB();
-void handleEncoderInterruptA();
+static const uint16_t c_debounce_ms = 30;
 
-// Variables to store encoder state
-volatile int16_t encoderPosition = 0;
-volatile uint8_t lastState = 0;
-volatile uint8_t encState = 0;     // Tracks the current state of the encoder
-bool status_pinA_value = false;
-bool status_pinB_value = false;
+static volatile int16_t encoderPosition = 0;
+static uint8_t last_up = HIGH;
+static uint8_t last_down = HIGH;
+static uint32_t last_change_ms = 0;
 
-// Initialize rotary encoder
 void setupRotaryEncoder() {
-    pinMode(ENCODER_PIN_A, INPUT);
-    pinMode(ENCODER_PIN_B, INPUT);
-    if (ENCODER_BUTTON_PIN != -1) {
-        pinMode(ENCODER_BUTTON_PIN, INPUT_PULLUP);
-    }
-
-    encState = (digitalRead(ENCODER_PIN_A) << 1) | digitalRead(ENCODER_PIN_B);
-    encState = encState << 2;
-
-    // Attach interrupts
-    attachInterrupt(digitalPinToInterrupt(ENCODER_PIN_A), handleEncoderInterruptA, CHANGE);
-    attachInterrupt(digitalPinToInterrupt(ENCODER_PIN_B), handleEncoderInterruptB, CHANGE);
+    pinMode(c_pin_btn_up, INPUT_PULLUP);
+    pinMode(c_pin_btn_down, INPUT_PULLUP);
+    pinMode(c_pin_btn_enter, INPUT_PULLUP);
+    pinMode(c_pin_btn_back, INPUT_PULLUP);
+    last_up = digitalRead(c_pin_btn_up);
+    last_down = digitalRead(c_pin_btn_down);
 }
-void handleEncoderInterruptB() {
-    uint8_t s = encState & 0b1100;  // Keep only the last two bits of the state
-    static unsigned long lastInterruptTime = 0;
-    unsigned long interruptTime = millis();
 
-    if (interruptTime - lastInterruptTime < 50) {
-      return;
-    }
-
-    lastInterruptTime = interruptTime;  
-    status_pinA_value = digitalRead(ENCODER_PIN_A);
-    
-    if (status_pinA_value) s |= 0b1; // Update bit 3
-    if (status_pinB_value) s |= 0b10; // Update bit 3
-
-    // Use a switch-case to handle the state transitions
-    switch (s) {
-        case 0: case 5: case 10: case 15:
-            // No movement
-            break;
-        case 1: case 7: case 8: case 14:
-            encoderPosition++;  // Clockwise movement
-            break;
-        case 2: case 4: case 11: case 13:
-            encoderPosition--;  // Counter-clockwise movement
-            break;
-    }
-
-    // Save the new state for the next iteration
-    encState = (s << 2);  // Shift the state down to keep the last two bits
-}
-void handleEncoderInterruptA() {
-
-    uint8_t s = encState & 0b1100;  // Keep only the last two bits of the state
-    static unsigned long lastInterruptTime = 0;
-    unsigned long interruptTime = millis();
-
-    if (interruptTime - lastInterruptTime < 50) {
-      return;
-    }
-
-    lastInterruptTime = interruptTime;   
-    status_pinB_value = digitalRead(ENCODER_PIN_B);
-
-    if (status_pinA_value) s |= 0b1; // Update bit 3
-    if (status_pinB_value) s |= 0b10; // Update bit 3
-
-    // Use a switch-case to handle the state transitions
-    switch (s) {
-        case 0: case 5: case 10: case 15:
-            // No movement
-            break;
-        case 1: case 7: case 8: case 14:
-            // encoderPosition++;  // Clockwise movement
-            break;
-        case 2: case 4: case 11: case 13:
-            // encoderPosition--;  // Counter-clockwise movement
-            break;
-    }
-
-    // Save the new state for the next iteration
-    encState = (s << 2);  // Shift the state down to keep the last two bits
-}
-// Get the current encoder position
+// Polled from the menu loop: one step per press (on the press edge, debounced).
 int16_t getEncoderPosition() {
-    noInterrupts();
-    int16_t position = encoderPosition;
-    interrupts();
-    return position;
+    uint8_t up = digitalRead(c_pin_btn_up);
+    uint8_t down = digitalRead(c_pin_btn_down);
+    if (millis() - last_change_ms >= c_debounce_ms) {
+        if (up == LOW && last_up == HIGH) { encoderPosition--; last_change_ms = millis(); }
+        if (down == LOW && last_down == HIGH) { encoderPosition++; last_change_ms = millis(); }
+        last_up = up;
+        last_down = down;
+    }
+    return encoderPosition;
 }

@@ -1,6 +1,7 @@
 
 #include "sanki-6.h"
 #include "board_mega.h"
+#include "control.h"
 #include "Arduino.h"
 
 uint8_t byte_array[18] = {0xF0, 0x20, 0xFF, 0xFE, 0x0D, 0x4C, 0x8B, 0x5A, 0xF9, 0x18, 0x37, 0x86, 0x75, 0x14, 0x83, 0x62, 0x01, 0x00};
@@ -14,8 +15,9 @@ const unsigned char clock_low_delay_2_2 = 5; // 2nd half // 2 out of 2
 const unsigned char clock_hi_delay = 5;
 
 static bool is_nozzel_up = false;
-static uint32_t volume_mil = 0;
-static uint32_t unit_price = 42300;
+// sale values live in the shared state (set by the PC commands, shown on the screen)
+static uint32_t &volume_mil = emu.volume_ml;
+static uint32_t &unit_price = emu.unit_price;
 
 static int count_digits(uint32_t num) {
     int count = 0;
@@ -36,9 +38,7 @@ void create_buffer_sanki_6(uint32_t mili_volume, uint32_t unit_pricex100, bool s
     
     uint32_t total = (uint32_t)(mili_volume/1000.0 * unit_pricex100 * 1.0);
 
-// #if defined(SHOW_SANKI_BUFFER_GEN_DEGUB)
-    Serial.println("VOL: " + String(mili_volume) + "\t UNIT: " + String(unit_pricex100) + "\t Total : " + String(total));
-// #endif
+    if (emu.debug) Serial.println("VOL: " + String(mili_volume) + "\t UNIT: " + String(unit_pricex100) + "\t Total : " + String(total));
     
     uint8_t total_in_array[8];
     uint8_t unit_price_in_array[6];
@@ -133,13 +133,18 @@ void create_buffer_sanki_6(uint32_t mili_volume, uint32_t unit_pricex100, bool s
 
 
 void sanki_init(){
+  emu.mode = CTL_SAN6;
+  if (!emu.price_set) unit_price = 42300;
+  if (!emu.step_set) emu.step_ml = 125;
   create_buffer_sanki_6(volume_mil, unit_price, is_nozzel_up);
 }
 
 void sanki_run(){
 
-    bool nozzle_state = digitalRead(c_pin_btn_nzl_status) == LOW ? true : false;
-    bool pumping_state = digitalRead(c_pin_btn_pumping) == LOW ? true : false;
+    // switch / button, unless the PC has taken over (NOZZLE / PUMP commands)
+    bool nozzle_state = control_nozzle(digitalRead(c_pin_btn_nzl_status) == LOW);
+    bool pumping_state = control_pumping(digitalRead(c_pin_btn_pumping) == LOW);
+    if (emu.dirty) { emu.dirty = false; create_buffer_sanki_6(volume_mil, unit_price, is_nozzel_up); }
 
     is_nozzel_up = nozzle_state;
 
@@ -156,7 +161,7 @@ void sanki_run(){
       if(nozzle_state){
         volume_mil = 0;
         create_buffer_sanki_6(volume_mil, unit_price, is_nozzel_up);
-        Serial.println("Set to Zero");
+        control_event("ZERO");
       }
       nozzle_state_prev = nozzle_state;      
     }
@@ -165,8 +170,8 @@ void sanki_run(){
         static unsigned long ts_sync = 0;
         if(millis() - ts_sync > 100){
             ts_sync = millis();
+            volume_mil += emu.step_ml;           // step first: the frame (and STATUS / the screen) show the same value
             create_buffer_sanki_6(volume_mil, unit_price, is_nozzel_up);
-            volume_mil+= 125;
         }
         
         static bool green_led_state = false;
