@@ -1,0 +1,413 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fleet Tile Studies</title>
+<style>
+/* Layout: one column of five labelled studies, each rendering the same sample fleet; tokens follow the FERP Device Web app. */
+:root {
+  --bg: #f3f5f7;
+  --surface: #ffffff;
+  --surface-2: #f7f9fb;
+  --border: #dde2e8;
+  --text: #1c2430;
+  --muted: #6b7684;
+  --accent: #146c94;
+  --accent-soft: #e3f0f6;
+  --ok: #1f8a4c;
+  --ok-soft: #e4f4ea;
+  --warn: #b26a00;
+  --warn-soft: #fbf0dd;
+  --err: #c0362c;
+  --err-soft: #fbe7e5;
+  --idle: #9aa5b2;
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: ui-monospace, "Cascadia Code", Consolas, Menlo, monospace;
+  --radius: 8px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #12161b; --surface: #1a2027; --surface-2: #151a20; --border: #2b333d; --text: #e4e9ef; --muted: #8d98a6;
+    --accent: #3aa0cc; --accent-soft: #16303d; --ok: #3cc47a; --ok-soft: #15301f; --warn: #e0a040; --warn-soft: #33270f;
+    --err: #ef6a5e; --err-soft: #3a1b18; --idle: #56616e; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #12161b; --surface: #1a2027; --surface-2: #151a20; --border: #2b333d; --text: #e4e9ef; --muted: #8d98a6;
+  --accent: #3aa0cc; --accent-soft: #16303d; --ok: #3cc47a; --ok-soft: #15301f; --warn: #e0a040; --warn-soft: #33270f;
+  --err: #ef6a5e; --err-soft: #3a1b18; --idle: #56616e; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--text); font: 14px/1.45 var(--font); margin: 0; padding: 24px 20px 48px; }
+.wrap { max-width: 1240px; margin: 0 auto; display: flex; flex-direction: column; gap: 28px; }
+header.top { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 12px; }
+header.top h1 { margin: 0; font-size: 22px; text-wrap: balance; }
+header.top p { margin: 4px 0 0; color: var(--muted); max-width: 70ch; }
+nav.jump { display: flex; flex-wrap: wrap; gap: 6px; position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5;
+  background: var(--bg); padding-block: 8px; }
+nav.jump a { text-decoration: none; color: var(--text); border: 1px solid var(--border); background: var(--surface);
+  border-radius: 999px; padding: 4px 12px; font-size: 13px; }
+nav.jump a:hover, nav.jump a:focus-visible { border-color: var(--accent); color: var(--accent); outline: none; }
+nav.jump b { color: var(--accent); margin-right: 4px; }
+section.study { display: flex; flex-direction: column; gap: 12px; scroll-margin-top: 56px; }
+.study-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; border-top: 1px solid var(--border); padding-top: 14px; }
+.study-head h2 { margin: 0; font-size: 17px; }
+.study-head h2 .tag { display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 6px; margin-right: 8px;
+  background: var(--accent); color: var(--surface); font-size: 14px; vertical-align: 1px; }
+.study-head p { margin: 0; color: var(--muted); max-width: 80ch; }
+.mono { font-family: var(--mono); font-size: 12px; }
+.muted { color: var(--muted); }
+.num { font-variant-numeric: tabular-nums; }
+.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex: none; background: var(--idle); }
+.dot.online { background: var(--ok); } .dot.offline { background: var(--err); }
+.pill { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 600; border-radius: 999px; padding: 1px 8px; white-space: nowrap; }
+.pill.ok { background: var(--ok-soft); color: var(--ok); } .pill.warn { background: var(--warn-soft); color: var(--warn); }
+.pill.err { background: var(--err-soft); color: var(--err); } .pill.info { background: var(--accent-soft); color: var(--accent); }
+.pill.idle { background: var(--surface-2); color: var(--muted); border: 1px solid var(--border); }
+.type { font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; border: 1px solid var(--border);
+  border-radius: 4px; padding: 0 5px; color: var(--muted); }
+.btn { font: inherit; font-size: 12px; border: 1px solid var(--border); background: var(--surface); color: var(--text);
+  border-radius: 6px; padding: 3px 10px; cursor: pointer; }
+.btn:hover, .btn:focus-visible { border-color: var(--accent); color: var(--accent); outline: none; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--surface); }
+.btn.primary:hover { filter: brightness(1.08); color: var(--surface); }
+input[type=checkbox] { accent-color: var(--accent); }
+
+/* ── A · Details card ─────────────────────────────────────────────── */
+.grid-a { display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 12px; }
+.a { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; }
+.a.offline { background: linear-gradient(var(--err-soft), var(--err-soft)) top / 100% 3px no-repeat, var(--surface); }
+.a.never { opacity: 0.75; }
+.a-head { display: flex; align-items: center; gap: 8px; }
+.a-head .name { font-weight: 700; font-size: 15px; color: var(--accent); }
+.a-head .st { margin-left: auto; display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.a dl { display: grid; grid-template-columns: 64px 1fr; gap: 3px 10px; margin: 0; font-size: 13px; }
+.a dt { color: var(--muted); } .a dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.a-foot { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; border-top: 1px solid var(--border); padding-top: 10px; }
+.a-foot .sp { flex: 1; }
+
+/* ── B · Pump forecourt ───────────────────────────────────────────── */
+.grid-b { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+.b { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; display: flex; flex-direction: column; }
+.b-top { display: flex; align-items: center; gap: 8px; padding: 10px 12px; }
+.b-top .name { font-weight: 700; }
+.b-top .shed { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
+.b-noz { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--border); border-block: 1px solid var(--border); }
+.noz { background: var(--surface-2); padding: 10px 12px; display: flex; flex-direction: column; gap: 2px; }
+.noz .pid { font-family: var(--mono); font-weight: 700; font-size: 16px; display: flex; align-items: center; gap: 6px; }
+.noz .state { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
+.noz.fueling .state { color: var(--ok); } .noz.idle .state { color: var(--muted); } .noz.error .state { color: var(--err); }
+.noz.fueling { background: var(--ok-soft); }
+.noz .lit { font-family: var(--mono); font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.noz .lit small { font-size: 12px; color: var(--muted); font-weight: 400; margin-left: 2px; }
+.noz .when { font-size: 11px; color: var(--muted); }
+.noz.none { color: var(--muted); justify-content: center; align-items: center; font-size: 12px; }
+.b-bot { display: flex; align-items: center; gap: 10px; padding: 8px 12px; font-size: 12px; color: var(--muted); flex-wrap: wrap; }
+.b-bot .sp { flex: 1; }
+@keyframes flow { from { background-position: 0 0; } to { background-position: 24px 0; } }
+.noz.fueling .flowbar { height: 3px; border-radius: 2px; margin-top: 4px;
+  background: repeating-linear-gradient(90deg, var(--ok) 0 12px, transparent 12px 24px); animation: flow 0.8s linear infinite; }
+@media (prefers-reduced-motion: reduce) { .noz.fueling .flowbar { animation: none; } }
+
+/* ── C · Health ring ──────────────────────────────────────────────── */
+.grid-c { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 12px; }
+.c { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; display: grid;
+  grid-template-columns: 76px 1fr; gap: 12px 14px; align-items: start; }
+.ring { position: relative; width: 76px; height: 76px; }
+.ring svg { width: 76px; height: 76px; transform: rotate(-90deg); }
+.ring .score { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; line-height: 1.05; }
+.ring .score b { font-size: 20px; font-variant-numeric: tabular-nums; }
+.ring .score span { display: block; font-size: 10px; color: var(--muted); letter-spacing: 0.05em; text-transform: uppercase; }
+.c-body { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.c-title { display: flex; align-items: center; gap: 8px; }
+.c-title .name { font-weight: 700; font-size: 15px; }
+.c-sub { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.checks { display: flex; flex-wrap: wrap; gap: 4px; }
+.spark { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 2px; }
+.spark svg { width: 100%; height: 34px; display: block; }
+.spark .lbl { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); }
+
+/* ── D · Dense status wall ────────────────────────────────────────── */
+.d-shed { display: flex; flex-direction: column; gap: 6px; }
+.d-shed h3 { margin: 0; font-size: 12px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted);
+  display: flex; gap: 8px; align-items: center; }
+.d-shed h3 .cnt { font-weight: 400; letter-spacing: 0; text-transform: none; }
+.d-wall { display: flex; flex-direction: column; gap: 14px; }
+.grid-d { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 6px; }
+.d { position: relative; border-radius: 6px; padding: 7px 8px 6px; border: 1px solid var(--border); background: var(--surface);
+  display: flex; flex-direction: column; gap: 1px; cursor: pointer; text-align: left; font: inherit; color: inherit; }
+.d::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 4px; border-radius: 6px 0 0 6px; background: var(--idle); }
+.d.online::before { background: var(--ok); } .d.offline::before { background: var(--err); }
+.d.attn { box-shadow: inset 0 0 0 1px var(--warn); }
+.d .name { font-weight: 700; font-size: 13px; padding-left: 4px; }
+.d .meta { font-size: 11px; color: var(--muted); padding-left: 4px; font-variant-numeric: tabular-nums; }
+.d:hover, .d:focus-visible { border-color: var(--accent); outline: none; }
+.d-legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 12px; color: var(--muted); align-items: center; }
+.d-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.d-legend i { width: 14px; height: 10px; border-radius: 2px; display: inline-block; border: 1px solid var(--border); }
+
+/* ── E · Signal strip ─────────────────────────────────────────────── */
+.grid-e { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 10px; }
+.e { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); display: grid;
+  grid-template-columns: auto 1fr auto; gap: 0; overflow: hidden; }
+.e-st { width: 54px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+  font-size: 10px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; }
+.e-st.online { background: var(--ok-soft); color: var(--ok); } .e-st.offline { background: var(--err-soft); color: var(--err); }
+.e-st.never { background: var(--surface-2); color: var(--muted); }
+.e-main { padding: 10px 12px; display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.e-line1 { display: flex; align-items: center; gap: 8px; }
+.e-line1 .name { font-weight: 700; }
+.e-line2 { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.icons { display: flex; flex-wrap: wrap; gap: 12px; font-size: 12px; align-items: center; }
+.icons span { display: inline-flex; align-items: center; gap: 4px; font-variant-numeric: tabular-nums; }
+.bars { display: inline-flex; align-items: flex-end; gap: 1px; height: 11px; }
+.bars i { width: 3px; background: var(--border); border-radius: 1px; display: block; }
+.bars i.on { background: var(--text); }
+.e-side { border-left: 1px solid var(--border); padding: 10px 12px; display: flex; flex-direction: column; justify-content: center; align-items: end; gap: 6px; min-width: 104px; }
+.e-side .fw { font-family: var(--mono); font-size: 13px; }
+
+@media (max-width: 480px) {
+  .grid-c .c { grid-template-columns: 1fr; }
+  .e { grid-template-columns: auto 1fr; } .e-side { grid-column: 1 / -1; border-left: 0; border-top: 1px solid var(--border); flex-direction: row; justify-content: space-between; align-items: center; }
+}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>Fleet tile studies</h1>
+      <p>Five ways to draw the Fleet tiles, all showing the same sample devices. The data below is made up for comparison. Pick a letter and it can go into the Fleet page.</p>
+    </div>
+  </header>
+  <nav class="jump" aria-label="Designs">
+    <a href="#a"><b>A</b>Details card</a>
+    <a href="#b"><b>B</b>Pump forecourt</a>
+    <a href="#c"><b>C</b>Health ring</a>
+    <a href="#d"><b>D</b>Status wall</a>
+    <a href="#e"><b>E</b>Signal strip</a>
+  </nav>
+
+  <section class="study" id="a">
+    <div class="study-head"><h2><span class="tag">A</span>Details card</h2>
+      <p>The current tile, tidied: status in the header, a fixed key/value list, actions in the footer. Offline devices get a red top edge. Good all-rounder, about 4 per row.</p></div>
+    <div class="grid-a" id="grid-a"></div>
+  </section>
+
+  <section class="study" id="b">
+    <div class="study-head"><h2><span class="tag">B</span>Pump forecourt</h2>
+      <p>Built around the two nozzles: each shows its pump ID, live state and the last sale in litres. A fuelling nozzle turns green with a moving flow bar. Best when the question is "is this pump working right now?".</p></div>
+    <div class="grid-b" id="grid-b"></div>
+  </section>
+
+  <section class="study" id="c">
+    <div class="study-head"><h2><span class="tag">C</span>Health ring</h2>
+      <p>A 0–100 health score in a ring (seen recently, DT answering, FW current, SD card, Wi-Fi, open issues), the checks that failed as pills, and a 24-hour message sparkline. Best for spotting devices that need attention.</p></div>
+    <div class="grid-c" id="grid-c"></div>
+  </section>
+
+  <section class="study" id="d">
+    <div class="study-head"><h2><span class="tag">D</span>Status wall</h2>
+      <p>Small tiles grouped by shed, many per row: name, pump IDs and last seen, with the colour edge for status and an amber outline when something needs attention. Built for the whole fleet on one screen; details open on click.</p></div>
+    <div class="d-legend">
+      <span><i style="background:var(--ok)"></i>Online</span><span><i style="background:var(--err)"></i>Offline</span>
+      <span><i style="background:var(--idle)"></i>Never seen</span><span><i style="box-shadow:inset 0 0 0 1px var(--warn)"></i>Needs attention</span>
+    </div>
+    <div class="d-wall" id="wall-d"></div>
+  </section>
+
+  <section class="study" id="e">
+    <div class="study-head"><h2><span class="tag">E</span>Signal strip</h2>
+      <p>A wide row per device: a status block on the left, one line of site details, then icon readings (Wi-Fi bars, SD free, DT version, probe time) and the firmware with an "update" flag on the right. Reads like a list but keeps the tile grid.</p></div>
+    <div class="grid-e" id="grid-e"></div>
+  </section>
+</div>
+
+<script>
+// Sample fleet (made-up values for comparing designs)
+const LATEST = { "2308": "3.1.0.3", "2404": "3.2.0.3", "2602": "3.3.0.3", "S3-USB": "45.0.0.3" };
+const NOW = Date.now() / 1000;
+const D = [
+  { label: "FRP-COM-0015", type: "COM", mac: "48e729331004", shed: "Yakkala Cepetco", pumps: ["P01", "P02"], pumpType: "SANKI-6-M1", board: "2308",
+    fw: "3.1.0.3", dt: "2.0.0.1", status: "online", seen: 25, rssi: -51, sd: 3.8, probe: 182, issues: 0,
+    noz: [{ st: "fueling", l: 12.4, ago: 0 }, { st: "idle", l: 23.75, ago: 640 }], msgs: [3,4,2,5,6,8,9,7,6,5,7,9,11,12,10,8,9,7,6,5,4,4,3,5] },
+  { label: "FRP-COM-0023", type: "COM", mac: "a0b765e90a44", shed: "D.D. Kasthuriarachchi & Sons", pumps: ["P03", "P04"], pumpType: "CENSTAR-7", board: "2404",
+    fw: "2.3.143.11", dt: "1.1.34", status: "online", seen: 70, rssi: -68, sd: 7.1, probe: 410, issues: 1,
+    noz: [{ st: "idle", l: 40.0, ago: 1820 }, { st: "idle", l: 8.5, ago: 3600 }], msgs: [2,2,1,3,4,5,4,6,5,4,3,4,6,7,6,5,4,4,3,3,2,2,2,1] },
+  { label: "FRP-COM-0043", type: "COM", mac: "0c8b95f143cc", shed: "D.D. Kasthuriarachchi & Sons", pumps: ["P01", "P02"], pumpType: "CENSTAR-7", board: "2404",
+    fw: "3.2.0.3", dt: "2.0.0.1", status: "online", seen: 12, rssi: -58, sd: 7.4, probe: 140, issues: 0,
+    noz: [{ st: "fueling", l: 31.2, ago: 0 }, { st: "fueling", l: 5.8, ago: 0 }], msgs: [4,5,6,6,7,9,10,12,13,12,11,10,12,14,13,12,11,10,9,8,7,6,5,5] },
+  { label: "FRP-COM-0061", type: "COM", mac: "f8b3b739978c", shed: "Petro Gas - Nawinna Filling Station - Colombo (D1)", pumps: ["D01", "D02"], pumpType: "WAYNE-6", board: "2602",
+    fw: "3.0.0.27", dt: "1.0.0.9", status: "online", seen: 40, rssi: -63, sd: 14.2, probe: 205, issues: 0,
+    noz: [{ st: "idle", l: 18.0, ago: 260 }, { st: "fueling", l: 2.1, ago: 0 }], msgs: [5,6,5,7,8,9,8,10,11,12,11,13,12,11,10,12,11,10,9,8,8,7,6,6] },
+  { label: "FRP-COM-0063", type: "COM", mac: "f8b3b7398b74", shed: "Petro Gas - Nawinna Filling Station - Colombo (D1)", pumps: ["D03", "D04"], pumpType: "WAYNE-6", board: "2602",
+    fw: "3.3.0.3", dt: "1.0.0.9", status: "online", seen: 8, rssi: -47, sd: 14.6, probe: 120, issues: 0,
+    noz: [{ st: "idle", l: 9.0, ago: 120 }, { st: "idle", l: 15.5, ago: 900 }], msgs: [6,6,7,8,8,9,10,11,12,12,13,14,13,12,12,11,10,10,9,9,8,7,7,6] },
+  { label: "FRP-COM-0039", type: "COM", mac: "0c8b95f1c800", shed: "Polgasowita Filling Station", pumps: ["P01", "P02"], pumpType: "SANKI-6-M1", board: "2404",
+    fw: "3.2.0.3", dt: "ERROR", status: "online", seen: 33, rssi: -72, sd: 3.7, probe: 260, issues: 2,
+    noz: [{ st: "error", l: null, ago: null }, { st: "error", l: null, ago: null }], msgs: [3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3] },
+  { label: "FRP-COM-0047", type: "COM", mac: "a0b765e912f0", shed: "JMS Fuel Mart - Makola", pumps: ["P05"], pumpType: "HONGYANG-8", board: "2404",
+    fw: "3.2.0.3", dt: "2.0.0.1", status: "offline", seen: 5400, rssi: null, sd: 0.4, probe: null, issues: 0,
+    noz: [{ st: "idle", l: 22.0, ago: 5600 }], msgs: [6,7,8,9,8,7,6,7,8,9,10,9,8,0,0,0,0,0,0,0,0,0,0,0] },
+  { label: "FRP-COM-0065", type: "COM", mac: "f8b3b73a01d2", shed: "Welisara Filling Station", pumps: ["P01", "P02"], pumpType: "LONGFENG-8", board: "2602",
+    fw: "3.3.0.3", dt: "1.0.0.9", status: "offline", seen: 91000, rssi: null, sd: 12.0, probe: null, issues: 1,
+    noz: [{ st: "idle", l: 30.0, ago: 91300 }, { st: "idle", l: 11.2, ago: 92000 }], msgs: [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0] },
+  { label: "FRP-PTR-0015", type: "Printer", mac: "78421c8bae40", shed: "D.D. Kasthuriarachchi & Sons", pumps: [], pumpType: "", board: "2308",
+    fw: "44.0.0.3", dt: null, status: "online", seen: 15, rssi: -55, sd: null, probe: 95, issues: 0,
+    noz: [], msgs: [1,1,0,2,3,3,4,5,4,3,4,5,6,5,4,4,3,3,2,2,1,1,1,0] },
+  { label: "FRP-COM-0071", type: "COM", mac: "48e7293a7c10", shed: "", pumps: [], pumpType: "", board: "2404",
+    fw: null, dt: null, status: "never", seen: null, rssi: null, sd: null, probe: null, issues: 0, noz: [], msgs: Array(24).fill(0) },
+];
+// LATEST is keyed by board; printers use their own line
+LATEST["2308p"] = "44.0.0.3";
+const latestFor = (d) => (d.type === "Printer" ? "44.0.0.3" : LATEST[d.board]);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const ago = (s) => s == null ? "never" : s < 60 ? `${Math.round(s)} s ago` : s < 3600 ? `${Math.round(s / 60)} min ago` : s < 86400 ? `${Math.round(s / 3600)} h ago` : `${Math.round(s / 86400)} d ago`;
+const statusLabel = { online: "Online", offline: "Offline", never: "Never seen" };
+const shedName = (d) => d.shed || "Unassigned";
+const fwOld = (d) => d.fw && latestFor(d) && d.fw !== latestFor(d);
+const dtBad = (d) => d.type === "COM" && d.status !== "never" && d.dt === "ERROR";
+const sdLow = (d) => d.sd != null && d.sd < 1;
+const wifiWeak = (d) => d.rssi != null && d.rssi < -70;
+function checks(d) {
+  if (d.status === "never") return [{ t: "Never connected", k: "idle" }];
+  const out = [];
+  if (d.status === "offline") out.push({ t: `Offline ${ago(d.seen).replace(" ago", "")}`, k: "err" });
+  if (dtBad(d)) out.push({ t: "DT not answering", k: "err" });
+  if (fwOld(d)) out.push({ t: `FW ${d.fw} → ${latestFor(d)}`, k: "warn" });
+  if (sdLow(d)) out.push({ t: `SD ${d.sd} GB free`, k: "warn" });
+  if (wifiWeak(d)) out.push({ t: `Wi-Fi ${d.rssi} dBm`, k: "warn" });
+  if (d.issues) out.push({ t: `${d.issues} open issue${d.issues > 1 ? "s" : ""}`, k: "err" });
+  return out;
+}
+function score(d) {
+  if (d.status === "never") return 0;
+  let s = 100;
+  if (d.status === "offline") s -= d.seen > 86400 ? 60 : 40;
+  if (dtBad(d)) s -= 30;
+  if (fwOld(d)) s -= 10;
+  if (sdLow(d)) s -= 10;
+  if (wifiWeak(d)) s -= 8;
+  s -= Math.min(20, d.issues * 8);
+  return Math.max(0, s);
+}
+const attn = (d) => checks(d).some((c) => c.k !== "idle");
+const typeBadge = (d) => `<span class="type">${esc(d.type)}</span>`;
+
+// A · Details card
+document.getElementById("grid-a").innerHTML = D.map((d) => `
+  <article class="a ${d.status}">
+    <div class="a-head">
+      <input type="checkbox" aria-label="Select ${esc(d.label)}">
+      <span class="name">${esc(d.label)}</span>${typeBadge(d)}
+      <span class="st"><span class="dot ${d.status}"></span>${statusLabel[d.status]}</span>
+    </div>
+    <dl>
+      <dt>Shed</dt><dd>${esc(shedName(d))}</dd>
+      <dt>Pumps</dt><dd>${d.pumps.length ? esc(d.pumps.join(" / ")) : '<span class="muted">—</span>'}${d.pumpType ? ` <span class="muted">· ${esc(d.pumpType)}</span>` : ""}</dd>
+      <dt>Board</dt><dd>${esc(d.board)}</dd>
+      <dt>FW</dt><dd><span class="mono">${esc(d.fw ?? "—")}</span> ${fwOld(d) ? `<span class="pill warn">update ${esc(latestFor(d))}</span>` : ""}</dd>
+      <dt>Seen</dt><dd class="num">${ago(d.seen)}</dd>
+      <dt>Probe</dt><dd class="num">${d.probe ? `<span style="color:var(--ok)">✓ ${d.probe} ms</span>` : '<span class="muted">—</span>'}</dd>
+    </dl>
+    <div class="a-foot"><button class="btn">Probe</button><button class="btn">Logs</button><span class="sp"></span><button class="btn primary">Details</button></div>
+  </article>`).join("");
+
+// B · Pump forecourt
+const nozzle = (n, pid) => {
+  if (!n) return `<div class="noz none">No second nozzle</div>`;
+  const st = n.st === "fueling" ? "Fuelling" : n.st === "error" ? "No data" : "Idle";
+  return `<div class="noz ${n.st}">
+    <span class="pid"><span class="dot ${n.st === "fueling" ? "online" : n.st === "error" ? "offline" : ""}"></span>${esc(pid)}</span>
+    <span class="state">${st}</span>
+    <span class="lit">${n.l == null ? "—" : n.l.toFixed(2)}<small>L</small></span>
+    <span class="when">${n.st === "fueling" ? "sale in progress" : n.ago == null ? "DT not answering" : `last sale ${ago(n.ago)}`}</span>
+    ${n.st === "fueling" ? '<span class="flowbar"></span>' : ""}
+  </div>`;
+};
+document.getElementById("grid-b").innerHTML = D.map((d) => {
+  const noz = d.type === "Printer"
+    ? `<div class="noz none" style="grid-column:1/-1">Receipt printer · no nozzles</div>`
+    : d.status === "never" ? `<div class="noz none" style="grid-column:1/-1">Not connected yet</div>`
+    : nozzle(d.noz[0], d.pumps[0]) + nozzle(d.noz[1], d.pumps[1]);
+  return `<article class="b">
+    <div class="b-top"><span class="dot ${d.status}" title="${statusLabel[d.status]}"></span><span class="name">${esc(d.label)}</span>${typeBadge(d)}<span class="shed">${esc(shedName(d))}</span></div>
+    <div class="b-noz">${noz}</div>
+    <div class="b-bot"><span>${esc(d.pumpType || d.board)}</span><span class="mono">${esc(d.fw ?? "—")}</span>${fwOld(d) ? '<span class="pill warn">update</span>' : ""}<span class="sp"></span><span class="num">${ago(d.seen)}</span></div>
+  </article>`;
+}).join("");
+
+// C · Health ring
+const ringColor = (s) => s >= 85 ? "var(--ok)" : s >= 55 ? "var(--warn)" : s > 0 ? "var(--err)" : "var(--idle)";
+function spark(vals) {
+  const w = 300, h = 34, max = Math.max(1, ...vals);
+  const pts = vals.map((v, i) => [i * (w / (vals.length - 1)), h - 3 - (v / max) * (h - 8)]);
+  const line = pts.map((p, i) => `${i ? "L" : "M"}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join("");
+  const last = pts[pts.length - 1];
+  return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true">
+    <line x1="0" y1="${h - 3}" x2="${w}" y2="${h - 3}" stroke="var(--border)" stroke-width="1"/>
+    <path d="${line} L${w},${h - 3} L0,${h - 3} Z" fill="var(--accent-soft)"/>
+    <path d="${line}" fill="none" stroke="var(--accent)" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+    <circle cx="${last[0]}" cy="${last[1]}" r="2.5" fill="var(--accent)"/></svg>`;
+}
+document.getElementById("grid-c").innerHTML = D.map((d) => {
+  const s = score(d), C = 2 * Math.PI * 32, cs = checks(d);
+  return `<article class="c">
+    <div class="ring"><svg viewBox="0 0 76 76" aria-hidden="true">
+      <circle cx="38" cy="38" r="32" fill="none" stroke="var(--border)" stroke-width="7"/>
+      <circle cx="38" cy="38" r="32" fill="none" stroke="${ringColor(s)}" stroke-width="7" stroke-linecap="round"
+        stroke-dasharray="${(C * s / 100).toFixed(1)} ${C.toFixed(1)}"/></svg>
+      <div class="score"><div><b>${d.status === "never" ? "—" : s}</b><span>health</span></div></div></div>
+    <div class="c-body">
+      <div class="c-title"><span class="name">${esc(d.label)}</span>${typeBadge(d)}<span class="dot ${d.status}" title="${statusLabel[d.status]}"></span></div>
+      <div class="c-sub">${esc(shedName(d))}${d.pumps.length ? ` · ${esc(d.pumps.join(" / "))}` : ""} · ${esc(d.board)} · <span class="mono">${esc(d.fw ?? "—")}</span></div>
+      <div class="checks">${cs.length ? cs.map((c) => `<span class="pill ${c.k}">${esc(c.t)}</span>`).join("") : '<span class="pill ok">All checks pass</span>'}</div>
+    </div>
+    <div class="spark">${spark(d.msgs)}<div class="lbl"><span>messages · last 24 h</span><span class="num">${d.msgs.reduce((a, b) => a + b, 0)} total · now ${d.msgs[d.msgs.length - 1]}/h</span></div></div>
+  </article>`;
+}).join("");
+
+// D · Status wall (grouped by shed)
+const groups = {};
+D.forEach((d) => (groups[shedName(d)] ??= []).push(d));
+document.getElementById("wall-d").innerHTML = Object.entries(groups)
+  .sort((a, b) => (a[0] === "Unassigned") - (b[0] === "Unassigned") || a[0].localeCompare(b[0]))
+  .map(([shed, list]) => {
+    const on = list.filter((d) => d.status === "online").length;
+    return `<div class="d-shed"><h3>${esc(shed)} <span class="cnt">${on}/${list.length} online</span></h3>
+      <div class="grid-d">${list.map((d) => `
+        <button class="d ${d.status}${attn(d) ? " attn" : ""}" title="${esc(checks(d).map((c) => c.t).join(" · ") || "All checks pass")}">
+          <span class="name">${esc(d.label.replace("FRP-", ""))}</span>
+          <span class="meta">${d.pumps.length ? esc(d.pumps.join("/")) : esc(d.type)} · ${d.status === "never" ? "never" : ago(d.seen).replace(" ago", "")}</span>
+        </button>`).join("")}</div></div>`;
+  }).join("");
+
+// E · Signal strip
+const bars = (rssi) => {
+  const n = rssi == null ? 0 : rssi >= -55 ? 4 : rssi >= -62 ? 3 : rssi >= -70 ? 2 : 1;
+  return `<span class="bars" aria-label="${rssi == null ? "no signal" : rssi + " dBm"}">${[4, 6, 8, 11].map((h, i) => `<i style="height:${h}px" class="${i < n ? "on" : ""}"></i>`).join("")}</span>`;
+};
+document.getElementById("grid-e").innerHTML = D.map((d) => `
+  <article class="e">
+    <div class="e-st ${d.status}"><span class="dot ${d.status}"></span>${d.status === "never" ? "New" : statusLabel[d.status]}</div>
+    <div class="e-main">
+      <div class="e-line1"><span class="name">${esc(d.label)}</span>${typeBadge(d)}${d.issues ? `<span class="pill err">${d.issues} issue${d.issues > 1 ? "s" : ""}</span>` : ""}</div>
+      <div class="e-line2">${esc(shedName(d))}${d.pumps.length ? ` · ${esc(d.pumps.join(" / "))}` : ""}${d.pumpType ? ` · ${esc(d.pumpType)}` : ""}</div>
+      <div class="icons">
+        <span title="Wi-Fi">${bars(d.rssi)} ${d.rssi == null ? "—" : d.rssi + " dBm"}</span>
+        <span title="SD card free" style="${sdLow(d) ? "color:var(--warn)" : ""}">SD ${d.sd == null ? "—" : d.sd + " GB"}</span>
+        ${d.type === "COM" ? `<span title="DisplayTap firmware" style="${dtBad(d) ? "color:var(--err);font-weight:600" : ""}">DT ${esc(d.dt ?? "—")}</span>` : ""}
+        <span title="Probe round trip">${d.probe ? d.probe + " ms" : "— ms"}</span>
+      </div>
+    </div>
+    <div class="e-side">
+      <span class="fw">${esc(d.fw ?? "—")}</span>
+      ${fwOld(d) ? `<span class="pill warn">update ${esc(latestFor(d))}</span>` : d.fw ? '<span class="pill ok">current</span>' : '<span class="pill idle">no FW</span>'}
+      <span class="muted num" style="font-size:12px">${ago(d.seen)}</span>
+    </div>
+  </article>`).join("");
+</script>
+</body>
+</html>

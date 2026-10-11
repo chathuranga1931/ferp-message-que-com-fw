@@ -22,6 +22,21 @@ def protected() -> APIRouter:
     return APIRouter(prefix="/api", dependencies=[Depends(current_user)])
 
 
+def need(permission: str):
+    """Route dependency: the logged-in user must have `permission` (admins have all)."""
+    def check(request: Request, user: str = Depends(current_user)) -> str:
+        if not container(request).auth.allows(user, permission):
+            raise HTTPException(403, f"Your account does not have the '{permission}' permission — ask an admin")
+        return user
+    return Depends(check)
+
+
+def admin_user(request: Request, user: str = Depends(current_user)) -> str:
+    if not container(request).auth.is_admin(user):
+        raise HTTPException(403, "Only an admin can do this")
+    return user
+
+
 def get_device(c: Container, device_id: str) -> Device:
     dev = c.devices.get(device_id)
     if dev is None:

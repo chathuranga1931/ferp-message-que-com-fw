@@ -32,7 +32,7 @@ export interface DeviceIn {
   shed: string; pump_id_1: string; pump_id_2: string; sd_card_size: string; board_version: string; pump_type: string;
   device_type: string;
 }
-/** Lifecycle fields (Device page). Kept apart from DeviceIn so the registry form's
+/** Lifecycle fields (device pop-up, Lifecycle tab). Kept apart from DeviceIn so the registry form's
  *  string fields stay simple; the server always returns them. */
 export interface DeviceLifecycle {
   manufactured: string;      // YYYY-MM-DD
@@ -53,8 +53,12 @@ export interface Shed extends ShedIn { id: string }
 
 export interface Harness { id: string; type: string; description: string; retired: boolean; stock: number | null; in_use?: number }
 
-export type LogKind = "manufactured" | "delivered" | "repair" | "modification" | "issue" | "config" | "note";
-export interface DeviceLogIn { date: string; kind: LogKind; title: string; details: string; status: "" | "open" | "resolved"; snapshot_id: string }
+export type LogKind = "manufactured" | "delivered" | "repair" | "modification" | "issue" | "config" | "note" | "ota";
+export interface DeviceLogIn {
+  date: string; kind: LogKind; title: string; details: string; status: "" | "open" | "resolved"; snapshot_id: string;
+  ota_result?: "" | "succeeded" | "failed" | "aborted";   // kind "ota" (written by the server)
+  source?: string;                                          // automatic entries ("audit:<id>")
+}
 export interface DeviceLogEntry extends DeviceLogIn { id: string; device_id: string; created: number; user: string }
 
 export interface FieldOption { label: string | number; value: string | number; bar_label?: string; field?: string }
@@ -116,6 +120,8 @@ export interface FleetRow {
   first_seen: number | null; last_seen: number | null; last_msg: string | null; last_kind: string | null;
   msg_count: number; info: Record<string, string>;
   probe: { ts: number; ok: boolean; rtt_ms?: number; error?: string } | null;
+  /** per nozzle index ("0", "1"): last MsgNozzleState / MsgFuelPumped seen from the device */
+  nozzles?: Record<string, { state?: number | string; state_ts?: number; last_l?: number; last_total?: number; last_ts?: number }>;
   shed?: string; pump_id_1?: string; pump_id_2?: string; pump_type?: string; board_version?: string; sd_card_size?: string;
   device_type?: string;
 }

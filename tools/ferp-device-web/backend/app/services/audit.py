@@ -36,16 +36,18 @@ class Audit:
         self._history, self._bus, self._retention = history, bus, retention
         threading.Thread(target=self._pruner, daemon=True, name="history-pruner").start()
 
-    def record(self, user: str, action: str, device: Optional[Device] = None, **detail) -> None:
+    def record(self, user: str, action: str, device: Optional[Device] = None, **detail) -> Optional[int]:
+        """Store an audit entry; returns its row id (None if the write failed)."""
         entry = {"ts": time.time(), "user": user, "action": action,
                  "device_id": device.id if device else None,
                  "device_label": device.label if device else None, "detail": detail}
         try:
-            self._history.append_audit(entry)
+            row_id = self._history.append_audit(entry)
         except Exception:
             log.exception("audit write failed: %s", entry)
-            return
+            return None
         self._bus.publish({"type": "audit", "entry": entry})
+        return row_id
 
     def query(self, **filters) -> list[dict]:
         return self._history.query_audit(**filters)

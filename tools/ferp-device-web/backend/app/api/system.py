@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, Request
 from ..container import Container
 from ..models import PASSWORD_MASK, AppConfig
 from ..version import API_VERSION
-from .deps import container, current_user, protected
+from .deps import container, current_user, need, protected
 
 public = APIRouter(prefix="/api")
 router = protected()
@@ -19,7 +19,7 @@ def health(request: Request):
     return {"ok": True, "api_version": API_VERSION, "started": container(request).started}
 
 
-@router.post("/system/restart")
+@router.post("/system/restart", dependencies=[need("settings")])
 def restart(c: Container = Depends(container), user: str = Depends(current_user)):
     """Exit the process; the Windows service (WinSW onfailure=restart) starts it again with the
     code currently on disk. Use after pulling new code. Takes ~10 s."""
@@ -35,17 +35,12 @@ def restart(c: Container = Depends(container), user: str = Depends(current_user)
     return {"ok": True}
 
 
-@router.get("/me")
-def me(request: Request, user: str = Depends(current_user)):
-    return {"user": user, "auth_mode": container(request).auth.mode}
-
-
 @router.get("/config")
 def get_config(c: Container = Depends(container)):
     return c.config.masked()
 
 
-@router.put("/config")
+@router.put("/config", dependencies=[need("settings")])
 def put_config(cfg: AppConfig, c: Container = Depends(container), user: str = Depends(current_user)):
     old = c.config
     if cfg.mqtt.password == PASSWORD_MASK:
@@ -70,14 +65,14 @@ def mqtt_status(c: Container = Depends(container)):
     return c.hub.status()
 
 
-@router.post("/mqtt/connect")
+@router.post("/mqtt/connect", dependencies=[need("settings")])
 def mqtt_connect(c: Container = Depends(container), user: str = Depends(current_user)):
     c.hub.connect()
     c.audit.record(user, "mqtt.connect", host=c.config.mqtt.host, port=c.config.mqtt.port)
     return c.hub.status()
 
 
-@router.post("/mqtt/disconnect")
+@router.post("/mqtt/disconnect", dependencies=[need("settings")])
 def mqtt_disconnect(c: Container = Depends(container), user: str = Depends(current_user)):
     c.hub.disconnect()
     c.audit.record(user, "mqtt.disconnect")
@@ -89,7 +84,7 @@ def catalog(c: Container = Depends(container)):
     return c.catalog.to_json()
 
 
-@router.post("/catalog/reload")
+@router.post("/catalog/reload", dependencies=[need("settings")])
 def catalog_reload(c: Container = Depends(container)):
     c.catalog.reload()
     return c.catalog.to_json()
@@ -100,7 +95,7 @@ def console_tail(limit: int = 500, c: Container = Depends(container)):
     return c.console.tail(limit)
 
 
-@router.delete("/console")
+@router.delete("/console", dependencies=[need("history")])
 def console_clear(c: Container = Depends(container)):
     c.console.clear()
     return {"ok": True}

@@ -9,7 +9,7 @@ from fastapi import Depends, Query
 from fastapi.responses import Response
 
 from ..container import Container
-from .deps import container, protected
+from .deps import container, need, protected
 
 router = protected()
 
@@ -19,14 +19,14 @@ def _console_filters(device, level, q, since, until, before_id, limit) -> dict:
             "q": q or None, "since": since, "until": until, "before_id": before_id, "limit": limit}
 
 
-@router.get("/history/console")
+@router.get("/history/console", dependencies=[need("history")])
 def console_history(device: str | None = None, level: str | None = None, q: str | None = None,
                     since: float | None = None, until: float | None = None, before_id: int | None = None,
                     limit: int = Query(500, ge=1, le=5000), c: Container = Depends(container)):
     return c.history.query_console(**_console_filters(device, level, q, since, until, before_id, limit))
 
 
-@router.get("/history/console/export")
+@router.get("/history/console/export", dependencies=[need("history")])
 def console_export(device: str | None = None, level: str | None = None, q: str | None = None,
                    since: float | None = None, until: float | None = None,
                    limit: int = Query(50000, ge=1, le=200000), c: Container = Depends(container)):
@@ -36,7 +36,7 @@ def console_export(device: str | None = None, level: str | None = None, q: str |
     return _download("\n".join(lines) + "\n", "console", "txt", "text/plain")
 
 
-@router.get("/history/audit")
+@router.get("/history/audit", dependencies=[need("history")])
 def audit_history(device: str | None = None, action: str | None = None, q: str | None = None,
                   since: float | None = None, until: float | None = None, before_id: int | None = None,
                   limit: int = Query(500, ge=1, le=5000), c: Container = Depends(container)):
@@ -44,7 +44,7 @@ def audit_history(device: str | None = None, action: str | None = None, q: str |
                          until=until, before_id=before_id, limit=limit)
 
 
-@router.get("/history/audit/export")
+@router.get("/history/audit/export", dependencies=[need("history")])
 def audit_export(device: str | None = None, action: str | None = None, q: str | None = None,
                  since: float | None = None, until: float | None = None,
                  limit: int = Query(50000, ge=1, le=200000), c: Container = Depends(container)):

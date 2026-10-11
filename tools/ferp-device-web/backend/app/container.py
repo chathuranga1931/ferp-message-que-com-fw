@@ -1,11 +1,12 @@
 """Composition root — picks adapters from ServerSettings and wires the services."""
 
+import logging
 import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from .adapters.auth import NoAuth, TailscaleHeaderAuth
+from .adapters.auth import NoAuth, SessionAuth, TailscaleHeaderAuth
 from .models import AppConfig
 from .ports import (AuthProvider, BlobStore, ConfigStore, DeviceRepository, DocumentStore, EventBus,
                     HistoryStore)
@@ -21,6 +22,7 @@ from .services.fleet import Fleet
 from .services.mqtt_hub import MqttHub
 from .services.ota import BatchOta, FirmwareLibrary, OtaManager
 from .services.snapshots import Snapshots
+from .services.users import Users
 
 
 @dataclass
@@ -40,6 +42,7 @@ class Container:
         st = self._storage(settings)
         self.config_store, self.devices, self.blobs = st.config, st.devices, st.blobs
         self.docs, self.history, self.bus = st.docs, st.history, st.bus
+        self.users = Users(self.docs)
         self.auth: AuthProvider = self._auth(settings)
 
         self._cfg_lock = threading.Lock()
@@ -61,6 +64,14 @@ class Container:
         self.ota       = OtaManager(self.firmware, self.console, self.bus, cfg, self.audit)
         self.batch_ota = BatchOta(self.ota, self.firmware, self.console, self.bus, self.audit, ping=self._ping_device)
         self.logs      = CloudLogs(cfg, settings.data_dir, self.bus, self.console)
+        # every OTA result also goes into the device's history; earlier ones are copied from the audit log
+        self.ota.on_result = self.assets.record_ota
+        try:
+            n = self.assets.backfill_ota()
+            if n:
+                logging.getLogger("ferp").info("device history: %d earlier OTA result(s) added from the audit log", n)
+        except Exception:
+            logging.getLogger("ferp").exception("OTA history backfill failed")
 
     # ── app config ────────────────────────────────────────────────────────────
 
@@ -110,8 +121,9 @@ class Container:
         # e.g. "gcp" → Firestore + GCS + Pub/Sub, "aws" → DynamoDB + S3 + SNS/SQS
         raise NotImplementedError(f"FERP_STORAGE={s.storage!r} has no adapters yet")
 
-    @staticmethod
-    def _auth(s: ServerSettings) -> AuthProvider:
+    def _auth(self, s: ServerSettings) -> AuthProvider:
+        if s.auth_mode in ("auto", "password"):
+            return SessionAuth(self.users)
         if s.auth_mode == "none":
             return NoAuth()
         if s.auth_mode == "tailscale":

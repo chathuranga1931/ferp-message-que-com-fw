@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { api } from "../api";
+import { useAuth } from "../auth";
 import { BundlePicker, compareVersions, dtKind } from "../components/BundlePicker";
 import { DeviceFilters, matchesFilter, NO_FILTER, SelectionNote, type SiteFilter } from "../components/DeviceFilters";
 import { seedFleet, seedOta, useLive } from "../store";
@@ -20,10 +21,11 @@ export default function Ota({ devices, preselect, onPreselectUsed }: Props) {
   // only bundles in the active list are offered for OTA; the archive keeps the rest
   const active = useMemo(() => library.filter((b) => b.active), [library]);
 
+  const { can } = useAuth();
   return (
     <div className="stack">
       <FirmwareLibrary library={library} onChanged={refresh} />
-      <FlashDevices library={active} devices={devices} preselect={preselect} onPreselectUsed={onPreselectUsed} />
+      {can("ota") && <FlashDevices library={active} devices={devices} preselect={preselect} onPreselectUsed={onPreselectUsed} />}
       <OtaActivity devices={devices} />
     </div>
   );
@@ -39,6 +41,8 @@ function FirmwareLibrary({ library, onChanged }: { library: Firmware[]; onChange
   const [confirmDel, setConfirmDel] = useState<string | null>(null);
   const [editNotes, setEditNotes] = useState<{ id: string; text: string } | null>(null);
   const [filter, setFilter] = useState("");
+  const [archiveOpen, setArchiveOpen] = useState(false);
+  const canEdit = useAuth().can("firmware");      // upload / import / archive / delete / download   // archive folded to one line until expanded
   const fileRef = useRef<HTMLInputElement>(null);
 
   const upload = async (files: FileList | File[]) => {
@@ -106,7 +110,7 @@ function FirmwareLibrary({ library, onChanged }: { library: Firmware[]; onChange
                   </button>
                 )}
               </td>
-              <td className="row-actions">{actions(b)}</td>
+              <td className="row-actions">{canEdit && actions(b)}</td>
             </tr>
           ))}
           {list.length === 0 && <tr><td colSpan={8} className="muted center">{empty}</td></tr>}
@@ -124,8 +128,8 @@ function FirmwareLibrary({ library, onChanged }: { library: Firmware[]; onChange
         <div className="row wrap">
           <input className="search small" placeholder="Filter…" value={filter} onChange={(e) => setFilter(e.target.value)} />
           <input ref={fileRef} type="file" accept=".bdl" multiple hidden onChange={(e) => e.target.files && upload(e.target.files)} />
-          <button className="btn small primary" disabled={busy} onClick={() => fileRef.current?.click()}>{busy ? "Uploading…" : "Upload .bdl"}</button>
-          <button className={`btn small ${scanOpen ? "" : "ghost"}`} onClick={() => setScanOpen(!scanOpen)}>Import from folder</button>
+          {canEdit && <button className="btn small primary" disabled={busy} onClick={() => fileRef.current?.click()}>{busy ? "Uploading…" : "Upload .bdl"}</button>}
+          {canEdit && <button className={`btn small ${scanOpen ? "" : "ghost"}`} onClick={() => setScanOpen(!scanOpen)}>Import from folder</button>}
         </div>
       </div>
       <p className="muted small">Only active bundles are offered for OTA. Uploads and imports are added here — drop .bdl files anywhere on this card.
@@ -138,10 +142,13 @@ function FirmwareLibrary({ library, onChanged }: { library: Firmware[]; onChange
           <button className="btn small ghost" onClick={() => setActive(b.id, false)} title="Move to the archive (not offered for OTA)">Archive</button>
         </>
       ))}
-      <div className="card-head archive-head">
-        <h3>Archive <span className="muted">({library.length - nActive})</span></h3>
-      </div>
-      {table(archiveRows, f ? "No archived bundle matches the filter." : "The archive is empty.", (b) => (
+      <button className="archive-head fold-toggle" onClick={() => setArchiveOpen(!archiveOpen)} aria-expanded={archiveOpen}>
+        <span className="fold-arrow">{archiveOpen ? "▾" : "▸"}</span>
+        <b>Archive</b> <span className="muted">({library.length - nActive})</span>
+        {f && <span className="muted small">— {archiveRows.length} match the filter</span>}
+        {!archiveOpen && <span className="muted small">— not offered for OTA, click to show</span>}
+      </button>
+      {archiveOpen && table(archiveRows, f ? "No archived bundle matches the filter." : "The archive is empty.", (b) => (
         <>
           <button className="btn small" onClick={() => setActive(b.id, true)} title="Move back to the active list">Activate</button>
           <a className="btn small" href={api.firmwareDownloadUrl(b.id)} download>Download</a>

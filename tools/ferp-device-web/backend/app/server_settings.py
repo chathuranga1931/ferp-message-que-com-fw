@@ -35,7 +35,7 @@ class ServerSettings:
     port:          int  = field(default_factory=lambda: int(_env("FERP_WEB_PORT", "8700")))
     data_dir:      Path = field(default_factory=lambda: Path(_env("FERP_DATA_DIR", str(BACKEND_DIR / "data"))))
     storage:       str  = field(default_factory=lambda: _env("FERP_STORAGE", "local"))
-    auth_mode:     str  = field(default_factory=lambda: _env("FERP_AUTH_MODE", "none"))
+    auth_mode:     str  = field(default_factory=lambda: _env("FERP_AUTH_MODE", "auto"))
     allowed_users: set  = field(default_factory=lambda: {u.strip() for u in _env("FERP_AUTH_ALLOWED_USERS", "").split(",") if u.strip()})
     frontend_dist: Path = field(default_factory=lambda: Path(_env("FERP_FRONTEND_DIST", str(WEB_DIR / "frontend" / "dist"))))
     log_level:     str  = field(default_factory=lambda: _env("FERP_LOG_LEVEL", "info"))

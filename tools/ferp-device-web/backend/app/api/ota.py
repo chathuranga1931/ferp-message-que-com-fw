@@ -8,7 +8,7 @@ from ferp_core import topics
 
 from ..container import Container
 from ..models import BatchOtaIn, Device, FirmwareImportIn, FirmwarePatchIn, OtaStartIn
-from .deps import container, current_user, get_device, get_devices, guard, protected
+from .deps import container, current_user, get_device, get_devices, guard, need, protected
 
 router = protected()
 
@@ -47,7 +47,7 @@ def list_firmware(c: Container = Depends(container)):
     return c.firmware.list()
 
 
-@router.post("/firmware")
+@router.post("/firmware", dependencies=[need("firmware")])
 async def upload_firmware(file: UploadFile = File(...), notes: str = Form(""), c: Container = Depends(container),
                           user: str = Depends(current_user)):
     """Upload a .bdl bundle (multipart field "file", optional "notes").
@@ -64,13 +64,13 @@ async def upload_firmware(file: UploadFile = File(...), notes: str = Form(""), c
     return meta
 
 
-@router.get("/firmware/scan")
+@router.get("/firmware/scan", dependencies=[need("firmware")])
 def scan_firmware(c: Container = Depends(container)):
     """.bdl files in the bundle folders (Settings → OTA; default: the repo's releases/)."""
     return c.firmware.scan()
 
 
-@router.post("/firmware/import")
+@router.post("/firmware/import", dependencies=[need("firmware")])
 def import_firmware(body: FirmwareImportIn, c: Container = Depends(container), user: str = Depends(current_user)):
     results = c.firmware.import_paths(body.paths, user)
     for r in results:
@@ -80,14 +80,14 @@ def import_firmware(body: FirmwareImportIn, c: Container = Depends(container), u
     return {"results": results}
 
 
-@router.get("/firmware/{firmware_id}/download")
+@router.get("/firmware/{firmware_id}/download", dependencies=[need("firmware")])
 def download_firmware(firmware_id: str, c: Container = Depends(container)):
     meta, data = guard(c.firmware.raw, firmware_id)
     return Response(data, media_type="application/octet-stream",
                     headers={"Content-Disposition": f'attachment; filename="{meta["filename"]}"'})
 
 
-@router.patch("/firmware/{firmware_id}")
+@router.patch("/firmware/{firmware_id}", dependencies=[need("firmware")])
 def patch_firmware(firmware_id: str, body: FirmwarePatchIn, c: Container = Depends(container),
                    user: str = Depends(current_user)):
     meta = guard(c.firmware.patch, firmware_id, body.notes, body.active)
@@ -97,7 +97,7 @@ def patch_firmware(firmware_id: str, body: FirmwarePatchIn, c: Container = Depen
     return meta
 
 
-@router.delete("/firmware/{firmware_id}")
+@router.delete("/firmware/{firmware_id}", dependencies=[need("firmware")])
 def delete_firmware(firmware_id: str, c: Container = Depends(container), user: str = Depends(current_user)):
     meta = c.firmware.meta(firmware_id) or {}
     c.firmware.delete(firmware_id)
@@ -110,7 +110,7 @@ def ota_sessions(c: Container = Depends(container)):
     return c.ota.sessions()
 
 
-@router.post("/devices/{device_id}/ota")
+@router.post("/devices/{device_id}/ota", dependencies=[need("ota")])
 def ota_start(device_id: str, body: OtaStartIn, c: Container = Depends(container), user: str = Depends(current_user)):
     dev = get_device(c, device_id)
     if not body.allow_board_mismatch:
@@ -118,7 +118,7 @@ def ota_start(device_id: str, body: OtaStartIn, c: Container = Depends(container
     return guard(c.ota.start, dev, body.firmware_id, body.chunk_size, user=user)
 
 
-@router.post("/devices/{device_id}/ota/abort")
+@router.post("/devices/{device_id}/ota/abort", dependencies=[need("ota")])
 def ota_abort(device_id: str, c: Container = Depends(container), user: str = Depends(current_user)):
     return {"ok": c.ota.abort(device_id, user, c.devices.get(device_id))}
 
@@ -128,7 +128,7 @@ def list_batches(c: Container = Depends(container)):
     return c.batch_ota.list()
 
 
-@router.post("/ota/batches")
+@router.post("/ota/batches", dependencies=[need("ota")])
 def start_batch(body: BatchOtaIn, c: Container = Depends(container), user: str = Depends(current_user)):
     devices = get_devices(c, body.device_ids)
     steps = guard(body.steps)
@@ -146,6 +146,6 @@ def start_batch(body: BatchOtaIn, c: Container = Depends(container), user: str =
                  body.step_delay_s, body.wait_online, body.online_timeout_s)
 
 
-@router.post("/ota/batches/{batch_id}/cancel")
+@router.post("/ota/batches/{batch_id}/cancel", dependencies=[need("ota")])
 def cancel_batch(batch_id: str, c: Container = Depends(container), user: str = Depends(current_user)):
     return {"ok": c.batch_ota.cancel(user, batch_id)}

@@ -4,7 +4,7 @@ from fastapi import Depends, HTTPException
 
 from ..container import Container
 from ..models import DeviceLogIn, HarnessIn, ShedIn
-from .deps import container, current_user, get_device, guard, protected
+from .deps import container, current_user, get_device, guard, need, protected
 
 router = protected()
 
@@ -16,17 +16,17 @@ def list_sheds(c: Container = Depends(container)):
     return c.assets.sheds()
 
 
-@router.post("/sheds")
+@router.post("/sheds", dependencies=[need("devices")])
 def add_shed(body: ShedIn, c: Container = Depends(container), user: str = Depends(current_user)):
     return guard(c.assets.save_shed, user, body)
 
 
-@router.put("/sheds/{sid}")
+@router.put("/sheds/{sid}", dependencies=[need("devices")])
 def update_shed(sid: str, body: ShedIn, c: Container = Depends(container), user: str = Depends(current_user)):
     return guard(c.assets.save_shed, user, body, sid)
 
 
-@router.delete("/sheds/{sid}")
+@router.delete("/sheds/{sid}", dependencies=[need("devices")])
 def delete_shed(sid: str, c: Container = Depends(container), user: str = Depends(current_user)):
     if not c.assets.delete_shed(user, sid):
         raise HTTPException(404, "Unknown shed")
@@ -40,14 +40,14 @@ def list_harnesses(c: Container = Depends(container)):
     return c.assets.harnesses()
 
 
-@router.put("/harnesses/{hid}")
+@router.put("/harnesses/{hid}", dependencies=[need("devices")])
 def save_harness(hid: str, body: HarnessIn, c: Container = Depends(container), user: str = Depends(current_user)):
     if body.id != hid:
         raise HTTPException(400, "Harness id in the body does not match the URL")
     return c.assets.save_harness(user, body)
 
 
-@router.delete("/harnesses/{hid}")
+@router.delete("/harnesses/{hid}", dependencies=[need("devices")])
 def delete_harness(hid: str, c: Container = Depends(container), user: str = Depends(current_user)):
     if not guard(c.assets.delete_harness, user, hid):
         raise HTTPException(404, "Unknown harness")
@@ -62,19 +62,19 @@ def device_log(device_id: str, c: Container = Depends(container)):
     return c.assets.log(device_id)
 
 
-@router.post("/devices/{device_id}/log")
+@router.post("/devices/{device_id}/log", dependencies=[need("devices")])
 def add_device_log(device_id: str, body: DeviceLogIn, c: Container = Depends(container),
                    user: str = Depends(current_user)):
     return c.assets.add_log(user, get_device(c, device_id), body)
 
 
-@router.put("/device-log/{eid}")
+@router.put("/device-log/{eid}", dependencies=[need("devices")])
 def update_device_log(eid: str, body: DeviceLogIn, c: Container = Depends(container),
                       user: str = Depends(current_user)):
     return guard(c.assets.update_log, user, eid, body)
 
 
-@router.delete("/device-log/{eid}")
+@router.delete("/device-log/{eid}", dependencies=[need("devices")])
 def delete_device_log(eid: str, c: Container = Depends(container), user: str = Depends(current_user)):
     if not c.assets.delete_log(user, eid):
         raise HTTPException(404, "Unknown log entry")

@@ -5,7 +5,7 @@ from fastapi import Depends, HTTPException
 from ..container import Container
 from ..models import ProbeIn
 from ..services.mqtt_hub import NotConnectedError
-from .deps import container, get_devices, protected
+from .deps import container, get_devices, need, protected
 
 router = protected()
 
@@ -22,6 +22,6 @@ def probe(body: ProbeIn, c: Container = Depends(container)):
     return {"probing": c.fleet.probe(get_devices(c, body.device_ids))}
 
 
-@router.delete("/fleet/{topic_id}")
+@router.delete("/fleet/{topic_id}", dependencies=[need("devices")])
 def forget(topic_id: str, c: Container = Depends(container)):
     return {"ok": c.fleet.forget(topic_id)}

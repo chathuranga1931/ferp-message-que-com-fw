@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../api";
+import { useAuth } from "../auth";
 import { HarnessTags } from "../components/HarnessTags";
-import { useLive } from "../store";
 import type { Device, DeviceLogEntry, DeviceLogIn, Harness, LogKind, Shed, Snapshot } from "../types";
-import { fmtAgo, fmtDateTime, topicId, useNow } from "../util";
+import { fmtDateTime } from "../util";
 
 const KINDS: { value: LogKind; label: string }[] = [
   { value: "issue", label: "Issue reported" },
@@ -13,8 +13,11 @@ const KINDS: { value: LogKind; label: string }[] = [
   { value: "manufactured", label: "Manufactured" },
   { value: "delivered", label: "Delivered" },
   { value: "note", label: "Note" },
+  { value: "ota", label: "OTA" },
 ];
 const KIND_LABEL = Object.fromEntries(KINDS.map((k) => [k.value, k.label])) as Record<LogKind, string>;
+/** kinds that can be added by hand (OTA entries are written by the server when an OTA ends) */
+const MANUAL_KINDS = KINDS.filter((k) => k.value !== "ota");
 
 const today = () => new Date().toISOString().slice(0, 10);
 const BLANK_ENTRY = (): DeviceLogIn => ({ date: today(), kind: "issue", title: "", details: "", status: "", snapshot_id: "" });
@@ -28,17 +31,18 @@ function warrantyEnd(delivered: string, months: number): string {
 }
 
 interface Props {
-  deviceId: string; devices: Device[];
-  onSelect: (id: string) => void; onWorkspace: (id: string) => void; onOta: (ids: string[]) => void;
-  onLogs: (mac: string) => void; onSheds: (name?: string) => void; onChanged: () => void;
+  device: Device;
+  /** which part of the device record to show (tabs of the device pop-up) */
+  section: "lifecycle" | "history";
+  onSheds: (name?: string) => void; onChanged: () => void;
+  /** open-issue count, for the tab label */
+  onOpenIssues?: (n: number) => void;
 }
 
-export default function DevicePage({ deviceId, devices, onSelect, onWorkspace, onOta, onLogs, onSheds, onChanged }: Props) {
-  const device = devices.find((d) => d.id === deviceId) ?? null;
-  const fleet = useLive((s) => s.fleet);
-  const timeout = useLive((s) => s.fleetTimeout);
-  const skew = useLive((s) => s.clockSkew);
-  const now = useNow(5000) + skew;
+/** Lifecycle (dates, warranty, cables, shed, config snapshot) and History of one device. */
+export function DeviceRecords({ device, section, onSheds, onChanged, onOpenIssues }: Props) {
+  const deviceId = device.id;
+  const canEdit = useAuth().can("devices");
 
   const [log, setLog] = useState<DeviceLogEntry[]>([]);
   const [sheds, setSheds] = useState<Shed[]>([]);
@@ -65,26 +69,12 @@ export default function DevicePage({ deviceId, devices, onSelect, onWorkspace, o
     if (device) setLife({ manufactured: device.manufactured ?? "", delivered: device.delivered ?? "", warranty_months: device.warranty_months ?? 12 });
   }, [device]);
 
-  const row = useMemo(() => Object.values(fleet).find((r) => r.device_id === deviceId), [fleet, deviceId]);
   const shed = useMemo(() => sheds.find((s) => s.name.trim().toLowerCase() === (device?.shed ?? "").trim().toLowerCase()), [sheds, device]);
   const snap = snapshots.find((s) => s.id === device?.config_snapshot);
   const lastConfig = log.find((e) => e.kind === "config" && e.snapshot_id && e.snapshot_id === device?.config_snapshot);
   const openIssues = log.filter((e) => e.kind === "issue" && e.status === "open").length;
+  useEffect(() => { onOpenIssues?.(openIssues); }, [openIssues, onOpenIssues]);
 
-  if (!device) {
-    return (
-      <section className="card">
-        <label className="field inline"><span>Device</span>
-          <select value="" onChange={(e) => onSelect(e.target.value)}>
-            <option value="">— select a device —</option>
-            {devices.map((d) => <option key={d.id} value={d.id}>{d.label}</option>)}
-          </select></label>
-      </section>
-    );
-  }
-
-  const status = !row?.last_seen ? "never" : now - row.last_seen <= timeout ? "online" : "offline";
-  const mac = topicId(device.mac);
   const wEnd = warrantyEnd(life.delivered, life.warranty_months);
   const wDays = wEnd ? Math.ceil((new Date(`${wEnd}T00:00:00`).getTime() - Date.now()) / 86400000) : null;
   const lifeChanged = life.manufactured !== (device.manufactured ?? "") || life.delivered !== (device.delivered ?? "")
@@ -125,48 +115,13 @@ export default function DevicePage({ deviceId, devices, onSelect, onWorkspace, o
   const shown = log.filter((e) => !kindFilter || e.kind === kindFilter);
 
   return (
-    <div className="stack device-page">
-      <section className="card device-page-head">
-        <div className="row wrap">
-          <select value={deviceId} onChange={(e) => onSelect(e.target.value)} aria-label="Device">
-            {devices.map((d) => <option key={d.id} value={d.id}>{d.label}</option>)}
-          </select>
-          <h2 className="device-title">{device.label}</h2>
-          {device.device_type && <span className={`type-badge t-${device.device_type.toLowerCase()}`}>{device.device_type}</span>}
-          <span><span className={`dot ${status === "online" ? "connected" : status === "offline" ? "disconnected" : ""}`} />{" "}
-            {status === "online" ? "Online" : status === "offline" ? "Offline" : "Never seen"}
-            {row?.last_seen ? <span className="muted small"> · {fmtAgo(row.last_seen, now)}</span> : null}</span>
-          {row?.info.fw_version && <span className="muted">FW <code>{row.info.fw_version}</code></span>}
-          {openIssues > 0 && <span className="pill err">{openIssues} open issue{openIssues > 1 ? "s" : ""}</span>}
-          <span className="spacer" />
-          <button className="btn small" onClick={() => onWorkspace(device.id)}>Workspace</button>
-          <button className="btn small" onClick={() => onOta([device.id])}>OTA…</button>
-          {mac && <button className="btn small ghost" onClick={() => onLogs(mac)}>Logs</button>}
-        </div>
-        {msg && <div className={msg.ok ? "ok-text" : "inline-error"}>{msg.text}</div>}
-      </section>
-
-      <div className="device-grid">
-        <section className="card">
-          <div className="card-head"><h3>Device</h3></div>
-          <dl className="kv">
-            <dt>MAC</dt><dd><code>{device.mac || "—"}</code></dd>
-            {device.uuid && <><dt>UUID</dt><dd><code>{device.uuid}</code></dd></>}
-            <dt>Shed</dt><dd>{device.shed || "—"}</dd>
-            <dt>Pumps</dt><dd>{[device.pump_id_1, device.pump_id_2].filter(Boolean).join(" / ") || "—"}</dd>
-            {device.device_type !== "Printer" && <><dt>Pump type</dt><dd>{device.pump_type || "—"}</dd></>}
-            <dt>Board</dt><dd>{device.board_version || row?.info.hw_version || "—"}</dd>
-            <dt>SD card</dt><dd>{device.sd_card_size || "—"}</dd>
-            <dt>Group</dt><dd>{device.group || "default"}</dd>
-            {device.notes && <><dt>Notes</dt><dd className="pre">{device.notes}</dd></>}
-          </dl>
-          <div className="muted small">Edit these on the Devices page.</div>
-        </section>
-
+    <div className="stack">
+      {msg && <div className={msg.ok ? "ok-text" : "inline-error"}>{msg.text}</div>}
+      {section === "lifecycle" && <div className="device-grid">
         <section className="card">
           <div className="card-head">
             <h3>Lifecycle</h3>
-            <button className="btn small primary" disabled={!lifeChanged}
+            <button className="btn small primary" disabled={!lifeChanged || !canEdit}
                     onClick={() => saveDevice(life, "Lifecycle saved")}>Save</button>
           </div>
           <div className="form-grid">
@@ -237,9 +192,9 @@ export default function DevicePage({ deviceId, devices, onSelect, onWorkspace, o
             </select>
           </label>
         </section>
-      </div>
+      </div>}
 
-      <section className="card">
+      {section === "history" && <section className="card">
         <div className="card-head">
           <h3>History</h3>
           <select value={kindFilter} onChange={(e) => setKindFilter(e.target.value as typeof kindFilter)}>
@@ -248,12 +203,12 @@ export default function DevicePage({ deviceId, devices, onSelect, onWorkspace, o
           </select>
         </div>
 
-        <div className="edit-box log-form">
+        {canEdit && <div className="edit-box log-form">
           <div className="form-grid">
             <label className="field"><span>Date</span><input type="date" value={entry.date} onChange={(e) => setEntry({ ...entry, date: e.target.value })} /></label>
             <label className="field"><span>Kind</span>
               <select value={entry.kind} onChange={(e) => setEntry({ ...entry, kind: e.target.value as LogKind })}>
-                {KINDS.map((k) => <option key={k.value} value={k.value}>{k.label}</option>)}
+                {MANUAL_KINDS.map((k) => <option key={k.value} value={k.value}>{k.label}</option>)}
               </select></label>
             {entry.kind === "issue" && (
               <label className="field"><span>Status</span>
@@ -271,34 +226,35 @@ export default function DevicePage({ deviceId, devices, onSelect, onWorkspace, o
             <button className="btn small primary" onClick={saveEntry}>{editingId ? "Save entry" : "Add entry"}</button>
             {editingId && <button className="btn small ghost" onClick={() => { setEditingId(null); setEntry(BLANK_ENTRY()); }}>Cancel</button>}
           </div>
-        </div>
+        </div>}
 
         <div className="timeline">
           {shown.map((e) => (
-            <div key={e.id} className={`tl-item k-${e.kind}${e.kind === "issue" ? ` s-${e.status || "open"}` : ""}`}>
+            <div key={e.id} className={`tl-item k-${e.kind}${e.kind === "issue" ? ` s-${e.status || "open"}` : ""}${e.kind === "ota" ? ` r-${e.ota_result || "failed"}` : ""}`}>
               <div className="tl-date">{e.date}</div>
               <div className="tl-body">
                 <div className="tl-head">
                   <span className={`kind-badge k-${e.kind}`}>{KIND_LABEL[e.kind] ?? e.kind}</span>
                   <b>{e.title}</b>
                   {e.kind === "issue" && <span className={`pill ${e.status === "resolved" ? "ok" : "err"}`}>{e.status || "open"}</span>}
+                  {e.kind === "ota" && e.ota_result && <span className={`pill ${e.ota_result === "succeeded" ? "ok" : "err"}`}>{e.ota_result}</span>}
                 </div>
                 {e.details && <div className="pre small">{e.details}</div>}
                 <div className="muted small">{e.user || "—"} · {fmtDateTime(e.created)}</div>
               </div>
-              <div className="tl-actions">
+              {canEdit && <div className="tl-actions">
                 {e.kind === "issue" && (e.status === "resolved"
                   ? <button className="btn small ghost" onClick={() => setIssueStatus(e, "open")}>Reopen</button>
                   : <button className="btn small" onClick={() => setIssueStatus(e, "resolved")}>Resolve</button>)}
                 <button className="btn small ghost" onClick={() => { setEditingId(e.id); setEntry({ date: e.date, kind: e.kind, title: e.title, details: e.details, status: e.status, snapshot_id: e.snapshot_id }); }}>Edit</button>
                 <button className={`btn small ${confirmDel === e.id ? "danger" : "ghost"}`} onClick={() => remove(e.id)}>
                   {confirmDel === e.id ? "Confirm delete" : "Delete"}</button>
-              </div>
+              </div>}
             </div>
           ))}
           {shown.length === 0 && <div className="muted small">No history yet.</div>}
         </div>
-      </section>
+      </section>}
     </div>
   );
 }

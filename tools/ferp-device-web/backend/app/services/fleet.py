@@ -71,6 +71,14 @@ class Fleet:
                 field = next((f for k, _, f in self._catalog.devinfo_keys if k == data.get("key")), None)
                 if field:
                     e["info"][field] = str(data.get("value", ""))
+            elif payload.get("msg") in ("MsgNozzleState", "MsgFuelPumped") and "nozzle_idx" in data:
+                # Fleet "Pump forecourt" view: last state and last sale of each nozzle
+                noz = e.setdefault("nozzles", {}).setdefault(str(data["nozzle_idx"]), {})
+                if payload["msg"] == "MsgNozzleState":
+                    noz.update(state=data.get("state"), state_ts=now)
+                else:
+                    noz.update(last_l=(data.get("vol_lx1000") or 0) / 1000,
+                               last_total=(data.get("total_pricex100") or 0) / 100, last_ts=now)
             self._touch(topic_id)
 
     # ── views ─────────────────────────────────────────────────────────────────
@@ -98,7 +106,8 @@ class Fleet:
                 "group": (d.group if d else None) or p.get("group") or "default",
                 "first_seen": p.get("first_seen"), "last_seen": p.get("last_seen"),
                 "last_msg": p.get("last_msg"), "last_kind": p.get("last_kind"),
-                "msg_count": p.get("msg_count", 0), "info": p.get("info", {}), "probe": p.get("probe")}
+                "msg_count": p.get("msg_count", 0), "info": p.get("info", {}), "probe": p.get("probe"),
+                "nozzles": p.get("nozzles", {})}
 
     def info(self, topic_id: str) -> dict:
         """Device-info fields last seen from the device (e.g. hw_version), {} if none."""

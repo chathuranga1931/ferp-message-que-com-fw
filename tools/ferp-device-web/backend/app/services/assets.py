@@ -11,7 +11,7 @@ All three are JSON documents (DocumentStore → backend/data/docs/*.json):
 
 import time
 import uuid
-from datetime import date
+from datetime import date, datetime
 from typing import Optional
 
 from ..models import Device, DeviceIn, DeviceLogEntry, DeviceLogIn, HarnessIn, Shed, ShedIn
@@ -149,6 +149,9 @@ class Assets:
         entry = {**old, **body.model_dump()}
         if not entry["date"]:
             entry["date"] = old["date"]
+        for k in ("ota_result", "source"):           # set by the server, kept when an edit leaves them empty
+            if not entry.get(k):
+                entry[k] = old.get(k, "")
         self._docs.put(LOG, eid, entry)
         dev = self._devices.get(entry["device_id"])
         if dev:
@@ -174,6 +177,38 @@ class Assets:
             changes["config_snapshot"] = entry["snapshot_id"]
         if changes:
             self._devices.update(dev.id, DeviceIn(**{**dev.model_dump(exclude={"id"}), **changes}))
+
+    # ── OTA results ─────────────────────────────────────────────────────────
+
+    def record_ota(self, user: str, dev: Device, target: str, version: str, state: str, ts: float,
+                   source: str = "") -> Optional[dict]:
+        """One OTA result as a device-history entry (kind "ota").  `source` ("audit:<id>") makes it
+        idempotent: an entry with the same source is not written twice."""
+        if source and any(e.get("source") == source for e in self._docs.list(LOG)):
+            return None
+        result = state if state in ("succeeded", "failed", "aborted") else "failed"
+        entry = DeviceLogEntry(
+            id=uuid.uuid4().hex[:10], device_id=dev.id, created=ts, user=user,
+            date=datetime.fromtimestamp(ts).date().isoformat(), kind="ota",
+            title=f"OTA {target} v{version}", details=f"Result: {result}", ota_result=result,
+            source=source).model_dump()
+        self._docs.put(LOG, entry["id"], entry)
+        return entry
+
+    def backfill_ota(self) -> int:
+        """Copy OTA results from the audit log into the device histories (missing ones only)."""
+        have = {e.get("source") for e in self._docs.list(LOG) if e.get("source")}
+        added = 0
+        for a in self._audit.query(action="ota.result", limit=1_000_000):
+            src = f"audit:{a['id']}"
+            dev = self._devices.get(a.get("device_id") or "")
+            if src in have or dev is None:
+                continue
+            d = a.get("detail") or {}
+            if self.record_ota(a.get("user") or "", dev, d.get("target", "?"), d.get("version", "?"),
+                               d.get("state", ""), a["ts"], src):
+                added += 1
+        return added
 
     def record_snapshot_applied(self, user: str, devices: list[Device], snap: dict, results: list[dict]) -> None:
         """Called after a snapshot was applied: log it and mark it as the device's loaded config."""

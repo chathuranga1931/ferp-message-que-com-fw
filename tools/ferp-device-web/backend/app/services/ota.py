@@ -201,6 +201,8 @@ class OtaManager:
         self._handles: dict[str, OtaSession] = {}
         self._done: dict[str, threading.Event] = {}
         self._lock = threading.Lock()
+        # called with (user, device, target, version, state, finished_ts, source) when an OTA ends
+        self.on_result: Optional[Callable[..., object]] = None
 
     def sessions(self) -> list[dict]:
         with self._lock:
@@ -265,9 +267,16 @@ class OtaManager:
                 self._handles.pop(dev.id, None)
             self._console.log("ota" if ok else "error",
                               f"OTA {info['state']} — {meta['name']} v{meta['version']}", device=tid)
+            aid = None
             if self._audit:
-                self._audit.record(user, "ota.result", dev, state=info["state"], target=meta["name"],
-                                   version=meta["version"])
+                aid = self._audit.record(user, "ota.result", dev, state=info["state"], target=meta["name"],
+                                         version=meta["version"])
+            if self.on_result:
+                try:
+                    self.on_result(user, dev, meta["name"], meta["version"], info["state"], info["finished"],
+                                   f"audit:{aid}" if aid else "")
+                except Exception:
+                    log.exception("recording the OTA result in the device history failed")
             self._publish_state(dev.id)
             done.set()
 

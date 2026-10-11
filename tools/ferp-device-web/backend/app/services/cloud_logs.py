@@ -181,6 +181,27 @@ class CloudLogs:
                             "mtime": i["mtime"], "date": day, "pump": None, "time": None})
         return sorted(out, key=lambda f: (f["date"], f["name"]), reverse=True)
 
+    def mac_window(self, mac: str, until: str, days: int = 10, fresh: bool = False) -> list[dict]:
+        """One device's files for `days` days ending at `until` (newest first), read from those day
+        folders directly — not limited to the `mac_scan_days` index.  Days without logs are skipped."""
+        mac = mac.lower()
+        if not MAC_DIR_RE.match(mac):
+            raise ValueError(f"Bad MAC {mac!r}")
+        _check_date(until)
+        end = dt.date.fromisoformat(until)
+        out = []
+        for n in range(max(1, min(days, 62))):
+            day = (end - dt.timedelta(days=n)).isoformat()
+            try:
+                items = self._listdir(self._mac_root(f"{day}/{mac}"), fresh)
+            except FileNotFoundError:
+                continue                   # no logs from this device on that day
+            for i in items:
+                if not i["is_dir"]:
+                    out.append({"name": i["name"], "path": f"{MAC_PREFIX}{day}/{mac}/{i['name']}", "size": i["size"],
+                                "mtime": i["mtime"], "date": day, "pump": None, "time": None})
+        return sorted(out, key=lambda f: (f["date"], f["name"]), reverse=True)
+
     def zip_mac(self, mac: str, since: Optional[str], until: Optional[str]) -> tuple[str, Path]:
         for d in (since, until):
             if d:

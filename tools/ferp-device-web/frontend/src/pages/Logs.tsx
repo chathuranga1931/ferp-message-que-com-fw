@@ -9,7 +9,6 @@ const CHUNK = 256 * 1024;          // bytes per read
 const MAX_CHARS = 4_000_000;       // viewer buffer cap (oldest text dropped while following)
 const LS_KEY = "ferp.logs.sel";
 const LS_MODE = "ferp.logs.mode";
-const LS_MAC = "ferp.logs.mac";
 const AUTO_FOLLOW_S = 15 * 60;     // files written to within this window open in LIVE mode
 
 type Mode = "device" | "shed";
@@ -18,6 +17,13 @@ interface Sel { date: string; shed: string; pump: string }
 /** ?log=<date>/<shed>/<file> or ?log=@mac/<date>/<mac>/<file> opens that file (shareable link). */
 const LINKED = new URLSearchParams(location.search).get("log");
 const LINKED_MAC = LINKED?.startsWith("@mac/") ? LINKED.split("/")[2] ?? null : null;
+const LS_OPEN_MAC = "ferp.logs.mac";   // set by the Logs buttons elsewhere (Fleet, device pop-up): open this device
+
+/** The device another page asked to open (read once, then cleared). */
+function takeOpenMac(): string | null {
+  try { const m = localStorage.getItem(LS_OPEN_MAC); localStorage.removeItem(LS_OPEN_MAC); return m || null; }
+  catch { return null; }
+}
 
 function lsGet(key: string, fallback: string): string {
   try { return localStorage.getItem(key) ?? fallback; } catch { return fallback; }
@@ -60,7 +66,7 @@ export default function Logs({ devices, onOpenSettings }: { devices: Device[]; o
       </section>
       {file ? <LogViewer key={file.path} file={file} /> : (
         <section className="card empty">
-          {mode === "device" ? "Find a device on the left, then pick a day." : "Pick a date, shed and file on the left."}
+          {mode === "device" ? "Set the filters and press Search, pick a device, then list its days." : "Pick a date, shed and file on the left."}
         </section>
       )}
     </div>
@@ -77,36 +83,65 @@ function pumpIds(d: Device | null): string[] {
 
 interface DeviceRow { mac: string; last_date: string; days: number; device: Device | null; device_type?: string; shed?: string; pump_type?: string; board_version?: string }
 
+const DAYS_SHOWN = 10;             // "List days" shows this many days, ending at the chosen date
+
+/** Local date as YYYY-MM-DD. */
+function isoDay(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+/** The `n` days ending at `until`, newest first. */
+function dayWindow(until: string, n: number): string[] {
+  const [y, m, d] = until.split("-").map(Number);
+  return Array.from({ length: n }, (_, i) => isoDay(new Date(y, m - 1, d - i)));
+}
+
+interface DeviceQuery { search: string; site: SiteFilter; pump: string; showUnknown: boolean }
+
 function DeviceNav({ devices, file, onFile, onError }:
   { devices: Device[]; file: LogFile | null; onFile: (f: LogFile | null) => void; onError: (e: string | null) => void }) {
-  const [folders, setFolders] = useState<{ mac: string; last_date: string; days: number }[]>([]);
-  const [mac, setMac] = useState<string>(() => LINKED_MAC ?? lsGet(LS_MAC, ""));
-  const [files, setFiles] = useState<LogFile[]>([]);
+  // filters (edited freely) → Search → device list for the filters as they were when Search was pressed
   const [search, setSearch] = useState("");
   const [siteFilter, setSiteFilter] = useState<SiteFilter>(NO_FILTER);
   const [pump, setPump] = useState("");                 // pump ID within the selected shed ("" = all)
   const [showUnknown, setShowUnknown] = useState(true);
-  const [since, setSince] = useState("");
+  const [applied, setApplied] = useState<DeviceQuery | null>(null);
+  const [folders, setFolders] = useState<{ mac: string; last_date: string; days: number }[]>([]);
   const [busy, setBusy] = useState(false);
+  // selected device → date (default today) → List days → the DAYS_SHOWN days ending that date
+  const [openMac] = useState<string | null>(() => LINKED_MAC ?? takeOpenMac());
+  const [mac, setMac] = useState<string>(openMac ?? "");
+  const [until, setUntil] = useState(() => (LINKED_MAC ? LINKED?.split("/")[1] : undefined) ?? isoDay(new Date()));
+  const [listed, setListed] = useState<{ mac: string; until: string } | null>(null);
+  const [files, setFiles] = useState<LogFile[]>([]);
+  const [daysBusy, setDaysBusy] = useState(false);
+  const [since, setSince] = useState("");
 
-  useEffect(() => lsSet(LS_MAC, mac), [mac]);
-
-  const load = useCallback(async (fresh = false) => {
+  const runSearch = useCallback(async (q: DeviceQuery, fresh = false) => {
     onError(null); setBusy(true);
-    try { setFolders(await api.logDevices(fresh)); } catch (e) { onError((e as Error).message); }
+    try { setFolders(await api.logDevices(fresh)); setApplied(q); }
+    catch (e) { onError((e as Error).message); }
     finally { setBusy(false); }
   }, [onError]);
-  useEffect(() => { load(); }, [load]);
 
-  const loadFiles = useCallback((fresh = false) => {
-    if (!mac) { setFiles([]); return; }
-    api.logDeviceFiles(mac, fresh).then((fs) => {
-      setFiles(fs);
+  const listDays = useCallback(async (m: string, day: string, fresh = false) => {
+    onError(null); setDaysBusy(true);
+    try {
+      const fs = await api.logDeviceFiles(m, fresh, day, DAYS_SHOWN);
+      setFiles(fs); setListed({ mac: m, until: day });
       const linked = LINKED && fs.find((f) => f.path === LINKED);
       if (linked) onFile(linked);
-    }).catch((e) => { setFiles([]); onError(e.message); });
-  }, [mac, onFile, onError]);
-  useEffect(() => { loadFiles(); }, [loadFiles]);
+    } catch (e) { setFiles([]); onError((e as Error).message); }
+    finally { setDaysBusy(false); }
+  }, [onError, onFile]);
+
+  // a shared link (?log=@mac/<date>/<mac>/<file>) or another page's Logs button opens straight to that device
+  useEffect(() => {
+    if (!openMac) return;
+    setSearch(openMac);
+    runSearch({ search: openMac, site: NO_FILTER, pump: "", showUnknown: true });
+    listDays(openMac, until);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // join server folders with the registry by MAC
   const byMac = useMemo(() => {
@@ -118,31 +153,40 @@ function DeviceNav({ devices, file, onFile, onError }:
     const d = byMac[f.mac] ?? null;
     return { ...f, device: d, device_type: d?.device_type, shed: d?.shed, pump_type: d?.pump_type, board_version: d?.board_version };
   }), [folders, byMac]);
+  // filter choices come from the device list, so they work before the first search
+  const filterRows = useMemo(() => devices.map((d) => ({ device_type: d.device_type, shed: d.shed, pump_type: d.pump_type,
+    board_version: d.board_version })), [devices]);
   // a real shed is selected (not "all" and not "(not set)") → offer its pump IDs
   const shedSelected = siteFilter.shed !== "" && !siteFilter.shed.startsWith("\u0000");
   const shedPumps = useMemo(() => !shedSelected ? [] :
-    [...new Set(rows.filter((r) => r.device && (r.shed ?? "") === siteFilter.shed).flatMap((r) => pumpIds(r.device)))]
+    [...new Set(devices.filter((d) => (d.shed ?? "") === siteFilter.shed).flatMap((d) => pumpIds(d)))]
       .sort((a, b) => a.localeCompare(b, undefined, { numeric: true })),
-  [rows, siteFilter.shed, shedSelected]);
+  [devices, siteFilter.shed, shedSelected]);
   useEffect(() => { setPump(""); }, [siteFilter.shed]);
 
-  const q = search.trim().toLowerCase().replace(/[:-]/g, "");
-  const shown = rows
-    .filter((r) => showUnknown || r.device)
-    .filter((r) => matchesFilter(r, siteFilter))
-    .filter((r) => !pump || pumpIds(r.device).includes(pump))
-    .filter((r) => !q || [r.mac, r.device?.label, r.device?.shed, r.device?.pump_id_1, r.device?.pump_id_2, r.device?.notes]
-      .some((x) => (x ?? "").toLowerCase().replace(/[:-]/g, "").includes(q)))
-    .sort((a, b) => Number(!a.device) - Number(!b.device) || (a.device?.label ?? a.mac).localeCompare(b.device?.label ?? b.mac));
+  const shown = useMemo(() => {
+    if (!applied) return [];
+    const q = applied.search.trim().toLowerCase().replace(/[:-]/g, "");
+    return rows
+      .filter((r) => applied.showUnknown || r.device)
+      .filter((r) => matchesFilter(r, applied.site))
+      .filter((r) => !applied.pump || pumpIds(r.device).includes(applied.pump))
+      .filter((r) => !q || [r.mac, r.device?.label, r.device?.shed, r.device?.pump_id_1, r.device?.pump_id_2, r.device?.notes]
+        .some((x) => (x ?? "").toLowerCase().replace(/[:-]/g, "").includes(q)))
+      .sort((a, b) => Number(!a.device) - Number(!b.device) || (a.device?.label ?? a.mac).localeCompare(b.device?.label ?? b.mac));
+  }, [rows, applied]);
   const cur = rows.find((r) => r.mac === mac);
+  const query = (): DeviceQuery => ({ search, site: siteFilter, pump, showUnknown });
+  const pickDevice = (m: string) => { setMac(m); setListed(null); setFiles([]); onFile(null); };
+  const days = listed ? dayWindow(listed.until, DAYS_SHOWN) : [];
+  const filesOn = (day: string) => files.filter((f) => f.date === day);
 
   return (
     <>
-      <div className="row wrap">
-        <input className="search small grow" placeholder="Search label, MAC, shed, pump…" value={search} onChange={(e) => setSearch(e.target.value)} />
-        <button className="btn small ghost" disabled={busy} onClick={() => { load(true); loadFiles(true); }} title="Refresh from the server">↻</button>
-      </div>
-      <DeviceFilters rows={rows} value={siteFilter} onChange={setSiteFilter} />
+      <div className="field"><span>1 · Filter</span></div>
+      <input className="search small" placeholder="Label, MAC, shed, pump…" value={search} onChange={(e) => setSearch(e.target.value)}
+             onKeyDown={(e) => { if (e.key === "Enter") runSearch(query()); }} />
+      <DeviceFilters rows={filterRows} value={siteFilter} onChange={setSiteFilter} />
       {shedSelected && (
         <>
           <div className="field"><span>Pump</span></div>
@@ -157,36 +201,63 @@ function DeviceNav({ devices, file, onFile, onError }:
       )}
       <label className="check small"><input type="checkbox" checked={showUnknown} onChange={(e) => setShowUnknown(e.target.checked)} />
         Include folders not in the device list</label>
-      <div className="file-list device-list">
-        {shown.map((r) => (
-          <button key={r.mac} className={`file-item ${mac === r.mac ? "active" : ""}`} onClick={() => { setMac(r.mac); onFile(null); }}
-                  title={r.device?.notes || r.mac}>
-            <span className="dev-cell">
-              <b>{r.device?.label ?? (r.mac === "_invalid" ? "Invalid lines" : "Unknown device")}</b>
-              {r.device?.device_type && <span className={`type-badge t-${r.device.device_type.toLowerCase()}`}>{r.device.device_type}</span>}
-              <span className="muted small"><code>{r.mac}</code>{pumpIds(r.device).length ? ` · ${pumpIds(r.device).join(" / ")}` : ""}{r.device?.shed ? ` · ${r.device.shed}` : ""}</span>
-            </span>
-            <span className="muted small nowrap" title={`${r.days} day(s) with logs in the scanned period`}>{r.last_date}</span>
-          </button>
-        ))}
-        {folders.length > 0 && shown.length === 0 && <span className="muted small">No devices match.</span>}
-        {folders.length === 0 && !busy && <span className="muted small">No device logs in the scanned days (dump_logs.py).</span>}
+      <div className="row wrap">
+        <button className="btn small primary" disabled={busy} onClick={() => runSearch(query())}>{busy ? "Searching…" : "Search"}</button>
+        {applied && <button className="btn small ghost" disabled={busy} onClick={() => runSearch(applied, true)} title="Search again, fresh from the server">↻</button>}
       </div>
+
+      {applied && (
+        <>
+          <div className="field"><span>2 · Device <span className="muted">({shown.length})</span></span></div>
+          <div className="file-list device-list">
+            {shown.map((r) => (
+              <button key={r.mac} className={`file-item ${mac === r.mac ? "active" : ""}`} onClick={() => pickDevice(r.mac)}
+                      title={r.device?.notes || r.mac}>
+                <span className="dev-cell">
+                  <b>{r.device?.label ?? (r.mac === "_invalid" ? "Invalid lines" : "Unknown device")}</b>
+                  {r.device?.device_type && <span className={`type-badge t-${r.device.device_type.toLowerCase()}`}>{r.device.device_type}</span>}
+                  <span className="muted small"><code>{r.mac}</code>{pumpIds(r.device).length ? ` · ${pumpIds(r.device).join(" / ")}` : ""}{r.device?.shed ? ` · ${r.device.shed}` : ""}</span>
+                </span>
+                <span className="muted small nowrap" title={`${r.days} day(s) with logs in the scanned period`}>{r.last_date}</span>
+              </button>
+            ))}
+            {folders.length > 0 && shown.length === 0 && <span className="muted small">No devices match these filters.</span>}
+            {folders.length === 0 && !busy && <span className="muted small">No device logs in the scanned days (dump_logs.py).</span>}
+          </div>
+        </>
+      )}
+
       {mac && (
         <>
-          <div className="field"><span>Days — {cur?.device?.label ?? mac}</span></div>
+          <div className="field"><span>3 · Days — {cur?.device?.label ?? mac}</span></div>
+          <div className="row wrap">
+            <input type="date" className="small-date" value={until} max={isoDay(new Date())}
+                   onChange={(e) => setUntil(e.target.value || isoDay(new Date()))} title={`List ${DAYS_SHOWN} days ending on this date`} />
+            <button className="btn small primary" disabled={daysBusy} onClick={() => listDays(mac, until)}>
+              {daysBusy ? "Listing…" : `List ${DAYS_SHOWN} days`}</button>
+            {listed && <button className="btn small ghost" disabled={daysBusy} onClick={() => listDays(listed.mac, listed.until, true)} title="Refresh from the server">↻</button>}
+          </div>
+          {listed && (
+            <div className="file-list">
+              {days.map((day) => {
+                const fs = filesOn(day);
+                if (fs.length === 0) return (
+                  <button key={day} className="file-item" disabled title="No log from this device on this day">
+                    <span><b>{day}</b></span><span className="muted small">no log</span>
+                  </button>
+                );
+                return fs.map((f) => (
+                  <button key={f.path} className={`file-item ${file?.path === f.path ? "active" : ""}`} onClick={() => onFile(f)} title={f.name}>
+                    <span><b>{day}</b>{fs.length > 1 ? <span className="muted small"> {f.name}</span> : null}</span>
+                    <span className="muted small">{fmtBytes(f.size)}</span>
+                  </button>
+                ));
+              })}
+            </div>
+          )}
           <div className="row wrap zip-row">
             <a className="btn small" href={api.logDeviceZipUrl(mac, since || undefined)} download>⬇ {since ? `since ${since}` : "all days"} (.zip)</a>
             <input type="date" className="small-date" value={since} onChange={(e) => setSince(e.target.value)} title="Zip only from this day" />
-          </div>
-          <div className="file-list">
-            {files.map((f) => (
-              <button key={f.path} className={`file-item ${file?.path === f.path ? "active" : ""}`} onClick={() => onFile(f)} title={f.name}>
-                <span><b>{f.date ?? f.name}</b></span>
-                <span className="muted small">{fmtBytes(f.size)}</span>
-              </button>
-            ))}
-            {files.length === 0 && <span className="muted small">No files.</span>}
           </div>
         </>
       )}

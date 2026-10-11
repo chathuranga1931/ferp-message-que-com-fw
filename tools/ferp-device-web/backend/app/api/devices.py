@@ -6,7 +6,7 @@ from ..container import Container
 from ..models import (ConfigWriteIn, DeviceIn, FavoriteIn, KeysIn, RequestMessageIn, SendMessageIn,
                       SnapshotApplyIn, SnapshotIn)
 from ..services.mqtt_hub import ResponseTimeout
-from .deps import container, current_user, get_device, get_devices, guard, protected
+from .deps import container, current_user, get_device, get_devices, guard, need, protected
 
 router = protected()
 
@@ -18,7 +18,7 @@ def list_devices(c: Container = Depends(container)):
     return c.devices.list()
 
 
-@router.post("/devices")
+@router.post("/devices", dependencies=[need("devices")])
 def add_device(dev: DeviceIn, c: Container = Depends(container), user: str = Depends(current_user)):
     new = c.devices.add(dev)
     c.console.log("info", f"Device added: {new.label}")
@@ -26,7 +26,7 @@ def add_device(dev: DeviceIn, c: Container = Depends(container), user: str = Dep
     return new
 
 
-@router.put("/devices/{device_id}")
+@router.put("/devices/{device_id}", dependencies=[need("devices")])
 def update_device(device_id: str, dev: DeviceIn, c: Container = Depends(container), user: str = Depends(current_user)):
     old = get_device(c, device_id)
     upd = c.devices.update(device_id, dev)
@@ -35,7 +35,7 @@ def update_device(device_id: str, dev: DeviceIn, c: Container = Depends(containe
     return upd
 
 
-@router.delete("/devices/{device_id}")
+@router.delete("/devices/{device_id}", dependencies=[need("devices")])
 def delete_device(device_id: str, c: Container = Depends(container), user: str = Depends(current_user)):
     dev = get_device(c, device_id)
     c.devices.delete(device_id)
@@ -52,7 +52,7 @@ def device_state(device_id: str, c: Container = Depends(container)):
             "topic_base": guard(c.ops.base, dev) if dev.mqtt_id else None}
 
 
-@router.post("/devices/{device_id}/send")
+@router.post("/devices/{device_id}/send", dependencies=[need("workspace")])
 def send_message(device_id: str, body: SendMessageIn, c: Container = Depends(container),
                  user: str = Depends(current_user)):
     if body.msg not in c.catalog.messages:
@@ -63,7 +63,7 @@ def send_message(device_id: str, body: SendMessageIn, c: Container = Depends(con
     return {"seq": seq}
 
 
-@router.post("/devices/{device_id}/request")
+@router.post("/devices/{device_id}/request", dependencies=[need("workspace")])
 def request_message(device_id: str, body: RequestMessageIn, c: Container = Depends(container),
                     user: str = Depends(current_user)):
     """Send a command and wait for its reply (blocking, runs in the worker pool)."""
@@ -79,7 +79,7 @@ def request_message(device_id: str, body: RequestMessageIn, c: Container = Depen
     return {"msg": resp.get("msg"), "seq": resp.get("seq"), "data": resp.get("data") or {}}
 
 
-@router.post("/devices/{device_id}/site-info/read")
+@router.post("/devices/{device_id}/site-info/read", dependencies=[need("devices")])
 async def read_site_info(device_id: str, c: Container = Depends(container)):
     """Pump IDs (NOZZLE_0/1_ID) and board version (HW_VERSION) as reported by the device — not saved."""
     from fastapi.concurrency import run_in_threadpool
@@ -89,12 +89,12 @@ async def read_site_info(device_id: str, c: Container = Depends(container)):
     return await run_in_threadpool(c.ops.read_site_info, dev)
 
 
-@router.post("/devices/{device_id}/config/read")
+@router.post("/devices/{device_id}/config/read", dependencies=[need("config")])
 def config_read(device_id: str, body: KeysIn, c: Container = Depends(container)):
     return {"job_id": guard(c.ops.start_read_config, get_device(c, device_id), body.keys)}
 
 
-@router.post("/devices/{device_id}/config/write")
+@router.post("/devices/{device_id}/config/write", dependencies=[need("config")])
 def config_write(device_id: str, body: ConfigWriteIn, c: Container = Depends(container),
                  user: str = Depends(current_user)):
     if not body.values:
@@ -103,7 +103,7 @@ def config_write(device_id: str, body: ConfigWriteIn, c: Container = Depends(con
     return {"job_id": guard(c.ops.start_write_config, get_device(c, device_id), values, user=user)}
 
 
-@router.post("/devices/{device_id}/devinfo/read")
+@router.post("/devices/{device_id}/devinfo/read", dependencies=[need("workspace")])
 def devinfo_read(device_id: str, body: KeysIn, c: Container = Depends(container)):
     return {"job_id": guard(c.ops.start_read_devinfo, get_device(c, device_id), body.keys)}
 
@@ -115,12 +115,12 @@ def cancel_job(job_id: str, c: Container = Depends(container)):
 
 # ── snapshots ───────────────────────────────────────────────────────────────
 
-@router.get("/snapshots")
+@router.get("/snapshots", dependencies=[need("config")])
 def list_snapshots(c: Container = Depends(container)):
     return c.snapshots.list()
 
 
-@router.get("/snapshots/{sid}")
+@router.get("/snapshots/{sid}", dependencies=[need("config")])
 def get_snapshot(sid: str, c: Container = Depends(container)):
     snap = c.snapshots.get(sid)
     if snap is None:
@@ -128,20 +128,20 @@ def get_snapshot(sid: str, c: Container = Depends(container)):
     return snap
 
 
-@router.post("/snapshots")
+@router.post("/snapshots", dependencies=[need("config")])
 def create_snapshot(body: SnapshotIn, c: Container = Depends(container), user: str = Depends(current_user)):
     dev = get_device(c, body.device_id) if body.device_id else None
     return guard(c.snapshots.create, user, body.name, body.notes, dev, body.values)
 
 
-@router.delete("/snapshots/{sid}")
+@router.delete("/snapshots/{sid}", dependencies=[need("config")])
 def delete_snapshot(sid: str, c: Container = Depends(container), user: str = Depends(current_user)):
     if not c.snapshots.delete(user, sid):
         raise HTTPException(404, f"Unknown snapshot {sid}")
     return {"ok": True}
 
 
-@router.post("/snapshots/{sid}/apply")
+@router.post("/snapshots/{sid}/apply", dependencies=[need("config")])
 def apply_snapshot(sid: str, body: SnapshotApplyIn, c: Container = Depends(container),
                    user: str = Depends(current_user)):
     devices = get_devices(c, body.device_ids)
@@ -154,25 +154,25 @@ def apply_snapshot(sid: str, body: SnapshotApplyIn, c: Container = Depends(conta
 
 # ── favourites ──────────────────────────────────────────────────────────────
 
-@router.get("/favorites")
+@router.get("/favorites", dependencies=[need("workspace")])
 def list_favorites(c: Container = Depends(container)):
     return c.favorites.list()
 
 
-@router.post("/favorites")
+@router.post("/favorites", dependencies=[need("workspace")])
 def add_favorite(body: FavoriteIn, c: Container = Depends(container), user: str = Depends(current_user)):
     if body.msg not in c.catalog.messages:
         raise HTTPException(400, f"Unknown message {body.msg}")
     return c.favorites.add(user, body.name, body.msg, body.data)
 
 
-@router.delete("/favorites/{fid}")
+@router.delete("/favorites/{fid}", dependencies=[need("workspace")])
 def delete_favorite(fid: str, c: Container = Depends(container), user: str = Depends(current_user)):
     if not c.favorites.delete(user, fid):
         raise HTTPException(404, f"Unknown favourite {fid}")
     return {"ok": True}
 
 
-@router.get("/messages/recent")
+@router.get("/messages/recent", dependencies=[need("workspace")])
 def recent_messages(limit: int = 20, c: Container = Depends(container)):
     return c.favorites.recent(limit)

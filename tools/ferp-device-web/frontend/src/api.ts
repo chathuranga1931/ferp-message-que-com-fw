@@ -1,3 +1,4 @@
+import type { Me } from "./auth";
 import type {
   AppConfig, AuditEntry, Batch, Catalog, Device, DeviceLogEntry, DeviceLogIn, DeviceSave, DeviceState, Harness, Shed, ShedIn, Favorite, Firmware, FleetSnapshot,
   HistoryLine, LogChunk, LogFile, MqttStatus, OtaSession, RecentMessage, ScannedBundle, Snapshot,
@@ -5,6 +6,11 @@ import type {
 
 export class ApiError extends Error {
   constructor(public status: number, message: string) { super(message); }
+}
+
+export interface PermissionDef { key: string; label: string; description: string }
+export interface UserAccount {
+  username: string; admin: boolean; permissions: string[]; disabled: boolean; created: number; last_login: number | null;
 }
 
 async function req<T>(method: string, path: string, body?: unknown): Promise<T> {
@@ -15,6 +21,8 @@ async function req<T>(method: string, path: string, body?: unknown): Promise<T> 
     (init.headers as Record<string, string>)["Content-Type"] = "application/json";
   }
   const r = await fetch(`/api${path}`, init);
+  // signed out or session expired while the page was open → back to the sign-in screen
+  if (r.status === 401 && !path.startsWith("/auth/") && path !== "/me") { location.reload(); return new Promise<T>(() => {}); }
   const text = await r.text();
   const data = text ? JSON.parse(text) : null;
   if (!r.ok) {
@@ -25,7 +33,15 @@ async function req<T>(method: string, path: string, body?: unknown): Promise<T> 
 }
 
 export const api = {
-  me: () => req<{ user: string; auth_mode: string }>("GET", "/me"),
+  me: () => req<Me>("GET", "/me"),
+  login: (username: string, password: string) => req<{ ok: boolean }>("POST", "/auth/login", { username, password }),
+  logout: () => req<{ ok: boolean }>("POST", "/auth/logout"),
+  permissions: () => req<PermissionDef[]>("GET", "/permissions"),
+  users: () => req<UserAccount[]>("GET", "/users"),
+  createUser: (u: { username: string; password: string; admin: boolean; permissions: string[] }) => req<UserAccount>("POST", "/users", u),
+  updateUser: (name: string, p: { admin?: boolean; permissions?: string[]; disabled?: boolean; password?: string }) =>
+    req<UserAccount>("PATCH", `/users/${encodeURIComponent(name)}`, p),
+  deleteUser: (name: string) => req<{ ok: boolean }>("DELETE", `/users/${encodeURIComponent(name)}`),
   getConfig: () => req<AppConfig>("GET", "/config"),
   putConfig: (cfg: AppConfig) => req<{ config: AppConfig; reconnected: boolean }>("PUT", "/config", cfg),
 
@@ -117,7 +133,8 @@ export const api = {
 
   logsTest: () => req<{ ok: boolean; ms: number; dates: number; latest: string | null; devices: number }>("POST", "/logs/test"),
   logDevices: (fresh = false) => req<{ mac: string; last_date: string; days: number }[]>("GET", `/logs/devices${qs({ fresh: fresh ? "true" : undefined })}`),
-  logDeviceFiles: (mac: string, fresh = false) => req<LogFile[]>("GET", `/logs/device-files${qs({ mac, fresh: fresh ? "true" : undefined })}`),
+  logDeviceFiles: (mac: string, fresh = false, until?: string, days?: number) =>
+    req<LogFile[]>("GET", `/logs/device-files${qs({ mac, fresh: fresh ? "true" : undefined, until, days })}`),
   logDeviceZipUrl: (mac: string, since?: string) => `/api/logs/device-zip${qs({ mac, since })}`,
   logDates: (fresh = false) => req<string[]>("GET", `/logs/dates${qs({ fresh: fresh ? "true" : undefined })}`),
   logSheds: (date: string, fresh = false) => req<string[]>("GET", `/logs/sheds${qs({ date, fresh: fresh ? "true" : undefined })}`),

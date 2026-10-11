@@ -1,43 +1,66 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "./api";
+import { useAuth, type Permission } from "./auth";
 import { ConsoleDock } from "./components/ConsoleDock";
+import { DeviceDialog } from "./components/DeviceDialog";
 import { MqttControl } from "./components/MqttControl";
 import Cables from "./pages/Cables";
 import Definitions from "./pages/Definitions";
-import DevicePage from "./pages/DevicePage";
-import Devices from "./pages/Devices";
 import Fleet from "./pages/Fleet";
+import Guide from "./pages/Guide";
 import History from "./pages/History";
 import Logs from "./pages/Logs";
 import Ota from "./pages/Ota";
 import Settings from "./pages/Settings";
 import Sheds from "./pages/Sheds";
 import Snapshots from "./pages/Snapshots";
+import Users from "./pages/Users";
 import Workspace from "./pages/Workspace";
 import { useLive } from "./store";
 import type { Catalog, Device } from "./types";
 import { API_VERSION } from "./version";
 
-type Page = "fleet" | "device" | "workspace" | "ota" | "logs" | "snapshots" | "history" | "devices" | "sheds" | "cables"
-  | "definitions" | "settings";
-const PAGES: { id: Page; label: string }[] = [
-  { id: "fleet", label: "Fleet" },
-  { id: "device", label: "Device" },
-  { id: "workspace", label: "Workspace" },
-  { id: "ota", label: "OTA" },
-  { id: "logs", label: "Cloud logs" },
-  { id: "snapshots", label: "Snapshots" },
-  { id: "history", label: "History" },
-  { id: "devices", label: "Devices" },
-  { id: "sheds", label: "Sheds" },
-  { id: "cables", label: "Cables" },
-  { id: "definitions", label: "Definitions" },
-  { id: "settings", label: "Settings" },
+type Page = "fleet" | "workspace" | "ota" | "logs" | "snapshots" | "history" | "sheds" | "cables"
+  | "def-pumps" | "def-cables" | "users" | "guide-troubleshooting" | "guide-installation" | "guide-ota" | "guide-devices"
+  | "info-pumps" | "settings";
+/** `need`: shown when the user has any of these permissions; "admin" = admins only; none = everyone */
+interface PageDef { id: Page; label: string; icon: string; need?: Permission[] | "admin" }
+const PAGES: PageDef[] = [
+  { id: "fleet", label: "Fleet", icon: "▦" },
+  { id: "workspace", label: "Workspace", icon: "⌨", need: ["workspace", "config"] },
+  { id: "ota", label: "OTA", icon: "⇪" },
+  { id: "logs", label: "Cloud logs", icon: "☰", need: ["logs"] },
+  { id: "snapshots", label: "Snapshots", icon: "⧉", need: ["config"] },
+  { id: "history", label: "History", icon: "↺", need: ["history"] },
+  { id: "sheds", label: "Sheds", icon: "⛽" },
+  { id: "cables", label: "Cables", icon: "⌁" },
+  { id: "def-pumps", label: "Pump types", icon: "#" },
+  { id: "def-cables", label: "Cable types", icon: "≋" },
+  { id: "users", label: "Users", icon: "👤", need: "admin" },
+  { id: "guide-troubleshooting", label: "Troubleshooting", icon: "⚠" },
+  { id: "guide-installation", label: "Installation", icon: "⚒" },
+  { id: "guide-ota", label: "Firmware OTA", icon: "⤓" },
+  { id: "guide-devices", label: "Device types", icon: "▣" },
+  { id: "info-pumps", label: "Pump types", icon: "ⓘ" },
+  { id: "settings", label: "Settings", icon: "⚙", need: ["settings"] },
+];
+/** Sidebar: a group (title + pages) or a single page. */
+type NavEntry = { group: string; icon: string; pages: Page[] } | { page: Page };
+const NAV: NavEntry[] = [
+  { group: "Fleet", icon: "▦", pages: ["fleet", "workspace", "ota", "logs", "snapshots", "history"] },
+  { page: "sheds" },
+  { page: "cables" },
+  { group: "Definitions", icon: "#", pages: ["def-pumps", "def-cables"] },
+  { page: "users" },
+  { group: "Guides", icon: "?", pages: ["guide-troubleshooting", "guide-installation", "guide-ota", "guide-devices"] },
+  { group: "Info", icon: "ⓘ", pages: ["info-pumps"] },
+  { page: "settings" },
 ];
 const LS_KEY = "ferp.selectedDevice";
 
 function initialPage(): Page {
   const h = location.hash.replace("#", "");
+  if (h === "definitions") return "def-pumps";        // old link
   return PAGES.find((p) => p.id === h)?.id ?? "fleet";
 }
 
@@ -49,8 +72,21 @@ function initialDevice(): string {
 }
 
 export default function App() {
-  const [page, setPage] = useState<Page>(initialPage);
+  const { me, admin, can } = useAuth();
+  const allowed = (p: (typeof PAGES)[number]) => !p.need || (p.need === "admin" ? admin : p.need.some(can));
+  const pages = PAGES.filter(allowed);
+  const [page, setPageRaw] = useState<Page>(() => {
+    const p = initialPage();
+    return pages.some((x) => x.id === p) ? p : "fleet";
+  });
+  const setPage = useCallback((p: Page) => setPageRaw(PAGES.some((x) => x.id === p && allowed(x)) ? p : "fleet"),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [admin, me]);
   const [deviceId, setDeviceId] = useState<string>(initialDevice);
+  const [navOpen, setNavOpen] = useState(false);                     // phone width: sidebar shown
+  const go = (p: Page) => { setPage(p); setNavOpen(false); (document.activeElement as HTMLElement | null)?.blur(); };
+  // device pop-up (details, lifecycle, history) — ?device=<id> opens it
+  const [dialogId, setDialogId] = useState<string | null>(() => new URLSearchParams(location.search).get("device"));
   const [otaPreselect, setOtaPreselect] = useState<string[]>([]);
   const [shedFocus, setShedFocus] = useState("");
   const [catalog, setCatalog] = useState<Catalog | null>(null);
@@ -67,8 +103,8 @@ export default function App() {
   useEffect(() => { location.hash = page; }, [page]);
   useEffect(() => { try { localStorage.setItem(LS_KEY, deviceId); } catch { /* storage unavailable */ } }, [deviceId]);
 
-  /** A device's own page (details, lifecycle, history); the Workspace is one click from there. */
-  const openDevice = useCallback((id: string) => { setDeviceId(id); setPage("device"); }, []);
+  /** A device's pop-up (details, lifecycle, history); the Workspace is one click from there. */
+  const openDevice = useCallback((id: string) => { setDeviceId(id); setDialogId(id); }, []);
   const openWorkspace = useCallback((id: string) => { setDeviceId(id); setPage("workspace"); }, []);
   const openSheds = useCallback((name = "") => { setShedFocus(name); setPage("sheds"); }, []);
   const openOta = useCallback((ids: string[]) => { setOtaPreselect(ids); setPage("ota"); }, []);
@@ -85,15 +121,57 @@ export default function App() {
   const versionMismatch = serverApi !== null && serverApi !== API_VERSION;
 
   return (
-    <div className="app">
-      <header className="topbar">
-        <div className="brand">FERP <span>Device Web</span></div>
-        <nav className="tabs">
-          {PAGES.map((p) => (
-            <button key={p.id} className={page === p.id ? "tab active" : "tab"} onClick={() => setPage(p.id)}>{p.label}</button>
-          ))}
+    <div className={`app with-sidebar${navOpen ? " nav-open" : ""}`}>
+      <aside className="sidebar" aria-label="Main menu">
+        <div className="sidebar-brand">FERP <span>Device Web</span></div>
+        <nav className="side-nav">
+          {NAV.map((e) => {
+            if ("page" in e) {
+              const p = pages.find((x) => x.id === e.page);
+              return p ? (
+                <button key={p.id} className={`side-box${page === p.id ? " active" : ""}`} onClick={() => go(p.id)}>
+                  <span className="side-ico">{p.icon}</span><span className="side-name">{p.label}</span>
+                </button>) : null;
+            }
+            // a group: only its name is shown; its pages fly out to the right on hover / keyboard focus
+            const items = e.pages.map((id) => pages.find((x) => x.id === id)).filter(Boolean) as PageDef[];
+            if (items.length === 0) return null;
+            const cur = items.find((x) => x.id === page);
+            return (
+              <div key={e.group} className={`side-group${cur ? " active" : ""}`}>
+                <button className="side-box" onClick={() => go((cur ?? items[0]).id)} aria-haspopup="true">
+                  <span className="side-ico">{e.icon}</span>
+                  <span className="side-name">{e.group}{cur && cur.label !== e.group && <small>{cur.label}</small>}</span>
+                  <span className="side-more">▸</span>
+                </button>
+                <div className="side-flyout" role="menu" aria-label={e.group}>
+                  <div className="side-flyout-head">{e.group}</div>
+                  {items.map((p) => (
+                    <button key={p.id} role="menuitem" className={`side-sub${page === p.id ? " active" : ""}`} onClick={() => go(p.id)}>
+                      <span className="side-ico">{p.icon}</span>{p.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
         </nav>
-        <MqttControl />
+        <div className="sidebar-foot">
+          <MqttControl />
+          {me?.login_required && (
+            <div className="user-menu">
+              <span title={admin ? "Admin" : `Permissions: ${me.permissions.join(", ") || "view only"}`}><b>{me.user}</b>{admin ? " · admin" : ""}</span>
+              <button className="btn small ghost" onClick={() => api.logout().finally(() => location.reload())}>Sign out</button>
+            </div>
+          )}
+        </div>
+      </aside>
+      <div className="nav-scrim" onClick={() => setNavOpen(false)} />
+      <div className="main-col">
+      <header className="mobile-bar">
+        <button className="btn small ghost" onClick={() => setNavOpen(true)} aria-label="Open menu">☰</button>
+        <span className="sidebar-brand">FERP <span>Device Web</span></span>
+        <span className="muted small">{PAGES.find((x) => x.id === page)?.label}</span>
       </header>
       {versionMismatch && (
         <div className="banner error">
@@ -107,21 +185,26 @@ export default function App() {
       <main className="page-scroll">
         <div className="page">
           {page === "fleet" && <Fleet devices={devices} onOpen={openDevice} onOta={openOta} onLogs={openLogs} onDevicesChanged={reloadDevices} />}
-          {page === "device" && <DevicePage deviceId={deviceId} devices={devices} onSelect={setDeviceId} onWorkspace={openWorkspace}
-                                             onOta={openOta} onLogs={openLogs} onSheds={openSheds} onChanged={reloadDevices} />}
-          {page === "workspace" && <Workspace catalog={catalog} devices={devices} deviceId={deviceId} onSelect={setDeviceId} onOta={openOta} />}
+          {page === "workspace" && <Workspace catalog={catalog} devices={devices} deviceId={deviceId} onSelect={setDeviceId} />}
           {page === "ota" && <Ota devices={devices} preselect={otaPreselect} onPreselectUsed={clearPreselect} />}
           {page === "logs" && <Logs devices={devices} onOpenSettings={() => setPage("settings")} />}
           {page === "snapshots" && <Snapshots catalog={catalog} devices={devices} />}
           {page === "history" && <History devices={devices} />}
-          {page === "devices" && <Devices devices={devices} onChanged={reloadDevices} onLogs={openLogs} onOpen={openDevice} />}
           {page === "sheds" && <Sheds devices={devices} focusName={shedFocus} onChanged={reloadDevices} onOpenDevice={openDevice} />}
           {page === "cables" && <Cables devices={devices} onOpenDevice={openDevice} />}
-          {page === "definitions" && <Definitions />}
+          {page === "def-pumps" && <Definitions section="pumps" onOpenCables={() => setPage("cables")} />}
+          {page === "def-cables" && <Definitions section="cables" onOpenCables={() => setPage("cables")} />}
+          {(page.startsWith("guide-") || page.startsWith("info-")) && <Guide id={page} />}
           {page === "settings" && <Settings catalog={catalog} onReloadCatalog={() => reloadCatalog(true)} />}
+          {page === "users" && <Users />}
         </div>
       </main>
       <ConsoleDock device={device} devices={devices} />
+      </div>
+      {dialogId && devices.some((d) => d.id === dialogId) && (
+        <DeviceDialog device={devices.find((d) => d.id === dialogId)!} devices={devices} onClose={() => setDialogId(null)}
+                      onChanged={reloadDevices} onLogs={openLogs} onWorkspace={openWorkspace} onOta={openOta} onSheds={openSheds} />
+      )}
     </div>
   );
 }

@@ -285,16 +285,18 @@ class HarnessIn(BaseModel):
 
 # ── Device history (Device page timeline) ─────────────────────────────────────
 
-LOG_KINDS = ("manufactured", "delivered", "repair", "modification", "issue", "config", "note")
+LOG_KINDS = ("manufactured", "delivered", "repair", "modification", "issue", "config", "note", "ota")
 
 
 class DeviceLogIn(BaseModel):
     date:     str = ""           # YYYY-MM-DD (empty → today)
-    kind:     Literal["manufactured", "delivered", "repair", "modification", "issue", "config", "note"] = "note"
+    kind:     Literal["manufactured", "delivered", "repair", "modification", "issue", "config", "note", "ota"] = "note"
     title:    str = Field(..., min_length=1)
     details:  str = ""
     status:   Literal["", "open", "resolved"] = ""   # issues: open → resolved
     snapshot_id: str = ""        # kind "config": the snapshot that was applied
+    ota_result: Literal["", "succeeded", "failed", "aborted"] = ""   # kind "ota"
+    source:   str = ""           # automatic entries: where they came from ("audit:<id>" for an OTA result)
 
 
 class DeviceLogEntry(DeviceLogIn):

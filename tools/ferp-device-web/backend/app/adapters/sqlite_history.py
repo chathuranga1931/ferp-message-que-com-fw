@@ -69,13 +69,14 @@ class SqliteHistoryStore:
 
     # ── audit ─────────────────────────────────────────────────────────────────
 
-    def append_audit(self, entry: dict) -> None:
+    def append_audit(self, entry: dict) -> Optional[int]:
         with self._lock:
-            self._db.execute(
+            cur = self._db.execute(
                 "INSERT INTO audit (ts, user, action, device_id, device_label, detail) VALUES (?, ?, ?, ?, ?, ?)",
                 (entry["ts"], entry["user"], entry["action"], entry.get("device_id"),
                  entry.get("device_label"), json.dumps(entry.get("detail") or {})))
             self._db.commit()
+            return cur.lastrowid
 
     def query_audit(self, device: Optional[str] = None, action: Optional[str] = None,
                     q: Optional[str] = None, since: Optional[float] = None, until: Optional[float] = None,

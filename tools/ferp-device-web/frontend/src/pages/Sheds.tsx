@@ -37,7 +37,7 @@ export default function Sheds({ devices, focusName, onChanged, onOpenDevice }: P
     else { setSelId("new"); setForm({ ...BLANK, name }); }
   };
 
-  // Device page → "Add / edit shed details" lands here with the name pre-selected
+  // Device pop-up (Lifecycle tab) → "Add / edit shed details" lands here with the name pre-selected
   useEffect(() => {
     if (!focusName) return;
     const s = sheds.find((x) => norm(x.name) === norm(focusName));

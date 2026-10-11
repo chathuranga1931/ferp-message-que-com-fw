@@ -6,6 +6,16 @@ export interface SiteFilter { type: string; shed: string; pumpType: string; boar
 
 export const NO_FILTER: SiteFilter = { type: "", shed: "", pumpType: "", board: "" };
 const NONE = "\u0000none";          // option value for "(not set)"
+// Shed filter: "assigned" = any real shed; "unassigned" = empty or the placeholder name "Unassigned"
+const SHED_ASSIGNED = "\u0000assigned";
+const SHED_UNASSIGNED = "\u0000unassigned";
+/** The device has a real shed (not empty, not the "Unassigned" placeholder). */
+export function hasShed(shed?: string | null): boolean {
+  const s = (shed ?? "").trim();
+  return s !== "" && s.toLowerCase() !== "unassigned";
+}
+/** filter values that are not a field value (all start with \u0000) */
+const isSpecial = (v: string) => v.startsWith("\u0000");
 
 const KEYS: { key: keyof SiteFilter; field: keyof SiteFields; label: string }[] = [
   { key: "type", field: "device_type", label: "Type" },
@@ -18,6 +28,8 @@ export function matchesFilter(row: SiteFields, f: SiteFilter): boolean {
   return KEYS.every(({ key, field }) => {
     const want = f[key];
     if (!want) return true;
+    if (want === SHED_ASSIGNED) return hasShed(row.shed);
+    if (want === SHED_UNASSIGNED) return !hasShed(row.shed);
     const have = (row[field] ?? "").trim();
     return want === NONE ? !have : have === want;
   });
@@ -55,6 +67,10 @@ export function DeviceFilters({ rows, value, onChange }:
     return out;
   }, [typed]);
 
+  const shedCounts = useMemo(() => {
+    const assigned = typed.filter((r) => hasShed(r.shed)).length;
+    return { assigned, unassigned: typed.length - assigned };
+  }, [typed]);
   const hidePumpType = NO_PUMP_TYPE.has(value.type.toLowerCase());
   const setType = (t: string) => {
     const next = { ...value, type: t };
@@ -62,7 +78,7 @@ export function DeviceFilters({ rows, value, onChange }:
     // drop shed / board choices that do not exist for the new type
     const pool = rows.filter((r) => matchesFilter(r, { ...NO_FILTER, type: t }));
     for (const { key, field } of KEYS) {
-      if (key === "type" || !next[key] || next[key] === NONE) continue;
+      if (key === "type" || !next[key] || isSpecial(next[key])) continue;
       if (!pool.some((r) => (r[field] ?? "").trim() === next[key])) next[key] = "";
     }
     onChange(next);
@@ -84,8 +100,18 @@ export function DeviceFilters({ rows, value, onChange }:
         <select key={key} value={value[key]} onChange={(e) => onChange({ ...value, [key]: e.target.value })}
                 className={value[key] ? "active" : ""} aria-label={`Filter by ${label}`}>
           <option value="">{label}: all</option>
-          {options[key].values.map((v) => <option key={v} value={v}>{label}: {v}</option>)}
-          {options[key].hasNone && <option value={NONE}>{label}: (not set)</option>}
+          {key === "shed" ? (
+            <>
+              <option value={SHED_ASSIGNED}>Shed: assigned ({shedCounts.assigned})</option>
+              <option value={SHED_UNASSIGNED}>Shed: unassigned ({shedCounts.unassigned})</option>
+              {options.shed.values.filter(hasShed).map((v) => <option key={v} value={v}>Shed: {v}</option>)}
+            </>
+          ) : (
+            <>
+              {options[key].values.map((v) => <option key={v} value={v}>{label}: {v}</option>)}
+              {options[key].hasNone && <option value={NONE}>{label}: (not set)</option>}
+            </>
+          )}
         </select>
       ))}
       {isFiltering(value) && <button className="btn small ghost" onClick={() => onChange(NO_FILTER)}>Clear filters</button>}
