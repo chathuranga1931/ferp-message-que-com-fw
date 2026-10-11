@@ -78,7 +78,8 @@ class Fleet:
                     noz.update(state=data.get("state"), state_ts=now)
                 else:
                     noz.update(last_l=(data.get("vol_lx1000") or 0) / 1000,
-                               last_total=(data.get("total_pricex100") or 0) / 100, last_ts=now)
+                               last_total=(data.get("total_pricex100") or 0) / 100,
+                               last_price=(data.get("unit_pricex100") or 0) / 100, last_ts=now)
             self._touch(topic_id)
 
     # ── views ─────────────────────────────────────────────────────────────────

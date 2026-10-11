@@ -278,7 +278,9 @@ export default function Fleet({ devices, onOpen, onOta, onLogs, onDevicesChanged
                     <span className={`fl-noz-state ${state ?? "unknown"}`}>{state ?? "no live data"}</span>
                     <span className="fl-lit"><small className="fl-cur">Rs</small>{n?.last_total !== undefined
                       ? n.last_total.toLocaleString("en-LK", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—"}</span>
-                    <span className="fl-vol">{n?.last_l !== undefined ? `${n.last_l.toFixed(2)} L` : "— L"}</span>
+                    <span className="fl-vol">{n?.last_l !== undefined ? `${n.last_l.toFixed(2)} L` : "— L"}
+                      {" · "}{n?.last_price !== undefined
+                        ? `Rs ${n.last_price.toLocaleString("en-LK", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/L` : "Rs —/L"}</span>
                     <span className="muted small">{n?.last_ts ? `last sale ${fmtAgo(n.last_ts, now)}` : "no sale seen yet"}</span>
                     {state === "pumping" && <span className="fl-flow" />}
                   </div>
