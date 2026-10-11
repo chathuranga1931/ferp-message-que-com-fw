@@ -7,7 +7,7 @@
  * 1.0.0.0 Initial state
  */
 
-#define FW_VERSION          "3.3.0.3"
+#define FW_VERSION          "3.3.0.5"
 #define HW_VERSION          "2602"
 
 #endif //__VERSION_H
