@@ -139,6 +139,29 @@ hsys_msg_t *hsys_msg_create(hsys_msg_id_t msg_id, hsys_module_id_t sender_id);
 hsys_status_t hsys_msg_publish(hsys_msg_t *msg);
 
 /**
+ * Same as hsys_msg_publish(), but when a subscriber task's queue is full it
+ * waits up to `timeout_ms` for a free slot (per subscriber task) instead of
+ * dropping the message at once.  For messages that must not be lost (fuel
+ * sales / nozzle states).  Task context only — never from an ISR, and keep
+ * the wait short: the calling task blocks while it waits.
+ */
+hsys_status_t hsys_msg_publish_wait(hsys_msg_t *msg, uint32_t timeout_ms);
+
+/**
+ * Diagnostics: messages publish() / publish_from_isr() had to drop because a
+ * receiving task's queue was full.  Updated with lock-free atomics only (no
+ * logging, no locks), so it is safe from any task and from ISRs; report it from
+ * a module's own task (e.g. ModuleSysmon on its 1 s tick).
+ */
+typedef struct {
+    uint32_t         count;          ///< drops since boot
+    hsys_msg_id_t    last_msg_id;    ///< message of the most recent drop
+    hsys_module_id_t last_receiver;  ///< module whose task queue was full
+} hsys_msg_drop_stats_t;
+
+void hsys_msg_get_drop_stats(hsys_msg_drop_stats_t *out);
+
+/**
  * @brief  Release one reference to a message.
  *         Called by the dispatch loop after each on_msg_received() returns.
  *         When ref_count reaches zero the payload buffer is returned to the pool

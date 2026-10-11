@@ -65,6 +65,7 @@ private:
     void _publish_pool_json();
 
     uint32_t m_tick_count = 0;
+    uint32_t m_drops_reported = 0;   ///< bus drop count already logged
 };
 
 #endif // MODULE_SYSMON_H

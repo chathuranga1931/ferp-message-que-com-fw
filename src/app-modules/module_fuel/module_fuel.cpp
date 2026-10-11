@@ -728,6 +728,13 @@ void ModuleFuel::_process_queues()
 // Publish helpers
 // ---------------------------------------------------------------------------
 
+// Sales and nozzle states must not be lost when a subscriber is busy (e.g. the
+// MQTT / cloud task working through a burst): wait up to this long per
+// subscriber task for queue space instead of dropping.
+#ifndef FUEL_EVENT_PUBLISH_WAIT_MS
+#define FUEL_EVENT_PUBLISH_WAIT_MS 200
+#endif
+
 void ModuleFuel::_publish_nozzle_state(uint8_t nozzle_idx, nozzle_state_t state)
 {
     MsgNozzleState::Payload p{};
@@ -736,7 +743,7 @@ void ModuleFuel::_publish_nozzle_state(uint8_t nozzle_idx, nozzle_state_t state)
 
     hsys_msg_t *msg = create_typed<MsgNozzleState>(p);
     if (!msg) { log_error("create_typed<MsgNozzleState> failed"); return; }
-    publish(msg);
+    publish_wait(msg, FUEL_EVENT_PUBLISH_WAIT_MS);
 }
 
 void ModuleFuel::_publish_fuel_pumped(uint8_t nozzle_idx, const nozzle_event_t &ev)
@@ -758,7 +765,7 @@ void ModuleFuel::_publish_fuel_pumped(uint8_t nozzle_idx, const nozzle_event_t &
 
     hsys_msg_t *msg = create_typed<MsgFuelPumped>(p);
     if (!msg) { log_error("create_typed<MsgFuelPumped> failed"); return; }
-    publish(msg);
+    publish_wait(msg, FUEL_EVENT_PUBLISH_WAIT_MS);
 }
 
 void ModuleFuel::_publish_totalizer_event(uint32_t nozzle_idx, uint64_t totalizer_valuex1000)
@@ -776,7 +783,7 @@ void ModuleFuel::_publish_totalizer_event(uint32_t nozzle_idx, uint64_t totalize
 
     hsys_msg_t *msg = create_typed<MsgFuelTotalizer>(p);
     if (!msg) { log_error("create_typed<MsgFuelTotalizer> failed"); return; }
-    publish(msg);
+    publish_wait(msg, FUEL_EVENT_PUBLISH_WAIT_MS);
 }
 
 // ---------------------------------------------------------------------------

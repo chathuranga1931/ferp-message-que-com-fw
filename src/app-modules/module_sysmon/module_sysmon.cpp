@@ -41,6 +41,17 @@ void ModuleSysmon::on_msg_received(const hsys_msg_t &msg)
     switch (msg.msg_id) {
         case MsgTick1000ms::ID:
             ++m_tick_count;
+            {
+                // messages the bus dropped (a receiving task's queue was full) since the last tick
+                hsys_msg_drop_stats_t d;
+                hsys_msg_get_drop_stats(&d);
+                if (d.count != m_drops_reported) {
+                    log_error("bus dropped %lu message(s) (receiver queue full), %lu since boot; last: msg 0x%04X to module %u",
+                              (unsigned long)(d.count - m_drops_reported), (unsigned long)d.count,
+                              (unsigned)d.last_msg_id, (unsigned)d.last_receiver);
+                    m_drops_reported = d.count;
+                }
+            }
             if (m_tick_count % SYSMON_REPORT_INTERVAL_TICKS == 0) {
                 print_report();
             }

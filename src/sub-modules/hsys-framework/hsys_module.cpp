@@ -70,6 +70,12 @@ hsys_status_t HsysModule::publish(hsys_msg_t *msg)
     return hsys_msg_publish(msg);
 }
 
+hsys_status_t HsysModule::publish_wait(hsys_msg_t *msg, uint32_t timeout_ms)
+{
+    if (!msg) return HSYS_ERR_NULL;
+    return hsys_msg_publish_wait(msg, timeout_ms);
+}
+
 hsys_status_t HsysModule::send(hsys_msg_t      *msg,
                                 hsys_module_id_t receiver_id,
                                 uint32_t         timeout_ms)

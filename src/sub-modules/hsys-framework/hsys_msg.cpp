@@ -279,10 +279,45 @@ void hsys_msg_release(hsys_msg_t *msg)
 }
 
 // ---------------------------------------------------------------------------
+// Drop counter (diagnostics) — lock-free, safe from tasks and ISRs
+// ---------------------------------------------------------------------------
+
+static uint32_t         s_drop_count         = 0;
+static hsys_msg_id_t    s_drop_last_msg_id   = 0;
+static hsys_module_id_t s_drop_last_receiver = 0;
+
+static inline void record_drop(hsys_msg_id_t msg_id, hsys_module_id_t receiver)
+{
+    __atomic_store_n(&s_drop_last_msg_id, msg_id, __ATOMIC_RELAXED);
+    __atomic_store_n(&s_drop_last_receiver, receiver, __ATOMIC_RELAXED);
+    __atomic_fetch_add(&s_drop_count, 1u, __ATOMIC_RELEASE);
+}
+
+void hsys_msg_get_drop_stats(hsys_msg_drop_stats_t *out)
+{
+    if (!out) return;
+    out->count         = __atomic_load_n(&s_drop_count, __ATOMIC_ACQUIRE);
+    out->last_msg_id   = __atomic_load_n(&s_drop_last_msg_id, __ATOMIC_RELAXED);
+    out->last_receiver = __atomic_load_n(&s_drop_last_receiver, __ATOMIC_RELAXED);
+}
+
+// ---------------------------------------------------------------------------
 // Publish
 // ---------------------------------------------------------------------------
 
+static hsys_status_t publish_impl(hsys_msg_t *msg, uint32_t timeout_ms);
+
 hsys_status_t hsys_msg_publish(hsys_msg_t *msg)
+{
+    return publish_impl(msg, 0);
+}
+
+hsys_status_t hsys_msg_publish_wait(hsys_msg_t *msg, uint32_t timeout_ms)
+{
+    return publish_impl(msg, timeout_ms);
+}
+
+static hsys_status_t publish_impl(hsys_msg_t *msg, uint32_t timeout_ms)
 {
     if (!s_initialised) return HSYS_ERR_NOT_INIT;
     if (!msg)           return HSYS_ERR_NULL;
@@ -331,9 +366,11 @@ hsys_status_t hsys_msg_publish(hsys_msg_t *msg)
         if (skip[i]) continue;
         msg->receiver_id = snapshot[i];
         // Enqueue the pointer, not a copy of the struct
-        hsys_status_t s = hsys_task_mgr_enqueue_ptr(msg, 0);
+        hsys_status_t s = hsys_task_mgr_enqueue_ptr(msg, timeout_ms);
         if (s != HSYS_OK) {
-            // Drop: release the ref we pre-counted for this subscriber
+            // Drop: count it (before the release — msg may be freed), then
+            // release the ref we pre-counted for this subscriber
+            record_drop(msg->msg_id, snapshot[i]);
             hsys_msg_release(msg);
             result = s;
         }
@@ -389,7 +426,7 @@ hsys_status_t hsys_msg_publish_from_isr(hsys_msg_t *msg,
         bool w = false;
         hsys_status_t s = hsys_task_mgr_enqueue_ptr_from_isr(msg, &w);
         if (w) woken = true;
-        if (s != HSYS_OK) { hsys_msg_release(msg); result = s; }
+        if (s != HSYS_OK) { record_drop(msg->msg_id, e->subscribers[i]); hsys_msg_release(msg); result = s; }
     }
 
     if (higher_priority_woken) *higher_priority_woken = woken;

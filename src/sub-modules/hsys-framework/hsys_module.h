@@ -168,6 +168,8 @@ protected:
      * subscriber's queue.  Do NOT access the message after this call.
      */
     hsys_status_t publish(hsys_msg_t *msg);
+    /** publish(), but waits up to timeout_ms for a full subscriber queue instead of dropping (see hsys_msg_publish_wait). */
+    hsys_status_t publish_wait(hsys_msg_t *msg, uint32_t timeout_ms);
 
     /**
      * Send a point-to-point (DIRECT) message to a specific module.
