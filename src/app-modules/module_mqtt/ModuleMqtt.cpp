@@ -19,6 +19,7 @@
 #include "msg_internet_status.h"
 #include "msg_fuel_pumped.h"
 #include "msg_nozzle_state.h"
+#include "msg_pumping_status.h"
 #include "msg_ota_event.h"
 #include "msg_ota_progress.h"
 #include "msg_config_cloud.h"
@@ -118,6 +119,7 @@ void ModuleMqtt::init()
     subscribe(MsgConfigValue::ID);   // DIRECT response from ModuleConfig (MsgConfigGetKey)
     subscribe(MsgFuelPumped::ID);    // NOTIFICATION → evt
     subscribe(MsgNozzleState::ID);   // NOTIFICATION → evt
+    subscribe(MsgPumpingStatus::ID); // NOTIFICATION → evt (only sent when enabled in config)
     subscribe(MsgOtaEvent::ID);      // NOTIFICATION → evt
     subscribe(MsgOtaProgress::ID);   // NOTIFICATION → evt
 
@@ -209,6 +211,7 @@ void ModuleMqtt::on_msg_received(const hsys_msg_t &msg)
         // ── Outbound NOTIFICATION events ───────────────────────────────────
         case MsgFuelPumped::ID:
         case MsgNozzleState::ID:
+        case MsgPumpingStatus::ID:
             if (_state == STATE_CONNECTED) {
                 _on_outbound_msg(msg, true /*evt*/);
             }

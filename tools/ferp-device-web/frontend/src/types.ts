@@ -121,7 +121,8 @@ export interface FleetRow {
   msg_count: number; info: Record<string, string>;
   probe: { ts: number; ok: boolean; rtt_ms?: number; error?: string } | null;
   /** per nozzle index ("0", "1"): last MsgNozzleState / MsgFuelPumped seen from the device */
-  nozzles?: Record<string, { state?: number | string; state_ts?: number; last_l?: number; last_total?: number; last_price?: number; last_ts?: number }>;
+  nozzles?: Record<string, { state?: number | string; state_ts?: number; last_l?: number; last_total?: number; last_price?: number; last_ts?: number;
+    live_l?: number; live_total?: number; live_price?: number; live_ts?: number }>;
   shed?: string; pump_id_1?: string; pump_id_2?: string; pump_type?: string; board_version?: string; sd_card_size?: string;
   device_type?: string;
 }

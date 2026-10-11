@@ -25,9 +25,10 @@ typedef enum{
     display_type_hongyang_8digit,
     display_type_censtar_7digit_cs,
     display_type_wayne_6digit_2,
+    display_type_longfeng_8digit,
 } display_type_t;
 
-const int pump_type_count = 7;
+const int pump_type_count = 8;
 const String pump_types[pump_type_count] = {
     "SANKI-6-DIGIT",
     "CENSTAR-6-DIGIT",
@@ -36,6 +37,7 @@ const String pump_types[pump_type_count] = {
     "HONGYANG-8-DIGIT",
     "CENSTAR-7-CS",
     "WAYNE-6-DIGIT-2",
+    "LONGFENG-8-DIGIT",
 };
 
 display_type_t display_type = display_type_sanki_6digit;
@@ -135,6 +137,7 @@ void setup(){
       case CTL_WAY6: start_mode(display_type_wayne_6digit); break;
       case CTL_HY8:  start_mode(display_type_hongyang_8digit); break;
       case CTL_WAY2: start_mode(display_type_wayne_6digit_2); break;
+      case CTL_LF8:  start_mode(display_type_longfeng_8digit); break;
       default: break;
     }
 }
@@ -164,6 +167,9 @@ void start_mode(int idx){
           break;
       case display_type_wayne_6digit_2:
           wayne2_init();
+          break;
+      case display_type_longfeng_8digit:
+          longfeng8_init();
           break;
       default:
           Serial.println(F("ERR display type not supported, restarting to the menu"));
@@ -207,6 +213,9 @@ void loop(){
                 break;
             case display_type_wayne_6digit_2:
                 wayne2_run();
+                break;
+            case display_type_longfeng_8digit:
+                longfeng8_run();
                 break;
             default:
                 // restarting

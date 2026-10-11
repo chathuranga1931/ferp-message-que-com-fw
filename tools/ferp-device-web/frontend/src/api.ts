@@ -27,6 +27,8 @@ async function req<T>(method: string, path: string, body?: unknown): Promise<T> 
   const data = text ? JSON.parse(text) : null;
   if (!r.ok) {
     const detail = data?.detail;
+    // device busy with another request: one pop-up for the whole app (App.tsx), so users don't press again
+    if (r.status === 423) window.dispatchEvent(new CustomEvent("ferp-busy", { detail: typeof detail === "string" ? detail : "Device is busy" }));
     throw new ApiError(r.status, typeof detail === "string" ? detail : JSON.stringify(detail ?? r.statusText));
   }
   return data as T;

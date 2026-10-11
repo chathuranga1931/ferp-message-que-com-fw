@@ -100,6 +100,9 @@ private:
     uint32_t              _dt_log_rate   = 0;
     uint64_t              _last_log_ms   = 0;
     uint32_t              _stabilize_delay_ms = 500;  // display-settle wait; see wayne62_set_stabilize_delay_ms
+    bool                  _pump_status_en = false;      // MsgPumpingStatus while pumping (CFG_KEY_MQTT_PUMP_STATUS_EN)
+    uint32_t              _pump_status_interval_s = 5;  // >= FUEL_PUMP_STATUS_MIN_INTERVAL_S
+    uint64_t              _pump_status_last_ms[FUEL_MAX_NOZZLES] = {};
 
     void _start(const hsys_msg_t &cfg_msg);
     void _process_queues();
@@ -107,6 +110,8 @@ private:
     void _publish_nozzle_state(uint8_t nozzle_idx, nozzle_state_t state);
     void _publish_fuel_pumped (uint8_t nozzle_idx, const nozzle_event_t &ev);
     void _publish_totalizer_event(uint32_t nozzle_idx, uint64_t totalizer_value);
+    void _publish_pumping_status(uint8_t nozzle_idx, const app_display_data_t &d);
+    void _load_pump_status_config();
     void _stop_tick_timer();
     void _start_tick_timer();
 

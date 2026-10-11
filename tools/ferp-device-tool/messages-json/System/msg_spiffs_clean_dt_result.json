@@ -1,0 +1,13 @@
+{
+  "msg_id": "0x020F",
+  "direction": "resp",
+  "fields": [
+    { "name": "result",   "label": "Result (0 = OK)",           "type": "int32",  "default": 0 },
+    { "name": "files",    "label": "Files deleted",             "type": "uint32", "default": 0 },
+    { "name": "bytes",    "label": "Bytes deleted",             "type": "uint32", "default": 0 },
+    { "name": "t",        "label": "SPIFFS total (B)",          "type": "uint32", "default": 0 },
+    { "name": "u_before", "label": "Used before (B)",           "type": "uint32", "default": 0 },
+    { "name": "u_after",  "label": "Used after (B)",            "type": "uint32", "default": 0 },
+    { "name": "gc",       "label": "Garbage collect (0 = OK)",  "type": "int32",  "default": 0 }
+  ]
+}

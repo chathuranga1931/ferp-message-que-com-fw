@@ -55,6 +55,7 @@
 #include "msg_printer_btn.h"            // MsgPrinterBtn          (0x0901)
 #include "msg_fuel_pumped.h"            // MsgFuelPumped          (0x0010)
 #include "msg_nozzle_state.h"           // MsgNozzleState         (0x0011)
+#include "msg_pumping_status.h"         // MsgPumpingStatus       (0x0015)
 #include "msg_fuel_print_status.h"      // MsgFuelPrintStatus         (0x0012)
 #include "msg_totalizer_data.h"          // MsgTotalizerData           (0x0013)
 #include "msg_fuel_totalizer.h"         // MsgFuelTotalizer           (0x0014)
@@ -126,6 +127,7 @@
         MsgPrinterBtn::DESCRIPTOR,                                                \
         MsgFuelPumped::DESCRIPTOR,                                                \
         MsgNozzleState::DESCRIPTOR,                                               \
+        MsgPumpingStatus::DESCRIPTOR,                                             \
         MsgFuelPrintStatus::DESCRIPTOR,                                               \
         MsgTotalizerData::DESCRIPTOR,                                                 \
         MsgFuelTotalizer::DESCRIPTOR,                                                 \

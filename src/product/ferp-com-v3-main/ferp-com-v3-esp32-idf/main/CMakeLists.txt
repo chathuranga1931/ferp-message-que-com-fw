@@ -129,6 +129,7 @@ idf_component_register(
         "${D_MSGS}/fuel/msg_config_dt.cpp"
         "${D_MSGS}/fuel/msg_fuel_pumped.cpp"
         "${D_MSGS}/fuel/msg_nozzle_state.cpp"
+        "${D_MSGS}/fuel/msg_pumping_status.cpp"
         "${D_MSGS}/fuel/msg_printer_btn.cpp"
         "${D_MSGS}/fuel/msg_fuel_print_status.cpp"
         "${D_MSGS}/fuel/msg_totalizer_data.cpp"

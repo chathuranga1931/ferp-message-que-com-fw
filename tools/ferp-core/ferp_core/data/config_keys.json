@@ -31,7 +31,9 @@
         { "key": "0x4001", "name": "MQTT_HOST",           "type": "STRING",  "label": "Host",           "description": "MQTT broker hostname or IP" },
         { "key": "0x4002", "name": "MQTT_PORT",           "type": "UINT32",  "label": "Port",           "description": "MQTT broker port" },
         { "key": "0x4003", "name": "MQTT_USER",           "type": "STRING",  "label": "Username",       "description": "MQTT broker username" },
-        { "key": "0x4004", "name": "MQTT_PASSWORD",       "type": "STRING",  "label": "Password",       "description": "MQTT broker password" }
+        { "key": "0x4004", "name": "MQTT_PASSWORD",       "type": "STRING",  "label": "Password",       "description": "MQTT broker password" },
+        { "key": "0x4005", "name": "MQTT_PUMP_STATUS_EN", "type": "BOOL",    "label": "Pumping Status", "description": "Send live pumping values (MsgPumpingStatus evt) while a nozzle pumps", "device_types": ["COM"] },
+        { "key": "0x4006", "name": "MQTT_PUMP_STATUS_INT_S", "type": "UINT32", "label": "Pumping Status Gap (s)", "description": "Seconds between pumping status events per nozzle (minimum 5; lower values are treated as 5)", "device_types": ["COM"] }
       ]
     },
     {

@@ -476,7 +476,7 @@ esp_err_t display_longfeng_8_digit_init(QueueHandle_t *send_queue)
         .data6_io_num = GPIO_NUM_NC,
         .data7_io_num = GPIO_NUM_NC,
     }, &(const spi_slave_interface_config_t){
-        .mode = 0, // 0 for simulator, 2 for real device
+        .mode = 3, // real pump: clock idles high, data steady on the rising edge. ESP32 slave DMA needs mode 1/3 (modes 0/2 lose the last word = total digits 4..7)
         .spics_io_num = D1_IN_CS,
         .queue_size = 4,
         .flags = 0,
@@ -494,7 +494,7 @@ esp_err_t display_longfeng_8_digit_init(QueueHandle_t *send_queue)
         .data6_io_num = GPIO_NUM_NC,
         .data7_io_num = GPIO_NUM_NC,
     }, &(const spi_slave_interface_config_t){
-        .mode = 0, // 0 for simulator, 2 for real device
+        .mode = 3, // real pump: clock idles high, data steady on the rising edge. ESP32 slave DMA needs mode 1/3 (modes 0/2 lose the last word = total digits 4..7)
         .spics_io_num = D2_IN_CS,
         .queue_size = 4,
         .flags = 0,

@@ -196,6 +196,8 @@ void app_config_load_defaults(app_config_t *cfg)
     cfg->mqtt_port = 1883;
     strncpy(cfg->mqtt_user, "", sizeof(cfg->mqtt_user) - 1);
     strncpy(cfg->mqtt_password, "", sizeof(cfg->mqtt_password) - 1);
+    cfg->mqtt_pump_status_en = false;
+    cfg->mqtt_pump_status_interval_s = 5;
     
     cfg->display_type = 0;
     cfg->stabilize_delay_ms = 500;
@@ -233,6 +235,8 @@ static config_t k_config_table[] = {
     { CFG_KEY_MQTT_PORT,           "mqtt_port",     HSYS_TYPE_UINT32, &_app_config.mqtt_port,           sizeof(_app_config.mqtt_port)            },
     { CFG_KEY_MQTT_USER,           "mqtt_user",     HSYS_TYPE_STRING, _app_config.mqtt_user,            sizeof(_app_config.mqtt_user)            },
     { CFG_KEY_MQTT_PASSWORD,       "mqtt_pass",     HSYS_TYPE_STRING, _app_config.mqtt_password,        sizeof(_app_config.mqtt_password)        },
+    { CFG_KEY_MQTT_PUMP_STATUS_EN, "mqtt_pmp_en",   HSYS_TYPE_BOOL,   &_app_config.mqtt_pump_status_en, sizeof(_app_config.mqtt_pump_status_en)  },
+    { CFG_KEY_MQTT_PUMP_STATUS_INT_S,"mqtt_pmp_int", HSYS_TYPE_UINT32, &_app_config.mqtt_pump_status_interval_s, sizeof(_app_config.mqtt_pump_status_interval_s) },
     { CFG_KEY_STABILIZE_DELAY_MS,  "cptr_delay",    HSYS_TYPE_UINT32, &_app_config.stabilize_delay_ms,  sizeof(_app_config.stabilize_delay_ms)   },
     { CFG_KEY_LOG_UDP_ENABLED,     "en_udp_ser",    HSYS_TYPE_BOOL,   &_app_config.log_udp_enabled,     sizeof(_app_config.log_udp_enabled)      },
     { CFG_KEY_LOG_UDP_SERVER_IP,   "udp_srvr_ip",   HSYS_TYPE_STRING, _app_config.log_udp_server_ip,    sizeof(_app_config.log_udp_server_ip)    },
@@ -392,6 +396,7 @@ static const app_msg_codec_entry_t k_codec_table[] = {
     // ── Fuel / dispenser ─────────────────────────────────────────────────────
     { "MsgFuelPumped",           MSG_ID_FUEL_PUMPED,           MsgFuelPumped::from_json,           MsgFuelPumped::to_json          },
     { "MsgNozzleState",          MSG_ID_NOZZLE_STATE,          MsgNozzleState::from_json,          MsgNozzleState::to_json         },
+    { "MsgPumpingStatus",        MSG_ID_FUEL_PUMPING_STATUS,   MsgPumpingStatus::from_json,        MsgPumpingStatus::to_json       },
     { "MsgTotalizerData",        MSG_ID_TOTALIZER_DATA,        MsgTotalizerData::from_json,        MsgTotalizerData::to_json       },
     { "MsgFuelTotalizer",        MSG_ID_FUEL_TOTALIZER,        MsgFuelTotalizer::from_json,        MsgFuelTotalizer::to_json       },
 

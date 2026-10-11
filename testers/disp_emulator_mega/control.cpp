@@ -24,14 +24,14 @@ static const uint8_t c_watch_pins[] = { c_pin_btn_up, c_pin_btn_down, c_pin_btn_
 static const char *const c_watch_names[] = { "UP", "DOWN", "ENTER", "BACK", "NOZZLE", "PUMP" };
 static uint8_t watch_last[sizeof(c_watch_pins)];
 
-static const char *const c_mode_names[] = { "MENU", "SAN6", "CEN6", "CEN7", "C7CS", "WAY6", "HY8", "WAY2" };
+static const char *const c_mode_names[] = { "MENU", "SAN6", "CEN6", "CEN7", "C7CS", "WAY6", "HY8", "WAY2", "LF8" };
 static const char *mode_name(int8_t m) {
-    return (m >= CTL_SAN6 && m <= CTL_WAY2) ? c_mode_names[m] : "MENU";
+    return (m >= CTL_SAN6 && m <= CTL_LF8) ? c_mode_names[m] : "MENU";
 }
 const char *control_mode_name(int8_t m) { return mode_name(m); }
 static int8_t mode_from_name(const char *s) {
     if (!s) return -1;
-    for (int8_t m = CTL_SAN6; m <= CTL_WAY2; m++) if (!strcmp(s, c_mode_names[m])) return m;
+    for (int8_t m = CTL_SAN6; m <= CTL_LF8; m++) if (!strcmp(s, c_mode_names[m])) return m;
     return -1;
 }
 
@@ -58,7 +58,7 @@ void control_init() {
 int8_t control_boot_mode() {
     int8_t m = (boot_magic == c_boot_magic) ? boot_mode : -1;
     boot_magic = 0;
-    return (m >= CTL_SAN6 && m <= CTL_WAY2) ? m : -1;
+    return (m >= CTL_SAN6 && m <= CTL_LF8) ? m : -1;
 }
 
 void control_restart(int8_t start_mode) {
@@ -117,7 +117,8 @@ static void print_status() {
     Serial.print(F(" total=")); Serial.print(t);
     Serial.print(F(" step_ml=")); Serial.print(emu.step_ml);
     Serial.print(F(" ctl_nozzle=")); Serial.print(emu.remote_nozzle < 0 ? F("switch") : F("pc"));
-    Serial.print(F(" ctl_pump=")); Serial.println(emu.remote_pumping < 0 ? F("button") : F("pc"));
+    Serial.print(F(" ctl_pump=")); Serial.print(emu.remote_pumping < 0 ? F("button") : F("pc"));
+    Serial.print(F(" edge=")); Serial.println(emu.lf_slow ? F("SLOW") : emu.lf_edge_sim ? F("SIM") : F("PUMP"));
 }
 
 static void handle(char *cmd) {
@@ -128,13 +129,13 @@ static void handle(char *cmd) {
 
     if (!strcmp(verb, "PING")) { Serial.println(F("OK PONG")); return; }
     if (!strcmp(verb, "HELP")) {
-        Serial.println(F("OK HELP PING STATUS MODE<SAN6|CEN6|CEN7|C7CS|WAY6|HY8|WAY2> MENU NOZZLE<1|0|AUTO> PUMP<1|0|AUTO> PRICE<x100> VOLUME<ml> STEP<ml> BUTTON<UP|DOWN|ENTER|BACK> DEBUG<1|0>"));
+        Serial.println(F("OK HELP PING STATUS MODE<SAN6|CEN6|CEN7|C7CS|WAY6|HY8|WAY2|LF8> MENU NOZZLE<1|0|AUTO> PUMP<1|0|AUTO> PRICE<x100> VOLUME<ml> STEP<ml> BUTTON<UP|DOWN|ENTER|BACK> DEBUG<1|0> EDGE<PUMP|SIM|SLOW>"));
         return;
     }
     if (!strcmp(verb, "STATUS")) { print_status(); return; }
     if (!strcmp(verb, "MODE")) {
         int8_t m = mode_from_name(arg);
-        if (m < 0) { Serial.println(F("ERR MODE needs SAN6, CEN6, CEN7, C7CS, WAY6, HY8 or WAY2")); return; }
+        if (m < 0) { Serial.println(F("ERR MODE needs SAN6, CEN6, CEN7, C7CS, WAY6, HY8, WAY2 or LF8")); return; }
         Serial.print(F("OK MODE ")); Serial.println(mode_name(m));
         if (emu.mode == m) return;
         control_restart(m);                    // restart, then start that display type
@@ -179,6 +180,15 @@ static void handle(char *cmd) {
         if (v < 0) { Serial.println(F("ERR DEBUG needs 1 or 0")); return; }
         emu.debug = v;
         Serial.print(F("OK DEBUG ")); Serial.println(v);
+        return;
+    }
+    if (!strcmp(verb, "EDGE")) {
+        if (arg && !strcmp(arg, "PUMP")) { emu.lf_edge_sim = false; emu.lf_slow = false; }
+        else if (arg && !strcmp(arg, "SIM")) { emu.lf_edge_sim = true; emu.lf_slow = false; }
+        else if (arg && !strcmp(arg, "SLOW")) { emu.lf_edge_sim = false; emu.lf_slow = true; }
+        else { Serial.println(F("ERR EDGE needs PUMP, SIM or SLOW")); return; }
+        Serial.print(F("OK EDGE ")); Serial.println(arg);
+        set_last("EDGE", arg);
         return;
     }
     Serial.print(F("ERR unknown command ")); Serial.println(verb);

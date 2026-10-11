@@ -14,6 +14,7 @@
 #include "msg_nozzle_state.h"
 #include "msg_fuel_pumped.h"
 #include "msg_fuel_totalizer.h"
+#include "msg_pumping_status.h"
 #include "msg_timer_start.h"
 #include "msg_timer_stop.h"
 #include "msg_timer_alarm.h"
@@ -58,6 +59,37 @@ typedef struct {
     uint8_t nozzle_idx;
     bool    is_pressed;
 } _nozzle_btn_evt_t;
+
+// ---------------------------------------------------------------------------
+// Rejected frames — counted per nozzle, at most one summary line per interval.
+// A wrong display type, a DT decoder fault or a noisy cable can make every
+// frame fail process_data() (~100 frames/s).  Logging each one blocks the fuel
+// task on the UART (~7 ms per line) and starves every other task that logs,
+// so the device stops answering MQTT.
+// ---------------------------------------------------------------------------
+
+#ifndef FUEL_REJECT_LOG_INTERVAL_MS
+#define FUEL_REJECT_LOG_INTERVAL_MS 10000
+#endif
+
+static uint32_t           s_reject_count[FUEL_MAX_NOZZLES];
+static uint64_t           s_reject_log_ms[FUEL_MAX_NOZZLES];
+static app_display_data_t s_reject_last[FUEL_MAX_NOZZLES];
+
+// Logs the pending count for nozzle idx if the interval has passed (first rejection logs at once).
+static void _report_rejected_frames(uint8_t idx)
+{
+    if (s_reject_count[idx] == 0) return;
+    const uint64_t now_ms = pal_time_get_ms();
+    if (s_reject_log_ms[idx] != 0 && now_ms - s_reject_log_ms[idx] < FUEL_REJECT_LOG_INTERVAL_MS) return;
+    const app_display_data_t *d = &s_reject_last[idx];
+    MLOG("nozzle[%u] %lu frame(s) rejected in the last %lu s (type %d; last: vol=%.3f unit=%.2f total=%.2f)",
+         (unsigned)idx, (unsigned long)s_reject_count[idx],
+         (unsigned long)(s_reject_log_ms[idx] ? (now_ms - s_reject_log_ms[idx]) / 1000 : 0), (int)d->fuel_type,
+         d->volume_lx1000 / 1000.0, d->unit_pricex100 / 100.0, d->total_pricex100 / 100.0);
+    s_reject_count[idx]  = 0;
+    s_reject_log_ms[idx] = now_ms;
+}
 
 // ---------------------------------------------------------------------------
 // Singleton
@@ -187,6 +219,7 @@ void ModuleFuel::on_msg_received(const hsys_msg_t &msg)
                 const app_config_t *cfg = app_config_get();
                 if (cfg) _dt_log_rate = cfg->dt_log_rate;
             }
+            _load_pump_status_config();
             break;
 
         case MsgConfigUpdated::ID: {
@@ -197,6 +230,9 @@ void ModuleFuel::on_msg_received(const hsys_msg_t &msg)
                     _dt_log_rate = cfg->dt_log_rate;
                     MLOG("dt_log_rate updated: %lu", (unsigned long)_dt_log_rate);
                 }
+            }
+            else if (key == CFG_KEY_MQTT_PUMP_STATUS_EN || key == CFG_KEY_MQTT_PUMP_STATUS_INT_S) {
+                _load_pump_status_config();
             }
             else if (key == CFG_KEY_STABILIZE_DELAY_MS) {
                 const app_config_t *cfg = app_config_get();
@@ -649,11 +685,14 @@ void ModuleFuel::_process_queues()
             }
 
             bool is_valid = pump_drivers[dtype].process_data(&display_data[idx]);
-            if (!is_valid) 
+            if (!is_valid)
             {
-                MLOG("nozzle[%u] process_data rejected frame", (unsigned)idx);
+                s_reject_count[idx]++;
+                s_reject_last[idx] = display_data[idx];
+                _report_rejected_frames(idx);
                 continue;
             }
+            _report_rejected_frames(idx);       // rejections pending from before this valid frame
 
             pump_drivers[dtype].data_validate(&display_data[idx], idx);                
 
@@ -708,6 +747,7 @@ void ModuleFuel::_process_queues()
                     nozzle_state_t ns = NOZZLE_PUMPING;
                     _publish_nozzle_state(idx, ns);
                     MLOG("nozzle[%u] state= PUMPING", (unsigned)idx);
+                    _pump_status_last_ms[idx] = pal_time_get_ms();   // first status one interval after the start
                 }
                 else
                 {
@@ -715,6 +755,17 @@ void ModuleFuel::_process_queues()
                     // Pumping_State_Nozzle_Off_Waiting_To_Stable — transient debounce
                     // states that must not generate cloud events.  Logging only.
                     MLOG("nozzle[%u] state= (transient %d, no event)", (unsigned)idx, (int)state);
+                }
+            }
+
+            // Live values every N seconds while this nozzle pumps (each nozzle on its own timer)
+            if (_pump_status_en && state == Pumping_State_Pumping)
+            {
+                const uint64_t now_ms = pal_time_get_ms();
+                if (now_ms - _pump_status_last_ms[idx] >= (uint64_t)_pump_status_interval_s * 1000ULL)
+                {
+                    _pump_status_last_ms[idx] = now_ms;
+                    _publish_pumping_status(idx, display_data[idx]);
                 }
             }
 
@@ -766,6 +817,39 @@ void ModuleFuel::_publish_fuel_pumped(uint8_t nozzle_idx, const nozzle_event_t &
     hsys_msg_t *msg = create_typed<MsgFuelPumped>(p);
     if (!msg) { log_error("create_typed<MsgFuelPumped> failed"); return; }
     publish_wait(msg, FUEL_EVENT_PUBLISH_WAIT_MS);
+}
+
+// The status uplink must not load the link more often than this, whatever the config says.
+#ifndef FUEL_PUMP_STATUS_MIN_INTERVAL_S
+#define FUEL_PUMP_STATUS_MIN_INTERVAL_S 5
+#endif
+
+void ModuleFuel::_load_pump_status_config()
+{
+    const app_config_t *cfg = app_config_get();
+    if (!cfg) return;
+    _pump_status_en = cfg->mqtt_pump_status_en;
+    _pump_status_interval_s = cfg->mqtt_pump_status_interval_s < FUEL_PUMP_STATUS_MIN_INTERVAL_S
+                                  ? FUEL_PUMP_STATUS_MIN_INTERVAL_S : cfg->mqtt_pump_status_interval_s;
+    MLOG("pumping status: %s, every %lu s%s", _pump_status_en ? "on" : "off", (unsigned long)_pump_status_interval_s,
+         cfg->mqtt_pump_status_interval_s < FUEL_PUMP_STATUS_MIN_INTERVAL_S ? " (config below the minimum)" : "");
+}
+
+void ModuleFuel::_publish_pumping_status(uint8_t nozzle_idx, const app_display_data_t &d)
+{
+    time_t epoch = 0;
+    pal_time_get_epoch_time(&epoch);
+
+    MsgPumpingStatus::Payload p{};
+    p.nozzle_idx      = nozzle_idx;
+    p.vol_lx1000      = (uint32_t)d.volume_lx1000;
+    p.unit_pricex100  = (uint32_t)d.unit_pricex100;
+    p.total_pricex100 = (uint32_t)d.total_pricex100;
+    p.time_stamp      = (uint32_t)epoch;
+
+    hsys_msg_t *msg = create_typed<MsgPumpingStatus>(p);
+    if (!msg) { log_error("create_typed<MsgPumpingStatus> failed"); return; }
+    publish(msg);       // live value: a dropped one is replaced by the next, so no wait
 }
 
 void ModuleFuel::_publish_totalizer_event(uint32_t nozzle_idx, uint64_t totalizer_valuex1000)

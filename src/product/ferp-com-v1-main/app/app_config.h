@@ -54,6 +54,8 @@ typedef struct {
     uint32_t mqtt_port;
     char     mqtt_user[32];
     char     mqtt_password[64];
+    bool     mqtt_pump_status_en;          ///< Send MsgPumpingStatus evts while pumping
+    uint32_t mqtt_pump_status_interval_s;  ///< Gap between them (s); the device never goes below 5
 
     // Hardware
     uint32_t display_type;
@@ -118,6 +120,8 @@ typedef struct {
 #define CFG_KEY_MQTT_PORT              0x4002u
 #define CFG_KEY_MQTT_USER              0x4003u
 #define CFG_KEY_MQTT_PASSWORD          0x4004u
+#define CFG_KEY_MQTT_PUMP_STATUS_EN    0x4005u
+#define CFG_KEY_MQTT_PUMP_STATUS_INT_S 0x4006u
 
 // Hardware
 #define CFG_KEY_DISPLAY_TYPE           0x6001u

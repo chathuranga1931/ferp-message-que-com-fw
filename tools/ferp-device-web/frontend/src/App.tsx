@@ -117,6 +117,18 @@ export default function App() {
     } catch { /* storage unavailable */ }
     setPage("logs");
   }, []);
+  // "device busy" pop-up (api.ts raises it for HTTP 423); auto-hides after 6 s
+  const [busyMsg, setBusyMsg] = useState<string | null>(null);
+  useEffect(() => {
+    let t: number | undefined;
+    const on = (e: Event) => {
+      setBusyMsg((e as CustomEvent<string>).detail);
+      window.clearTimeout(t);
+      t = window.setTimeout(() => setBusyMsg(null), 6000);
+    };
+    window.addEventListener("ferp-busy", on);
+    return () => { window.removeEventListener("ferp-busy", on); window.clearTimeout(t); };
+  }, []);
   const device = devices.find((d) => d.id === deviceId) ?? null;
   const versionMismatch = serverApi !== null && serverApi !== API_VERSION;
 
@@ -204,6 +216,13 @@ export default function App() {
       {dialogId && devices.some((d) => d.id === dialogId) && (
         <DeviceDialog device={devices.find((d) => d.id === dialogId)!} devices={devices} onClose={() => setDialogId(null)}
                       onChanged={reloadDevices} onLogs={openLogs} onWorkspace={openWorkspace} onOta={openOta} onSheds={openSheds} />
+      )}
+      {busyMsg && (
+        <div className="busy-pop" role="alertdialog" aria-live="assertive" aria-label="Device busy">
+          <div className="busy-pop-title">Device busy</div>
+          <div className="busy-pop-text">{busyMsg}</div>
+          <button className="btn primary" onClick={() => setBusyMsg(null)}>OK</button>
+        </div>
       )}
     </div>
   );

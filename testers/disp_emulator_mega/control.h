@@ -6,7 +6,7 @@
 //   PING                         -> OK PONG
 //   HELP                         -> OK HELP <command list>
 //   STATUS                       -> OK STATUS mode=.. nozzle=.. pump=.. vol_ml=.. price=.. total=.. step_ml=.. ctl=..
-//   MODE SAN6|CEN6|CEN7|C7CS|WAY6|HY8|WAY2 -> OK MODE <m>  start that display type (restarts the board when switching)
+//   MODE SAN6|CEN6|CEN7|C7CS|WAY6|HY8|WAY2|LF8 -> OK MODE <m>  start that display type (restarts the board when switching)
 //   MENU                         -> OK MENU           back to the display-type menu (same as the Back button)
 //   NOZZLE 1|0|AUTO              -> OK NOZZLE <v>     nozzle up / down from the PC; AUTO = back to the switch (pin 52)
 //   PUMP 1|0|AUTO                -> OK PUMP <v>       pumping on / off from the PC; AUTO = back to the button (pin 50)
@@ -15,11 +15,14 @@
 //   STEP <ml>                    -> OK STEP <n>       volume added every 100 ms while pumping
 //   BUTTON UP|DOWN|ENTER|BACK    -> OK BUTTON <b>     press a front-panel button from the PC
 //   DEBUG 1|0                    -> OK DEBUG <v>      the drivers' raw buffer printouts (off by default)
+//   EDGE PUMP|SIM|SLOW           -> OK EDGE <v>       LF8 bit timing: PUMP = real pump (default), SIM = data
+//                                                    changes while the clock is low; SLOW = PUMP order, ~4 us/bit
+//                                                    changes while the clock is low (old simulator)
 // Errors: ERR <reason>.   Unprompted events: EVT <what> (READY, MODE, MENU, BUTTON, NOZZLE, PUMP, ZERO).
 
 #include "Arduino.h"
 
-enum ctl_mode_t : uint8_t { CTL_MENU = 0, CTL_SAN6, CTL_CEN6, CTL_CEN7, CTL_C7CS, CTL_WAY6, CTL_HY8, CTL_WAY2 };
+enum ctl_mode_t : uint8_t { CTL_MENU = 0, CTL_SAN6, CTL_CEN6, CTL_CEN7, CTL_C7CS, CTL_WAY6, CTL_HY8, CTL_WAY2, CTL_LF8 };
 
 struct emu_state_t {
     ctl_mode_t mode;
@@ -35,6 +38,8 @@ struct emu_state_t {
     bool dirty;             // values changed by the PC: the driver rebuilds its display buffer
     bool debug;             // raw buffer printouts on the serial port
     char last_event[22];    // shown on the screen, e.g. "PUMP button"
+    bool lf_edge_sim;       // LF8: old-simulator bit timing instead of the real pump's
+    bool lf_slow;           // LF8: ~4 us per bit instead of ~0.6 us (EDGE SLOW)
 };
 
 extern emu_state_t emu;
@@ -51,4 +56,4 @@ void control_restart(int8_t start_mode);      // restart the board, then start t
 void control_event(const char *what, const char *detail = nullptr);
 void control_screen(bool force = false);      // running-mode status screen (at most 4 updates / s)
 uint32_t control_total();                     // sale total x100
-const char *control_mode_name(int8_t mode);   // SAN6, CEN6, CEN7, C7CS, WAY6, HY8, WAY2, MENU
+const char *control_mode_name(int8_t mode);   // SAN6, CEN6, CEN7, C7CS, WAY6, HY8, WAY2, LF8, MENU

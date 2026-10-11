@@ -111,4 +111,4 @@
 #define FERP_COM_2308   1
 #define DISTAP_ESP07
 
-#define TEST_PUMP_BUILD //disable for releases.   
+// #define TEST_PUMP_BUILD //disable for releases.   

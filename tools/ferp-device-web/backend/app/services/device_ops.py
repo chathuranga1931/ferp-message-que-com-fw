@@ -29,7 +29,7 @@ from ..ports import DeviceRepository, EventBus
 from .audit import Audit, is_secret
 from .catalog import Catalog
 from .console import Console
-from .mqtt_hub import MqttHub, NotConnectedError, ResponseTimeout
+from .mqtt_hub import DeviceBusyError, MqttHub, NotConnectedError, ResponseTimeout
 
 log = logging.getLogger("ferp.device")
 
@@ -116,7 +116,7 @@ class DeviceOps:
         data = encode_value(value, ck.type_id)
         base = self.base(dev)
         verified, got = True, None
-        with self._hub.device_lock(base):
+        with self._hub.claim(base, f"writing 0x{key:04X}"):
             self._hub.publish_cmd(base, "MsgConfigSet",
                                   {"key": key, "type": ck.type_id, "size": len(data), "data": data})
             expected = decode_value(data, ck.type_id)
@@ -190,7 +190,9 @@ class DeviceOps:
     def _start_job(self, dev: Device, kind: str, items: list, fn) -> str:
         if not self._hub.connected:
             raise NotConnectedError("MQTT is not connected")
-        self.base(dev)   # validate addressing before starting
+        base = self.base(dev)   # validate addressing before starting
+        if self._hub.is_busy(base):
+            raise DeviceBusyError(f"Device {dev.label} is busy with another request — wait for it to finish, then try again")
         job_id = uuid.uuid4().hex[:10]
         job = {"job_id": job_id, "device_id": dev.id, "kind": kind, "total": len(items),
                "done": 0, "running": True, "cancel": threading.Event()}
@@ -205,6 +207,21 @@ class DeviceOps:
         pub = lambda t, **kw: self._bus.publish({"type": t, "job_id": job["job_id"], "device_id": dev.id,
                                                  "kind": job["kind"], **kw})
         pub("job.progress", done=0, total=job["total"])
+        try:
+            # the whole batch holds the device, so other requests get "busy" instead of interleaving
+            with self._hub.claim(self.base(dev), f"{job['kind']} {job['total']} key(s)"):
+                errors, cancelled = self._run_items(job, tid, items, fn, pub)
+        except DeviceBusyError as exc:
+            errors, cancelled = [str(exc)], False
+            self._console.log("error", f"{job['kind']}: {exc}", device=tid)
+        job["running"] = False
+        pub("job.done", ok=not errors and not cancelled, cancelled=cancelled, errors=errors)
+        # keep the job table small
+        for jid in [j for j, v in self._jobs.items() if not v["running"]][:-50]:
+            self._jobs.pop(jid, None)
+
+    def _run_items(self, job: dict, tid: str, items: list, fn, pub) -> tuple[list, bool]:
+        errors, cancelled = [], False
         for item in items:
             if job["cancel"].is_set():
                 cancelled = True
@@ -222,8 +239,4 @@ class DeviceOps:
                 self._console.log("error", f"{job['kind']} {label}: {exc}", device=tid)
             job["done"] += 1
             pub("job.progress", done=job["done"], total=job["total"])
-        job["running"] = False
-        pub("job.done", ok=not errors and not cancelled, cancelled=cancelled, errors=errors)
-        # keep the job table small
-        for jid in [j for j, v in self._jobs.items() if not v["running"]][:-50]:
-            self._jobs.pop(jid, None)
+        return errors, cancelled

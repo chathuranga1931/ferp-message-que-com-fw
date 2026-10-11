@@ -17,7 +17,8 @@ import logging
 import random
 import threading
 import time
-from typing import Callable, Optional
+from contextlib import contextmanager
+from typing import Callable, Iterator, Optional
 
 import paho.mqtt.client as mqtt
 from paho.mqtt.enums import CallbackAPIVersion
@@ -38,6 +39,15 @@ class NotConnectedError(RuntimeError):
 
 class ResponseTimeout(TimeoutError):
     pass
+
+
+class DeviceBusyError(RuntimeError):
+    """Another request to the same device is still waiting for its reply."""
+
+
+# A request already holding the device gets this long to finish before a new one is refused.
+# Short on purpose: users get "device busy" at once instead of a queue of late commands.
+BUSY_GRACE_S = 0.3
 
 
 class _Waiter:
@@ -78,6 +88,7 @@ class MqttHub:
         self._waiters_lock = threading.Lock()
         self._device_locks: dict[str, threading.RLock] = {}
         self._device_locks_lock = threading.Lock()
+        self._busy_with: dict[str, str] = {}        # base → what the device is busy with (for the message)
         self._listeners: list[Listener] = []
 
     # ── status ────────────────────────────────────────────────────────────────
@@ -222,7 +233,7 @@ class MqttHub:
         client = self._client
         if client is None or not self.connected:
             raise NotConnectedError("MQTT is not connected")
-        with self.device_lock(base):      # never interleave with another device's pending request
+        with self.claim(base, msg):       # never interleave with another pending request to this device
             seq = self._next_seq()
             hop_idx, hash_hex = sign(seq)
             payload = json.dumps({"seq": seq, "hop_idx": hop_idx, "hash": hash_hex, "msg": msg, "data": data})
@@ -235,7 +246,7 @@ class MqttHub:
                 key: Optional[int] = None, timeout: float = 5.0) -> dict:
         """Send a command and block until the matching response arrives."""
         topic_id = base.rsplit("/", 1)[-1]
-        with self.device_lock(base):
+        with self.claim(base, msg):
             # The seq is only known once published, so register the waiter under
             # the lock with a placeholder and fill the seq in before any reply can match.
             waiter = _Waiter(topic_id, -1, expect_msg, key)
@@ -253,6 +264,35 @@ class MqttHub:
             finally:
                 with self._waiters_lock:
                     self._waiters.remove(waiter)
+
+    @contextmanager
+    def claim(self, base: str, what: str = "a request") -> Iterator[None]:
+        """Hold the device for one operation (re-entrant for the holder's thread).
+
+        Raises DeviceBusyError if another thread holds it for longer than BUSY_GRACE_S,
+        so callers fail fast instead of queuing behind a slow or unreachable device."""
+        lock = self.device_lock(base)
+        if not lock.acquire(timeout=BUSY_GRACE_S):
+            busy = self._busy_with.get(base, "another request")
+            raise DeviceBusyError(f"Device {base.rsplit('/', 1)[-1]} is busy ({busy}) — "
+                                  "wait for it to finish, then try again")
+        outer = base not in self._busy_with
+        if outer:
+            self._busy_with[base] = what
+        try:
+            yield
+        finally:
+            if outer:
+                self._busy_with.pop(base, None)
+            lock.release()
+
+    def is_busy(self, base: str) -> bool:
+        """True when another thread holds the device right now."""
+        lock = self.device_lock(base)
+        if lock.acquire(blocking=False):
+            lock.release()
+            return False
+        return True
 
     def device_lock(self, base: str) -> threading.RLock:
         """One outstanding request per device: the firmware echoes only the last cmd seq.

@@ -23,7 +23,7 @@ from ..ports import DeviceRepository, DocumentStore, EventBus
 from .catalog import Catalog
 from .console import Console
 from .device_ops import DeviceOps
-from .mqtt_hub import MqttHub
+from .mqtt_hub import DeviceBusyError, MqttHub
 
 log = logging.getLogger("ferp.fleet")
 
@@ -71,11 +71,18 @@ class Fleet:
                 field = next((f for k, _, f in self._catalog.devinfo_keys if k == data.get("key")), None)
                 if field:
                     e["info"][field] = str(data.get("value", ""))
-            elif payload.get("msg") in ("MsgNozzleState", "MsgFuelPumped") and "nozzle_idx" in data:
-                # Fleet "Pump forecourt" view: last state and last sale of each nozzle
+            elif payload.get("msg") in ("MsgNozzleState", "MsgFuelPumped", "MsgPumpingStatus") and "nozzle_idx" in data:
+                # Fleet "Pump forecourt" view: last state, live values while pumping, last sale of each nozzle
                 noz = e.setdefault("nozzles", {}).setdefault(str(data["nozzle_idx"]), {})
                 if payload["msg"] == "MsgNozzleState":
                     noz.update(state=data.get("state"), state_ts=now)
+                elif payload["msg"] == "MsgPumpingStatus":
+                    # sent every N s while pumping (device config 0x4005 / 0x4006)
+                    noz.update(live_l=(data.get("vol_lx1000") or 0) / 1000,
+                               live_total=(data.get("total_pricex100") or 0) / 100,
+                               live_price=(data.get("unit_pricex100") or 0) / 100, live_ts=now)
+                    if noz.get("state") != 1:              # the PUMPING state event was missed
+                        noz.update(state=1, state_ts=now)
                 else:
                     noz.update(last_l=(data.get("vol_lx1000") or 0) / 1000,
                                last_total=(data.get("total_pricex100") or 0) / 100,
@@ -145,6 +152,8 @@ class Fleet:
         try:
             self._ops.read_devinfo(dev, fw_key, timeout=self._get_config().fleet.probe_timeout_s)
             result = {"ts": time.time(), "ok": True, "rtt_ms": int((time.time() - t0) * 1000)}
+        except DeviceBusyError:
+            return                              # someone is talking to it — it is not unreachable
         except Exception as exc:
             result = {"ts": time.time(), "ok": False, "error": str(exc)}
         with self._lock:

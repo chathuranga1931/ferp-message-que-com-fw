@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 
 from ..container import Container
 from ..models import Device
-from ..services.mqtt_hub import NotConnectedError
+from ..services.mqtt_hub import DeviceBusyError, NotConnectedError
 
 
 def container(request: Request) -> Container:
@@ -54,6 +54,8 @@ def guard(fn, *args, **kwargs):
     """Map service exceptions to HTTP errors."""
     try:
         return fn(*args, **kwargs)
+    except DeviceBusyError as exc:           # the UI shows this as a pop-up
+        raise HTTPException(423, str(exc))
     except NotConnectedError as exc:
         raise HTTPException(409, str(exc))
     except KeyError as exc:

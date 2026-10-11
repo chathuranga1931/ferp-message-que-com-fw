@@ -577,3 +577,12 @@ td > .type-badge:first-child { margin-left: 0; }
   .side-flyout-head, .side-more { display: none; }
 }
 @media (prefers-reduced-motion: reduce) { .sidebar { transition: none; } }
+
+/* device busy pop-up (App.tsx) */
+.busy-pop { position: fixed; top: calc(16px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%);
+  z-index: 1000; width: min(420px, calc(100vw - 32px)); background: var(--surface); color: var(--text);
+  border: 1px solid var(--warn); border-radius: var(--radius); box-shadow: 0 8px 28px rgba(0,0,0,.25);
+  padding: 14px 16px; display: grid; gap: 8px; }
+.busy-pop-title { font-weight: 600; color: var(--warn); }
+.busy-pop-text { font-size: 13px; line-height: 1.4; }
+.busy-pop button { justify-self: end; }

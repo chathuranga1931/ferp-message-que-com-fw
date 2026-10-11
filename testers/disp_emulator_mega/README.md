@@ -291,8 +291,9 @@ Ported from `esp-device-firmware-new/display_simulator/` and mapped onto this bo
 | WAYNE-6-DIGIT | `WAY6` | 5 | fixed 51-byte timed sequence, 7-segment, price/total 0.1, volume 0.01, 95 ms | ✔ 1.56 L × 423.0 = 659.8 decoded (needs the COM-firmware Wayne scaling fix, below) |
 | HONGYANG-8-DIGIT | `HY8` | 4 | 14 byte pairs on SDATA1 + SDATA2 (type 2 timing), start/stop digit = nozzle, 40 ms | ✔ 1.625 L × 423.00 = 687.37 decoded exactly |
 | WAYNE-6-DIGIT-2 | `WAY2` | 8 | built from the DT decoder (no simulator): SPI mode 0, FF FF sync at +40 ms, then volume (0.001), total (0.1), 0x20, 0x10 + rate (0.1, own segment table) at +60 ms, one cycle per 200 ms; default price 1.00 | ✔ 1.625 L × 1.00 = 1.6 and 1.75 L × 313.0 = 547.7 decoded (ESP32 DT only — the ESP07 DT has no type 8) |
+| LONGFENG-8-DIGIT | `LF8` | 7 | from logic-analyser captures of a real pump: 24 bytes of 7-segment (price 0.01, volume 0.001, total 0.01, least significant digit first, dp = bit7), clock idles high with short low pulses, RCLK low pulse after each packet, 5 ms period, default price 309.00; `EDGE PUMP` (default) / `SIM` / `SLOW` select the bit timing | on DT 1.0.0.9 (SPI mode 0): price and volume decode, total loses digits 4..7 (last DMA word) so main rejects the frames; needs the DT in SPI mode 3 (test build 3.1.999.1) |
 
-Defaults: price 423.00 (`PRICE` to change), step 125 mL per 100 ms (Wayne 120 mL, as its volume has 0.01 L resolution).
+Defaults: price 423.00 (`PRICE` to change; Longfeng 309.00), step 125 mL per 100 ms (Wayne 120 mL, as its volume has 0.01 L resolution).
 
 **Wayne:** the DT (ESP07 and ESP32) sends Wayne values as raw display counts (price 4230 for 423.0, volume
 156 for 1.56 L, total 6598 for 659.8). The COM firmware used to take them as ×100 / ×1000 values and rejected

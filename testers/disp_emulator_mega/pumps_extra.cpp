@@ -327,3 +327,70 @@ void wayne2_run() {
         w2_phase = 0;
     }
 }
+
+// ── LONGFENG-8 (device display type 7) ──────────────────────────────────────
+// From the logic-analyser captures of a real pump (LangFeng/Pumping-309.0-1.25l) and the DT decoder
+// (distap-esp32/components/longfeng/longfeng_8_digit.c).  24 bytes MSB first on SCLK (pin 2) / SDATA1 (pin 3),
+// then an RCLK low pulse (pin 6); one packet every ~5 ms.  Clock idles HIGH with short low pulses.
+// Bytes, least significant digit first: [0..7] unit price (0.01, 5 digits used), [8..15] volume (0.001),
+// [16..23] total (0.01).  Standard 7-segment codes (bit0 = a .. bit6 = g), decimal point = bit7, blank = 0x00;
+// digits up to the decimal point are always shown (0.100 = BF 06 3F 3F).
+// Real pump: data changes just after the rising edge, so it is steady on both clock edges.
+// EDGE SIM: data changes while the clock is low, valid only at the rising edge (worst case of the old
+// simulator) — the DT must decode the PUMP timing; SIM shows whether its SPI mode depends on the edge.
+
+static const uint8_t LF_SEG[10] = { 0x3F, 0x06, 0x5B, 0x4F, 0x66, 0x6D, 0x7D, 0x07, 0x7F, 0x6F };
+
+void longfeng8_init() {
+    set_defaults(CTL_LF8, 30900, 125);       // the captured pump: 309.00
+    d1(0); clk(1); rclk(1);
+}
+
+// value -> 8 codes, least significant first, decimal point on digit dp_pos; blank above the point once v is 0
+static void lf_digits(uint32_t v, uint8_t *out, uint8_t dp_pos) {
+    for (uint8_t i = 0; i < 8; i++) {
+        if (v || i <= dp_pos) { out[i] = LF_SEG[v % 10]; v /= 10; }
+        else out[i] = 0x00;
+        if (i == dp_pos) out[i] |= 0x80;
+    }
+}
+
+static void lf_byte(uint8_t b) {
+    if (emu.lf_slow) {
+        for (uint8_t i = 0; i < 8; i++) {      // PUMP order, slowed down: data, 2 us, low 1 us, high
+            d1(b & 0x80); b <<= 1;
+            delayMicroseconds(2);
+            clk(0); delayMicroseconds(1);
+            clk(1); delayMicroseconds(1);
+        }
+    } else if (!emu.lf_edge_sim) {
+        for (uint8_t i = 0; i < 8; i++) {      // real pump: data, then a short low pulse (~190 ns)
+            d1(b & 0x80); b <<= 1;
+            __asm__ __volatile__("nop\n\tnop\n\t");
+            clk(0);
+            __asm__ __volatile__("nop\n\t");
+            clk(1);
+        }
+    } else {
+        for (uint8_t i = 0; i < 8; i++) {      // old-simulator worst case: data changes while the clock is low
+            clk(0);
+            d1(b & 0x80); b <<= 1;
+            clk(1);
+            __asm__ __volatile__("nop\n\tnop\n\t");
+        }
+    }
+    delayMicroseconds(1);                      // short gap between bytes, as on the pump
+}
+
+void longfeng8_run() {
+    pump_common();
+    if (!frame_due(5)) return;
+    uint8_t pkt[24];
+    lf_digits(emu.unit_price, pkt, 2);
+    lf_digits(emu.volume_ml, pkt + 8, 3);
+    lf_digits(control_total(), pkt + 16, 2);
+    pkt[5] = pkt[6] = pkt[7] = 0x00;           // price uses 5 digits; the pump leaves the top 3 blank
+    for (uint8_t i = 0; i < 24; i++) lf_byte(pkt[i]);
+    d1(0);
+    rclk(0); delayMicroseconds(2); rclk(1);    // falling edge: the DT restarts its 1 ms quiet timer
+}

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
 import { useAuth } from "../auth";
 import { compareVersions } from "../components/BundlePicker";
@@ -41,6 +41,101 @@ function latestFor(r: FleetRow, active: Firmware[], cfg: AppConfig | null): stri
 }
 
 const NOZZLE_STATE: Record<string, string> = { "0": "idle", "1": "pumping", "2": "pumped", IDLE: "idle", PUMPING: "pumping", PUMPED: "pumped" };
+
+type NozzleInfo = NonNullable<FleetRow["nozzles"]>[string];
+const TICK_MS = 500;
+const money = (v: number) => v.toLocaleString("en-LK", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+// Counting display for one sale.  The device sends live values every N s while pumping
+// (MsgPumpingStatus); instead of jumping to each value, the tile counts up to it in 500 ms
+// steps spread over one interval, so it keeps moving like the pump's own display.
+//   PUMPING state   -> reset to 0 (or the latest value, if the page opened mid-sale)
+//   each status     -> count from what is shown now to the new value over the gap since the last one
+//   PUMPED / IDLE   -> keep counting to the last value received
+//   sale event      -> stop and show the final sale values (MsgFuelPumped)
+interface Anim {
+  start: number;                    // state_ts of the PUMPING state this sale started with
+  sample: number;                   // live_ts of the last status used
+  saleSeen: boolean;
+  litres: number; total: number;    // shown now
+  toL: number; toT: number;         // counting towards
+  rateL: number; rateT: number;     // per second
+  price?: number;
+}
+
+function useSaleCounter(n: NozzleInfo | undefined, pumping: boolean): Anim | null {
+  const ref = useRef<Anim | null>(null);
+  const [, redraw] = useState(0);
+  const a = ref.current;
+
+  // a new sale: PUMPING with a state_ts we have not started from
+  if (pumping && n?.state_ts !== undefined && (!a || a.start !== n.state_ts)) {
+    const cur = n.live_ts !== undefined && n.live_ts >= n.state_ts - 1;     // page opened mid-sale
+    ref.current = {
+      start: n.state_ts, sample: cur ? n.live_ts! : n.state_ts, saleSeen: false,
+      litres: cur ? n.live_l ?? 0 : 0, total: cur ? n.live_total ?? 0 : 0,
+      toL: cur ? n.live_l ?? 0 : 0, toT: cur ? n.live_total ?? 0 : 0, rateL: 0, rateT: 0,
+      price: cur ? n.live_price : n.last_price,
+    };
+  }
+  const c = ref.current;
+  if (c && n && !c.saleSeen) {
+    // a new status of this sale: count from what is shown to it, over the gap since the previous one
+    if (n.live_ts !== undefined && n.live_ts > c.sample && n.live_ts >= c.start - 1) {
+      const gap = Math.max(1, n.live_ts - c.sample);
+      c.toL = n.live_l ?? c.toL; c.toT = n.live_total ?? c.toT; c.price = n.live_price ?? c.price;
+      c.rateL = Math.max(0, (c.toL - c.litres) / gap); c.rateT = Math.max(0, (c.toT - c.total) / gap);
+      c.sample = n.live_ts;
+    }
+    // the sale event of this sale: final values, stop counting
+    if (n.last_ts !== undefined && n.last_ts >= c.start) {
+      c.saleSeen = true;
+      c.litres = n.last_l ?? c.toL; c.total = n.last_total ?? c.toT; c.price = n.last_price ?? c.price;
+    }
+  }
+
+  const counting = !!c && !c.saleSeen && (c.litres < c.toL || c.total < c.toT);
+  useEffect(() => {
+    if (!counting) return;
+    const t = window.setInterval(() => {
+      const x = ref.current;
+      if (!x || x.saleSeen) return;
+      x.litres = Math.min(x.toL, x.litres + x.rateL * TICK_MS / 1000);
+      x.total = Math.min(x.toT, x.total + x.rateT * TICK_MS / 1000);
+      redraw((k) => k + 1);
+    }, TICK_MS);
+    return () => window.clearInterval(t);
+  }, [counting]);
+
+  return c;
+}
+
+function PumpNozzle({ n, label, now }: { n?: NozzleInfo; label: string; now: number }) {
+  const state = n?.state !== undefined ? NOZZLE_STATE[String(n.state)] ?? String(n.state) : null;
+  const sale = useSaleCounter(n, state === "pumping");
+  // counting: from the PUMPING state until this sale's MsgFuelPumped (or 15 s after the stop
+  // without one, e.g. nozzle lifted but nothing pumped); otherwise the last sale
+  const stoppedFor = state !== "pumping" && n?.state_ts !== undefined ? now - n.state_ts : 0;
+  const active = !!sale && !sale.saleSeen && (n?.state_ts ?? 0) >= sale.start && stoppedFor < 15;
+  const total = active ? sale!.total : n?.last_total;
+  const litres = active ? sale!.litres : n?.last_l;
+  const price = active ? sale!.price : n?.last_price;
+  const caption = active
+    ? state === "pumping" ? (n?.live_ts !== undefined && n.live_ts >= sale!.start - 1 ? `live · updated ${fmtAgo(n.live_ts, now)}` : "pumping · waiting for the first update")
+      : "finishing · waiting for the sale"
+    : n?.last_ts ? `last sale ${fmtAgo(n.last_ts, now)}` : "no sale seen yet";
+  return (
+    <div className={`fl-noz ${state === "pumping" ? "pumping" : ""}`}>
+      <span className="fl-pid">{label}</span>
+      <span className={`fl-noz-state ${state ?? "unknown"}`}>{state ?? "no live data"}</span>
+      <span className="fl-lit"><small className="fl-cur">Rs</small>{total !== undefined ? money(total) : "—"}</span>
+      <span className="fl-vol">{litres !== undefined ? `${litres.toFixed(2)} L` : "— L"}
+        {" · "}{price !== undefined ? `Rs ${money(price)}/L` : "Rs —/L"}</span>
+      <span className="muted small">{caption}</span>
+      {state === "pumping" && <span className="fl-flow" />}
+    </div>
+  );
+}
 
 /** Filter state that survives switching tabs (the page unmounts) for this browser session. */
 function useSessionState<T>(key: string, fallback: T): [T, (v: T) => void] {
@@ -269,23 +364,9 @@ export default function Fleet({ devices, onOpen, onOta, onLogs, onDevicesChanged
               const sel = !!(r.device_id && selected.has(r.device_id));
               const ids = [r.pump_id_1, r.pump_id_2].filter(Boolean) as string[];
               const printer = (r.device_type ?? "").toLowerCase() === "printer";
-              const nozzle = (i: number) => {
-                const n = r.nozzles?.[String(i)];
-                const state = n?.state !== undefined ? NOZZLE_STATE[String(n.state)] ?? String(n.state) : null;
-                return (
-                  <div key={i} className={`fl-noz ${state === "pumping" ? "pumping" : ""}`}>
-                    <span className="fl-pid">{ids[i] ?? `Nozzle ${i + 1}`}</span>
-                    <span className={`fl-noz-state ${state ?? "unknown"}`}>{state ?? "no live data"}</span>
-                    <span className="fl-lit"><small className="fl-cur">Rs</small>{n?.last_total !== undefined
-                      ? n.last_total.toLocaleString("en-LK", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—"}</span>
-                    <span className="fl-vol">{n?.last_l !== undefined ? `${n.last_l.toFixed(2)} L` : "— L"}
-                      {" · "}{n?.last_price !== undefined
-                        ? `Rs ${n.last_price.toLocaleString("en-LK", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/L` : "Rs —/L"}</span>
-                    <span className="muted small">{n?.last_ts ? `last sale ${fmtAgo(n.last_ts, now)}` : "no sale seen yet"}</span>
-                    {state === "pumping" && <span className="fl-flow" />}
-                  </div>
-                );
-              };
+              const nozzle = (i: number) => (
+                <PumpNozzle key={i} n={r.nozzles?.[String(i)]} label={ids[i] ?? `Nozzle ${i + 1}`} now={now} />
+              );
               return (
                 <article key={fleetKey(r)} className={`fl-pump s-${st}${r.registered ? "" : " unregistered"}${sel ? " selected" : ""}`}>
                   <div className="fl-pump-top">
