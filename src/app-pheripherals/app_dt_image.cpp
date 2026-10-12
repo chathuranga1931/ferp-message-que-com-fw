@@ -7,6 +7,7 @@
 #include "hsys_mutex.h"
 #include "pal_logger.h"
 #include "pal_time.h"
+#include "pal_nvs.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -192,6 +193,9 @@ int32_t app_dt_image_write_commit(void)
     LOG_MSG_INFO(APP_DT_IMAGE_LOG_EN, "commit %s: %u B CRC 0x%08lX (writer stack headroom min %u B)",
                  fin, (unsigned)s_wr.written, (unsigned long)s_wr.crc, (unsigned)s_wr.min_headroom);
     s_wr.active = false;
+    // a new image gets fresh flash attempts (see the DT update in fuel_disptap_driver.cpp)
+    pal_nvs_erase_key(APP_DT_FLASH_NVS_NS, "ver");
+    pal_nvs_erase_key(APP_DT_FLASH_NVS_NS, "cnt");
     return APP_DT_IMAGE_OK;
 }
 

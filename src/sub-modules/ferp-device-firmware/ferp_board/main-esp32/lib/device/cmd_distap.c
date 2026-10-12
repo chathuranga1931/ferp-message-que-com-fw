@@ -87,6 +87,13 @@ typedef struct
     uint32_t inputs;
 } rx_id_inputs_t;
 
+static int s_last_display_type = -1;   // display type in the DT's last version reply, -1 = unknown
+
+int distap_last_display_type(void)
+{
+    return s_last_display_type;
+}
+
 esp_err_t distap_get_fw_version(char *ver)
 {
     data_packet_t rx_packet = {};
@@ -102,6 +109,7 @@ esp_err_t distap_get_fw_version(char *ver)
     if(state && rx_packet.pck_id == RX_ID_DEV_INFO && ((rx_id_dev_version_t*)rx_packet.ab_data)->command == ID_CMD_DEV_VERSION)
     {
         printf("DISTAP Read FW_Ver:%s, display_type:%d\r\n", ((rx_id_dev_version_t*)rx_packet.ab_data)->version, rx_packet.display);
+        s_last_display_type = rx_packet.display;
         if(ver)
             strcpy(ver, ((rx_id_dev_version_t*)rx_packet.ab_data)->version);
         return ESP_OK;

@@ -22,6 +22,9 @@
 
 #pragma once
 
+/** NVS namespace of the DT flash attempt record ("ver" = image version, "cnt" = attempts). */
+#define APP_DT_FLASH_NVS_NS "dtflash"
+
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>

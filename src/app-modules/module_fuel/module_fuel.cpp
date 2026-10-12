@@ -389,8 +389,21 @@ void ModuleFuel::_on_distap_frame(uint8_t nozzle_idx, display_type_t type,
     fuel_types_from_frame(&item.data, &frame, type, nozzle_up);
 
     if (!hsys_queue_send(&_frame_queue[nozzle_idx], &item, 0)) {
-        MLOGE("_on_distap_frame: queue full for nozzle %u, frame dropped",
-              (unsigned)nozzle_idx);
+        // The fuel task is busy (e.g. flashing the DT at start): count the drops and log at
+        // most one line per 10 s instead of one per frame.  No wake() - one is already pending.
+        static uint32_t s_dropped[FUEL_MAX_NOZZLES];
+        static uint64_t s_drop_log_ms[FUEL_MAX_NOZZLES];
+        if (nozzle_idx < FUEL_MAX_NOZZLES) {
+            s_dropped[nozzle_idx]++;
+            const uint64_t now_ms = pal_time_get_ms();
+            if (s_drop_log_ms[nozzle_idx] == 0 || now_ms - s_drop_log_ms[nozzle_idx] >= 10000) {
+                MLOGE("nozzle[%u] %lu frame(s) dropped - fuel queue full (task busy)",
+                      (unsigned)nozzle_idx, (unsigned long)s_dropped[nozzle_idx]);
+                s_dropped[nozzle_idx] = 0;
+                s_drop_log_ms[nozzle_idx] = now_ms;
+            }
+        }
+        return;
     }
 
     // Wake the module task — on_wake() will drain the queue on our thread

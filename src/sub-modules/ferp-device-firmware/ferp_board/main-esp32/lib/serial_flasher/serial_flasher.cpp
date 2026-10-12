@@ -129,6 +129,22 @@ static uint8_t s_io_buf[1024];
 
 void start_serial_flash(bool skip_version_check)
 {
+    (void)serial_flash_update(skip_version_check);
+}
+
+esp_err_t serial_flash_image_version(char *out, size_t out_len)
+{
+    if (out == NULL || out_len == 0) return ESP_ERR_INVALID_ARG;
+    esp_app_desc_t desc = {};
+    esp_err_t err = read_app_info(APP_NAME, &desc);
+    if (err != ESP_OK) return err;
+    strncpy(out, desc.version, out_len - 1);
+    out[out_len - 1] = '\0';
+    return ESP_OK;
+}
+
+serial_flash_result_t serial_flash_update(bool skip_version_check)
+{
     example_binaries_t bin = {
         .boot = {
             .data = nullptr,
@@ -154,7 +170,7 @@ void start_serial_flash(bool skip_version_check)
     if (err1 != ESP_OK)
     {
         printf("app verification failed.\r\n");
-        return;
+        return SERIAL_FLASH_NO_IMAGE;
     }
     printf("Display Tap App name:%s, Ver:%s\r\n", app_desc.project_name, app_desc.version);
     err1 = distap_get_fw_version(version);
@@ -163,7 +179,7 @@ void start_serial_flash(bool skip_version_check)
         if (!skip_version_check && strcmp(app_desc.version, version) == 0)
         {
             printf("Display Tap App Version is matching! No firmware update\r\n");
-            return;
+            return SERIAL_FLASH_SKIPPED_SAME;
         }
     }
     else
@@ -183,9 +199,11 @@ void start_serial_flash(bool skip_version_check)
     if (loader_port_esp32_init(&config) != ESP_LOADER_SUCCESS)
     {
         printf("serial initialization failed.\r\n");
-        return;
+        resume_comms_distap();
+        return SERIAL_FLASH_CONNECT_FAILED;
     }
-    printf("Connectig to target...\r\n");
+    printf("Connecting to target...\r\n");
+    serial_flash_result_t result = SERIAL_FLASH_DONE;
     esp_loader_error_t err = connect_to_target(HIGHER_BAUDRATE);
     if (err == ESP_LOADER_SUCCESS)
     {
@@ -194,28 +212,33 @@ void start_serial_flash(bool skip_version_check)
         if (flash_binary(bin.boot.file_name, bin.boot.size, bin.boot.addr) != ESP_LOADER_SUCCESS)
         {
             printf("Chip:%s Loading bootloader failed\r\n", esp_loader_get_target_str(chip));
+            result = SERIAL_FLASH_WRITE_FAILED;
         }
         printf("Loading partition table...\r\n");
         if (flash_binary(bin.part.file_name, bin.part.size, bin.part.addr) != ESP_LOADER_SUCCESS)
         {
             printf("Loading partition table Failed!\r\n");
+            result = SERIAL_FLASH_WRITE_FAILED;
         }
         printf("Loading app...");
         if (flash_binary(bin.app.file_name, bin.app.size, bin.app.addr) != ESP_LOADER_SUCCESS)
         {
-            printf("Loading app Failed!");
+            printf("Loading app Failed!\r\n");
+            result = SERIAL_FLASH_WRITE_FAILED;
         }
         printf("Done!\r\n");
     }
     else
     {
-        printf("Conecting to target failed!\r\n");
+        printf("Connecting to target failed!\r\n");
+        result = SERIAL_FLASH_CONNECT_FAILED;
     }
 
     gpio_reset_io0_distap();
     loader_port_reset_target();
     board_delay_ms(500);
     resume_comms_distap();
+    return result;
 }
 
 esp_err_t read_app_info(const char *file_name, esp_app_desc_t *app_desc)
@@ -376,7 +399,10 @@ esp_loader_error_t flash_binary(const char *file_name, size_t size, size_t addre
     err = esp_loader_flash_verify();
     if (err == ESP_LOADER_ERROR_UNSUPPORTED_FUNC)
     {
-        printf("ESP8266 does not support flash verify command.\r\n");
+        // The ESP8266 ROM has no MD5 command: the write itself succeeded (every block was ACKed).
+        // The caller checks the version the DT reports after the reset instead.
+        printf("written (ESP8266: no flash verify in ROM)\r\n");
+        err = ESP_LOADER_SUCCESS;
         goto end;
     }
     else if (err != ESP_LOADER_SUCCESS)

@@ -10,6 +10,7 @@ import Fleet from "./pages/Fleet";
 import Guide from "./pages/Guide";
 import History from "./pages/History";
 import Logs from "./pages/Logs";
+import Releases from "./pages/Releases";
 import Ota from "./pages/Ota";
 import Settings from "./pages/Settings";
 import Sheds from "./pages/Sheds";
@@ -22,7 +23,7 @@ import { API_VERSION } from "./version";
 
 type Page = "fleet" | "workspace" | "ota" | "logs" | "snapshots" | "history" | "sheds" | "cables"
   | "def-pumps" | "def-cables" | "users" | "guide-troubleshooting" | "guide-installation" | "guide-ota" | "guide-devices"
-  | "info-pumps" | "settings";
+  | "info-pumps" | "releases" | "settings";
 /** `need`: shown when the user has any of these permissions; "admin" = admins only; none = everyone */
 interface PageDef { id: Page; label: string; icon: string; need?: Permission[] | "admin" }
 const PAGES: PageDef[] = [
@@ -42,6 +43,7 @@ const PAGES: PageDef[] = [
   { id: "guide-ota", label: "Firmware OTA", icon: "⤓" },
   { id: "guide-devices", label: "Device types", icon: "▣" },
   { id: "info-pumps", label: "Pump types", icon: "ⓘ" },
+  { id: "releases", label: "Releases", icon: "⬢" },
   { id: "settings", label: "Settings", icon: "⚙", need: ["settings"] },
 ];
 /** Sidebar: a group (title + pages) or a single page. */
@@ -54,6 +56,7 @@ const NAV: NavEntry[] = [
   { page: "users" },
   { group: "Guides", icon: "?", pages: ["guide-troubleshooting", "guide-installation", "guide-ota", "guide-devices"] },
   { group: "Info", icon: "ⓘ", pages: ["info-pumps"] },
+  { page: "releases" },
   { page: "settings" },
 ];
 const LS_KEY = "ferp.selectedDevice";
@@ -209,6 +212,7 @@ export default function App() {
           {(page.startsWith("guide-") || page.startsWith("info-")) && <Guide id={page} />}
           {page === "settings" && <Settings catalog={catalog} onReloadCatalog={() => reloadCatalog(true)} />}
           {page === "users" && <Users />}
+          {page === "releases" && <Releases />}
         </div>
       </main>
       <ConsoleDock device={device} devices={devices} />

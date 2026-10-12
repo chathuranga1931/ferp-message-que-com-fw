@@ -1,7 +1,7 @@
 import type { Me } from "./auth";
 import type {
   AppConfig, AuditEntry, Batch, Catalog, Device, DeviceLogEntry, DeviceLogIn, DeviceSave, DeviceState, Harness, Shed, ShedIn, Favorite, Firmware, FleetSnapshot,
-  HistoryLine, LogChunk, LogFile, MqttStatus, OtaSession, RecentMessage, ScannedBundle, Snapshot,
+  HistoryLine, LogChunk, LogFile, MqttStatus, OtaSession, RecentMessage, ReleaseBook, ScannedBundle, Snapshot,
 } from "./types";
 
 export class ApiError extends Error {
@@ -150,6 +150,8 @@ export const api = {
   logUnfollow: (fid: string) => req("DELETE", `/logs/follow/${fid}`),
   logDownloadUrl: (path: string) => `/api/logs/download${qs({ path })}`,
   logZipUrl: (date: string, shed: string, pump?: string) => `/api/logs/zip${qs({ date, shed, pump })}`,
+  releases: () => req<ReleaseBook>("GET", "/releases"),
+  saveReleases: (book: ReleaseBook) => req<ReleaseBook>("PUT", "/releases", book),
 };
 
 function qs(q: Record<string, string | number | undefined>): string {

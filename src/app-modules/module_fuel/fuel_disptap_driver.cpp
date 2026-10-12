@@ -5,6 +5,8 @@
 #include "cmd_distap.h"    // distap_get_fw_version(), distap_set_display_type(), distap_set_err_mask()
 #ifndef FERP_SIMULATOR
 #include "serial_flasher.h"
+#include "app_dt_image.h"   // APP_DT_FLASH_NVS_NS
+#include "pal_nvs.h"
 #endif
 #include "pal_logger.h"
 #include <stdio.h>
@@ -83,6 +85,59 @@ void FuelDispTapDriver::_dis2_l2_raw_event(const raw_capture_chunk_t *chunk)
     _log_raw_chunk(1, 2, chunk);
 }
 
+#ifndef FERP_SIMULATOR
+// ---------------------------------------------------------------------------
+// DT firmware update from the stored image (SD card).  The DT is only flashed when
+// its version differs from the stored image, the result is checked by reading the
+// version back, and one image version is tried at most DT_FLASH_MAX_ATTEMPTS times
+// (counted in NVS before each attempt, so a crash mid-flash counts too).  Without the
+// limit a DT that never takes the image is re-flashed at every boot (~35 s without
+// display data each time).  Storing a new image resets the count (app_dt_image.cpp).
+// ---------------------------------------------------------------------------
+#define DT_FLASH_MAX_ATTEMPTS 3
+
+static void _update_dt_firmware(const char *dt_version)
+{
+    char image[32] = {};
+    if (serial_flash_image_version(image, sizeof(image)) != ESP_OK) {
+        MLOG("DT update: no valid DT image stored");
+        return;
+    }
+    if (dt_version && strcmp(dt_version, image) == 0) {
+        MLOG("DT update: DT already runs the stored image %s", image);
+        pal_nvs_erase_key(APP_DT_FLASH_NVS_NS, "ver");
+        pal_nvs_erase_key(APP_DT_FLASH_NVS_NS, "cnt");
+        return;
+    }
+
+    char tried[32] = {};
+    int64_t count = 0;
+    size_t n = 0;
+    if (pal_nvs_read_blob(APP_DT_FLASH_NVS_NS, "ver", tried, sizeof(tried) - 1, &n) == 0 && strcmp(tried, image) == 0) {
+        pal_nvs_read_i64(APP_DT_FLASH_NVS_NS, "cnt", &count);
+    }
+    if (count >= DT_FLASH_MAX_ATTEMPTS) {
+        MLOGE("DT update: image %s not applied after %d attempts (DT reports %s) - not flashing again until a new image is stored",
+              image, (int)count, dt_version ? dt_version : "nothing");
+        return;
+    }
+    pal_nvs_write_blob(APP_DT_FLASH_NVS_NS, "ver", image, strlen(image) + 1);
+    pal_nvs_write_i64(APP_DT_FLASH_NVS_NS, "cnt", count + 1);
+
+    MLOG("DT update: %s -> %s (attempt %d of %d)", dt_version ? dt_version : "?", image, (int)count + 1, DT_FLASH_MAX_ATTEMPTS);
+    const serial_flash_result_t r = serial_flash_update(true);    // versions compared above
+
+    char now[32] = {};
+    if (distap_get_fw_version(now) == ESP_OK && strcmp(now, image) == 0) {
+        MLOG("DT update: done, DT runs %s", now);
+        pal_nvs_erase_key(APP_DT_FLASH_NVS_NS, "ver");
+        pal_nvs_erase_key(APP_DT_FLASH_NVS_NS, "cnt");
+    } else {
+        MLOGE("DT update: image %s did not apply (flash result %d, DT reports %s)", image, (int)r, now[0] ? now : "nothing");
+    }
+}
+#endif  // FERP_SIMULATOR
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -114,6 +169,13 @@ void FuelDispTapDriver::start(display_type_t display_type, frame_cb_t on_frame,
     // ── Version check ─────────────────────────────────────────────────────────
     char version[32] = {};
     rc = distap_get_fw_version(version);
+    // A DT that is still restarting (e.g. after a type change) answers late: retry before
+    // treating it as broken - an unanswered version read makes the DT update re-flash it.
+    for (int i = 0; i < 2 && rc != ESP_OK; i++) {
+        pal_time_delay_ms(2000);
+        rc = distap_get_fw_version(version);
+    }
+    const int rc_version = rc;
     if (rc == ESP_OK) 
     {
         MLOG("DT board FW version: %s", version);
@@ -124,13 +186,44 @@ void FuelDispTapDriver::start(display_type_t display_type, frame_cb_t on_frame,
     }
 
     // ── Set display type ──────────────────────────────────────────────────────
+    const int dt_type_before = distap_last_display_type();
     rc = distap_set_display_type(display_type);
-    if (rc != ESP_OK) {
+    if (rc != ESP_OK && dt_type_before == (int)display_type) {
         MLOGE("distap_set_display_type(%d) failed (%d)", (int)display_type, rc);
     }
+#ifndef FERP_SIMULATOR
+    if (dt_type_before != (int)display_type) {
+        // The DT applies a new type by saving it to its flash and restarting itself in software.
+        // 1) Wait until it reports the new type - never reset it while it may still be saving
+        //    (an interrupted save corrupts its settings file; the ESP8266 then reformats storage).
+        char v[32] = {};
+        bool applied = false;
+        // the ESP07 can need several seconds (save to flash, restart, mount its storage)
+        for (int i = 0; i < 12 && !applied; i++) {
+            pal_time_delay_ms(1000);
+            applied = distap_get_fw_version(v) == ESP_OK && distap_last_display_type() == (int)display_type;
+        }
+        if (!applied) {
+            MLOGE("display type %d: not applied by the DT (it reports %d) - not supported by this DT?",
+                  (int)display_type, distap_last_display_type());
+        } else {
+            // 2) Then a hardware reset: after the software restart the capture can stay broken until
+            //    the next hardware reset (seen: Wayne-6 on the ESP07 DT, Sanki on the ESP32 DT).
+            gpio_set_reset_distap(true);
+            pal_time_delay_ms(50);
+            gpio_set_reset_distap(false);
+            pal_time_delay_ms(800);                 // DT boot
+            if (distap_get_fw_version(v) == ESP_OK && distap_last_display_type() == (int)display_type) {
+                MLOG("display type %d -> %d: applied (DT hardware reset)", dt_type_before, (int)display_type);
+            } else {
+                MLOGE("display type %d: DT reports %d after the hardware reset", (int)display_type, distap_last_display_type());
+            }
+        }
+    }
+#endif
 
 #ifndef FERP_SIMULATOR
-    start_serial_flash(false);
+    _update_dt_firmware(rc_version == ESP_OK ? version : nullptr);
 #else
     // Serial flasher not available on simulator — skip DT board firmware update.
 #endif  // FERP_SIMULATOR

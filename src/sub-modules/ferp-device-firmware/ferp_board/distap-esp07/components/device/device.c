@@ -16,6 +16,7 @@
 #include "longfeng_8_digit.h"
 #include "production_io.h"
 #include "sdkconfig.h"
+#include "esp_ota_ops.h"   // esp_ota_get_app_description(): the version main reads from the image
 
 #ifndef pdTICKS_TO_MS
     #define pdTICKS_TO_MS( xTicks )   ( ( TickType_t ) ( ( uint64_t ) ( xTicks ) * 1000 / configTICK_RATE_HZ ) )
@@ -257,10 +258,11 @@ void send_response(data_packet_t *packet)
         case ID_CMD_DEV_VERSION:
         {
             tx_packet.length = sizeof(tx_id_dev_version_t);
-            const tx_id_dev_version_t ver = {
-                .command = ID_CMD_DEV_VERSION,
-                .version = PROJECT_VER,
-            };
+            // Report the app-descriptor version: main compares it with the version in the stored
+            // image (read_app_info) to decide whether to re-flash, so both must come from the
+            // same place. CONFIG_APP_PROJECT_VER (PROJECT_VER here) can differ from it.
+            tx_id_dev_version_t ver = {.command = ID_CMD_DEV_VERSION};
+            strncpy(ver.version, esp_ota_get_app_description()->version, sizeof(ver.version) - 1);
             memcpy(tx_packet.ab_data, &ver, sizeof(tx_id_dev_version_t));
         }
         break;
@@ -300,7 +302,8 @@ void send_response(data_packet_t *packet)
 
     case RX_ID_SET_DISPLAY:
     {
-        if (((rx_id_set_display_t *)packet->ab_data)->display < DIS_SIZE)
+        if (((rx_id_set_display_t *)packet->ab_data)->display < DIS_SIZE &&
+            display_supported(((rx_id_set_display_t *)packet->ab_data)->display))
         {
             if (settings.display != ((rx_id_set_display_t *)packet->ab_data)->display)
             {
@@ -490,19 +493,29 @@ esp_err_t device_init()
     case DIS_HONGYANG_8_DIGIT:
         ret = display_hongyang_8_digit_init(&send_queue);
         break;
-    case DIS_WAYNE_6_DIGIT:
-        ret = display_wayne_6_digit_init(&send_queue);
-        break;
     case DIS_SANKI_6_DIGIT:
         ret = display_sanki_6_digit_init(&send_queue);
         break;
-    case DIS_LONGFENG_8_DIGIT:
-        ret = display_longfeng_8_digit_init(&send_queue);
+    case DIS_CENSTAR_7_DIGIT_CS: // no decoder on the ESP07 (see display_supported)
+    case DIS_WAYNE_6_DIGIT:      // capture unreliable on the ESP07 (see display_supported)
+    case DIS_LONGFENG_8_DIGIT:   // 2.7 MHz display clock: too fast for GPIO interrupts (needs the ESP32 DT)
     default:
         break;
     }
 
     return ret;
+}
+
+/* Display types this DT can decode.  Others are refused (NACK) so the DT keeps its
+ * current type instead of sending wrong values:
+ *   DIS_CENSTAR_7_DIGIT_CS - no ESP07 decoder (only the ESP32 DT has one)
+ *   DIS_WAYNE_6_DIGIT      - capture unreliable: volume/total read as 0 for about the first
+ *                            minute after boot (12 bytes after RCLK lost); use the ESP32 DT
+ *   DIS_LONGFENG_8_DIGIT   - 192 bits in ~80 us (2.7 MHz): an ESP8266 GPIO interrupt per
+ *                            bit cannot keep up; the ESP32 DT reads it with the SPI slave */
+bool display_supported(uint8_t display)
+{
+    return display != DIS_CENSTAR_7_DIGIT_CS && display != DIS_WAYNE_6_DIGIT && display != DIS_LONGFENG_8_DIGIT;
 }
 
 void device_print_log(const char *str, size_t len)

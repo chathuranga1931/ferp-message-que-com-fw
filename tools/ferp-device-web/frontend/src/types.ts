@@ -155,3 +155,11 @@ export interface AuditEntry {
   id: number; ts: number; user: string; action: string; device_id: string | null; device_label: string | null;
   detail: Record<string, unknown>;
 }
+
+// ── Releases page: firmware versions, compatibility matrix, test results ──
+export type TestResult = "pass" | "fail" | "issue" | "untested" | "na";
+export interface FwRelease { product: string; target: string; board?: string; version: string; date: string; tag?: string; status: "released" | "test" | "withdrawn"; notes?: string }
+export interface CompatRow { main: string; dt: string; boards: string; results: Record<string, TestResult>; tested?: string; notes?: string }
+export interface TestItem { name: string; result: TestResult; detail?: string }
+export interface TestRun { id: string; date: string; title: string; firmware: string; device?: string; items: TestItem[] }
+export interface ReleaseBook { pump_types: string[]; releases: FwRelease[]; compat: CompatRow[]; tests: TestRun[]; updated?: number; updated_by?: string }

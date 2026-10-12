@@ -80,3 +80,18 @@ esp_loader_error_t connect_to_target(uint32_t higher_transmission_rate);
 esp_loader_error_t flash_binary(const char *file_name, size_t size, size_t address);
 esp_loader_error_t load_ram_binary(const uint8_t *bin);
 void start_serial_flash(bool skip_version_check);
+
+/** Outcome of serial_flash_update(). */
+typedef enum {
+    SERIAL_FLASH_SKIPPED_SAME = 0,  ///< DT already runs the stored image's version
+    SERIAL_FLASH_DONE,              ///< bootloader, partition table and app written
+    SERIAL_FLASH_NO_IMAGE,          ///< no valid app image stored
+    SERIAL_FLASH_CONNECT_FAILED,    ///< could not enter / talk to the DT ROM bootloader
+    SERIAL_FLASH_WRITE_FAILED,      ///< at least one image could not be written
+} serial_flash_result_t;
+
+/** Write the stored images to the DT (unless skip_version_check is false and the versions match). */
+serial_flash_result_t serial_flash_update(bool skip_version_check);
+
+/** Version string from the stored app image's descriptor (what the DT reports once it runs it). */
+esp_err_t serial_flash_image_version(char *out, size_t out_len);

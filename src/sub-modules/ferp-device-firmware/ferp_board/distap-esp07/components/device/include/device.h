@@ -189,5 +189,6 @@ typedef struct
 esp_err_t device_init();
 
 void device_print_log(const char *str, size_t len);
+bool display_supported(uint8_t display);
 
 #endif // _FILE_DEVICE_H_

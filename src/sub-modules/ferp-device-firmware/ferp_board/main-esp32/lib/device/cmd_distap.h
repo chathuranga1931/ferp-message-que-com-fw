@@ -23,6 +23,9 @@ extern "C"
 
 esp_err_t distap_get_fw_version(char *ver);
 
+/** Display type the DT reported in its last version reply (-1 = no reply yet). */
+int distap_last_display_type(void);
+
 esp_err_t distap_get_fw_name();
 
 esp_err_t distap_get_fw_timedate();

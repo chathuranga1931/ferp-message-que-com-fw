@@ -1,6 +1,6 @@
 idf_component_register(SRCS "settings.c" "spiff_mount.c" "production_io.c" "device.c"
                     INCLUDE_DIRS "include"
-                    PRIV_REQUIRES json spiffs censtar_pump hongyang_pump longfeng sanki_pump wayn_pump)
+                    PRIV_REQUIRES json spiffs app_update censtar_pump hongyang_pump longfeng sanki_pump wayn_pump)
 
 # CMake port of the CFLAGS that component.mk added for the legacy Make build
 # (see ../../component.mk / ../../main/component.mk): device.c reads these via
