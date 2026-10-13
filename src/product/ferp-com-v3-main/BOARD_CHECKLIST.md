@@ -8,7 +8,7 @@ peripheral or new module that touches a GPIO must be checked against the pin tab
 | Main MCU | ESP32 (board 2602, `BOARD_2602` in `app/user_config.h`, `HW_VERSION "2602"`) |
 | DisplayTap | ESP32 DT — firmware `ferp_board/distap-esp32` (see its `BOARD_CHECKLIST.md`) |
 | Pin map | `ferp_board/main-esp32/lib/device/board_2602.h`, app pins in `app/app_hw_config.h` |
-| Versions | release `3.3.x.y` (first number = firmware type 3; never minor 1 or 2 — those are legacy v1/v2 releases); test builds `3.3.999.n`; passed releases get a `-stable` tag |
+| Versions | release `3.x.y.z` (first number = firmware type 3); test builds `3.x.999.n`; passed releases get a `-stable` tag |
 
 ## Shared and strapping pins (main ESP32)
 
@@ -46,7 +46,7 @@ peripheral or new module that touches a GPIO must be checked against the pin tab
 - [ ] `app/app_hw_config.h` pins still match `board_2602.h`.
 
 **Build identity**
-- [ ] `BOARD_2602` and `HW_VERSION "2602"`; version follows `3.3.x.y` (test `3.3.999.n`).
+- [ ] `BOARD_2602` and `HW_VERSION "2602"`; version follows `3.x.y.z` (test `3.x.999.n`).
 - [ ] `TEST_PUMP_BUILD` disabled for releases (real MAC as MQTT client id / cloud identity).
 - [ ] Default MQTT host `mqtt.ferp.healosys.com` in `app/app.cpp` and `data/Configs/DeviceConfigs.json`.
 

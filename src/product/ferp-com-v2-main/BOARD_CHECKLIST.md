@@ -8,7 +8,7 @@ peripheral or new module that touches a GPIO must be checked against the pin tab
 | Main MCU | ESP32 (board 2404, `BOARD_2404` in `app/user_config.h`, `HW_VERSION "2404"`) |
 | DisplayTap | ESP07 (ESP8266) DT — firmware `ferp_board/distap-esp07` (see its `BOARD_CHECKLIST.md`) |
 | Pin map | `ferp_board/main-esp32/lib/device/board_2404.h`, app pins in `app/app_hw_config.h` |
-| Versions | release `2.x.y.z` (first number = firmware type 2, boards 2404 and 2407; legacy releases 3.2.x); test builds `2.x.999.n`; passed releases get a `-stable` tag |
+| Versions | release `2.x.y.z` (first number = firmware type 2, boards 2404 and 2407); test builds `2.x.999.n`; passed releases get a `-stable` tag |
 
 ## Shared and strapping pins (main ESP32)
 
