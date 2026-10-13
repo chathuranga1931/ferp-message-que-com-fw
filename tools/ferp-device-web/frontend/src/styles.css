@@ -635,3 +635,9 @@ td > .type-badge:first-child { margin-left: 0; }
 .manual-status { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; font-family: var(--mono); }
 .manual-log { max-height: 200px; overflow: auto; font-family: var(--mono); font-size: 12px; background: var(--surface-2);
   border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; overflow-wrap: anywhere; }
+
+/* Sheds: devices at this shed */
+.shed-dev-head { flex-wrap: wrap; margin-top: 10px; }
+.shed-dev-head .small-label { margin-right: 4px; }
+.shed-dev-pick { flex-wrap: wrap; margin: 6px 0; }
+.shed-dev-pick select { min-width: 260px; max-width: 100%; }

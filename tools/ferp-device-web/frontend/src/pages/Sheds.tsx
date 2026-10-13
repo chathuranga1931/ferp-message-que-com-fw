@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../api";
+import { DeviceDialog } from "../components/DeviceDialog";
 import type { Device, Shed, ShedIn } from "../types";
 
 const BLANK: ShedIn = {
@@ -18,6 +19,8 @@ export default function Sheds({ devices, focusName, onChanged, onOpenDevice }: P
   const [filter, setFilter] = useState("");
   const [confirmDel, setConfirmDel] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [addingNew, setAddingNew] = useState(false);       // add-device pop-up with this shed filled in
+  const [pickExisting, setPickExisting] = useState(false);  // "+ Existing device" picker open
 
   const reload = () => api.sheds().then(setSheds).catch((e) => setMsg({ ok: false, text: e.message }));
   useEffect(() => { reload(); }, []);
@@ -70,6 +73,23 @@ export default function Sheds({ devices, focusName, onChanged, onOpenDevice }: P
   const f = norm(filter);
   const shown = sheds.filter((s) => !f || [s.name, s.customer, s.contact_name, s.city, s.phone].some((x) => norm(x).includes(f)));
   const shedDevices = selId && selId !== "new" ? devices.filter((d) => norm(d.shed) === norm(form.name)) : [];
+  // devices that can be moved here: unassigned ones first, then those at other sheds
+  const otherDevices = devices.filter((d) => norm(d.shed) !== norm(form.name))
+    .sort((a, b) => Number(!!a.shed && norm(a.shed) !== "unassigned") - Number(!!b.shed && norm(b.shed) !== "unassigned")
+      || a.label.localeCompare(b.label));
+  const savedName = sheds.find((s) => s.id === selId)?.name ?? form.name;
+
+  const moveHere = async (id: string) => {
+    const d = devices.find((x) => x.id === id);
+    if (!d) return;
+    setMsg(null);
+    try {
+      await api.updateDevice(d.id, { ...d, shed: savedName });
+      onChanged();
+      setPickExisting(false);
+      setMsg({ ok: true, text: `${d.label} moved to ${savedName}${d.shed ? ` (was ${d.shed})` : ""}` });
+    } catch (e) { setMsg({ ok: false, text: (e as Error).message }); }
+  };
 
   return (
     <div className="split">
@@ -141,19 +161,42 @@ export default function Sheds({ devices, focusName, onChanged, onOpenDevice }: P
 
             {selId !== "new" && (
               <>
-                <div className="small-label" style={{ marginTop: 10 }}>Devices at this shed ({shedDevices.length})</div>
+                <div className="row shed-dev-head">
+                  <div className="small-label">Devices at this shed ({shedDevices.length})</div>
+                  <button className="btn small" title={`Register a new device at ${savedName}`} onClick={() => setAddingNew(true)}>+ New device</button>
+                  <button className="btn small ghost" title={`Move a registered device to ${savedName}`}
+                          onClick={() => setPickExisting((v) => !v)}>+ Existing device</button>
+                </div>
+                {pickExisting && (
+                  <div className="row shed-dev-pick">
+                    <select autoFocus defaultValue="" aria-label="Device to move to this shed"
+                            onChange={(e) => { if (e.target.value) moveHere(e.target.value); }}>
+                      <option value="" disabled>— choose a device to move here —</option>
+                      {otherDevices.map((d) => (
+                        <option key={d.id} value={d.id}>{d.label}{d.mac ? ` (${d.mac})` : ""} — {d.shed || "no shed"}</option>
+                      ))}
+                    </select>
+                    <button className="btn small ghost" onClick={() => setPickExisting(false)}>Cancel</button>
+                  </div>
+                )}
                 <div className="chip-list">
                   {shedDevices.map((d) => (
                     <button key={d.id} className="pick" onClick={() => onOpenDevice(d.id)}>
                       {d.label} {d.device_type && <span className={`type-badge t-${d.device_type.toLowerCase()}`}>{d.device_type}</span>}
                     </button>
                   ))}
+                  {shedDevices.length === 0 && <span className="muted small">No devices yet — add one with the buttons above.</span>}
                 </div>
               </>
             )}
           </>
         )}
       </section>
+      {addingNew && (
+        <DeviceDialog device="new" devices={devices} initial={{ shed: savedName }}
+                      onClose={() => setAddingNew(false)} onChanged={onChanged}
+                      onLogs={() => undefined} onWorkspace={() => undefined} onOta={() => undefined} onSheds={() => undefined} />
+      )}
     </div>
   );
 }

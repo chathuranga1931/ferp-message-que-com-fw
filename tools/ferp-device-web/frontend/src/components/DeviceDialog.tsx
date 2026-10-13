@@ -30,13 +30,15 @@ interface Props {
   onWorkspace: (id: string) => void;
   onOta: (ids: string[]) => void;
   onSheds: (name?: string) => void;
+  /** "new" only: values to start the add form with (e.g. the shed it is added from) */
+  initial?: Partial<DeviceIn>;
 }
 
 type Tab = "details" | "lifecycle" | "history";
 
 /** Pop-up with everything about one device: details (view / edit / delete), lifecycle, history.
  *  "new" opens the add form. */
-export function DeviceDialog({ device, devices, onClose, onChanged, onLogs, onWorkspace, onOta, onSheds }: Props) {
+export function DeviceDialog({ device, devices, onClose, onChanged, onLogs, onWorkspace, onOta, onSheds, initial }: Props) {
   const { can } = useAuth();
   const isNew = device === "new";
   const dev = isNew ? null : device;
@@ -62,7 +64,7 @@ export function DeviceDialog({ device, devices, onClose, onChanged, onLogs, onWo
 
   const startEdit = () => {
     setErr(null); setInfo(null);
-    setForm(dev ? (Object.fromEntries(FIELDS.map((k) => [k, dev[k] ?? ""])) as unknown as DeviceIn) : BLANK);
+    setForm(dev ? (Object.fromEntries(FIELDS.map((k) => [k, dev[k] ?? ""])) as unknown as DeviceIn) : { ...BLANK, ...initial });
     setEditing(true);
   };
   useEffect(() => { if (isNew) startEdit(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [isNew]);
