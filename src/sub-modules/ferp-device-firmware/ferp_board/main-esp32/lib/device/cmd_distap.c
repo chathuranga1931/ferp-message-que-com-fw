@@ -181,7 +181,7 @@ esp_err_t distap_set_display_type(const display_type_t type)
         .display = (uint8_t)type
     };
     memcpy(tx_packet.ab_data, &dis, sizeof(tx_id_set_display_t));
-    const bool state = distap_send_cmd(&rx_packet, &tx_packet, 500);
+    const bool state = distap_send_cmd(&rx_packet, &tx_packet, 3000);  // >1 s: distap_send_cmd re-sends each second - one lost packet must not lose the setting
     if(state && rx_packet.pck_id == RX_ID_SET_DISPLAY)
     {
         printf("Set Display:%d, %s\r\n", ((rx_id_set_display_t*)rx_packet.ab_data)->display, ((rx_id_set_display_t*)rx_packet.ab_data)->state?"Success":"Already");
@@ -205,7 +205,7 @@ esp_err_t distap_set_err_mask(const data_error_t err)
         .err_mask = err.u8int,
     };
     memcpy(tx_packet.ab_data, &err_mask, sizeof(tx_id_set_err_mask_t));
-    const bool state = distap_send_cmd(&rx_packet, &tx_packet, 500);
+    const bool state = distap_send_cmd(&rx_packet, &tx_packet, 3000);  // >1 s: distap_send_cmd re-sends each second - one lost packet must not lose the setting
     if(state && rx_packet.pck_id == RX_ID_SET_ERR_MASK)
     {
         printf("Set Err Maks:%d, %s\r\n", ((rx_id_set_err_mask_t*)rx_packet.ab_data)->err_mask, ((rx_id_set_err_mask_t*)rx_packet.ab_data)->state?"Success":"Already");

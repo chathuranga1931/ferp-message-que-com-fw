@@ -52,6 +52,15 @@ public:
     /** Suspend comms (called on module stop or reconfiguration). */
     void stop();
 
+    /**
+     * DT capture watchdog - call at least once a second from the owning task.
+     * The DT sends frames continuously (also while the pump is idle).  When none arrive for a
+     * while, or they keep carrying another display type than configured, the type is sent again
+     * and the DT hardware-reset (only on boards where that reset is safe).  Blocks for a few
+     * seconds when it acts.
+     */
+    void watchdog();
+
 private:
     // Static storage — one singleton driver per firmware image is enough.
     static frame_cb_t     _on_frame_cb;

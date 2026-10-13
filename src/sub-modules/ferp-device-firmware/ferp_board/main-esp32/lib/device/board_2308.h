@@ -2,6 +2,7 @@
 #define __BOARD_2308_H__
 
 // Board 2308 (2308-modified) — ferp-com v1, ESP07 DisplayTap.  Included through board.h.
+// Shared / strapping pins and the per-build checklist: src/product/ferp-com-v1-main/BOARD_CHECKLIST.md
 //
 // No LEDs on this board.  GPIO5 is the ESP32 reset line (RESET_ESP32) and
 // GPIO4 is the ESP07 IO0 line — never use them as outputs outside the DT

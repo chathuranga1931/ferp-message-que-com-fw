@@ -1,8 +1,10 @@
 import type { Me } from "./auth";
 import type {
-  AppConfig, AuditEntry, Batch, Catalog, Device, DeviceLogEntry, DeviceLogIn, DeviceSave, DeviceState, Harness, Shed, ShedIn, Favorite, Firmware, FleetSnapshot,
+  AppConfig, AuditEntry, BenchMeta, BenchPreset, BenchRun, BenchSpec, Batch, Catalog, Device, DeviceLogEntry, DeviceLogIn, DeviceSave, DeviceState, Harness, Shed, ShedIn, Favorite, Firmware, FleetSnapshot,
   HistoryLine, LogChunk, LogFile, MqttStatus, OtaSession, RecentMessage, ReleaseBook, ScannedBundle, Snapshot,
 } from "./types";
+
+export interface EmuReply { cmd: string; reply: string[]; ok: boolean }
 
 export class ApiError extends Error {
   constructor(public status: number, message: string) { super(message); }
@@ -35,6 +37,28 @@ async function req<T>(method: string, path: string, body?: unknown): Promise<T> 
 }
 
 export const api = {
+  // Test runner (admins only)
+  benchMeta: () => req<BenchMeta>("GET", "/bench/meta"),
+  benchSettings: () => req<Partial<BenchSpec>>("GET", "/bench/settings"),
+  putBenchSettings: (s: Partial<BenchSpec>) => req<Partial<BenchSpec>>("PUT", "/bench/settings", s),
+  benchPresets: () => req<Record<string, BenchPreset>>("GET", "/bench/presets"),
+  saveBenchPreset: (name: string, p: BenchPreset) => req<Record<string, BenchPreset>>("PUT", `/bench/presets/${encodeURIComponent(name)}`, p),
+  deleteBenchPreset: (name: string) => req<Record<string, BenchPreset>>("DELETE", `/bench/presets/${encodeURIComponent(name)}`),
+  startBench: (spec: BenchSpec) => req<BenchRun>("POST", "/bench/runs", spec),
+  cancelBench: () => req<{ ok: boolean }>("POST", "/bench/runs/cancel"),
+  benchRuns: () => req<BenchRun[]>("GET", "/bench/runs"),
+  benchRun: (id: string) => req<BenchRun>("GET", `/bench/runs/${encodeURIComponent(id)}`),
+  deleteBenchRun: (id: string) => req<{ ok: boolean }>("DELETE", `/bench/runs/${encodeURIComponent(id)}`),
+  emulatorCmd: (port: string, cmd: string) => req<EmuReply>("POST", "/bench/emulator", { port, cmd }),
+  emulatorSale: (port: string, pump_s: number, price: number | null) =>
+    req<{ steps: EmuReply[]; sale: { vol_l: number; price: number; total: number } | null }>("POST", "/bench/emulator/sale", { port, pump_s, price }),
+  setDeviceType: (device_id: string, display_type: number, reboot: boolean) =>
+    req<{ verified: boolean; rebooted: boolean }>("POST", "/bench/device-type", { device_id, display_type, reboot }),
+  benchLog: async (id: string) => {
+    const r = await fetch(`/api/bench/runs/${encodeURIComponent(id)}/log`);
+    if (!r.ok) throw new ApiError(r.status, r.statusText);
+    return r.text();
+  },
   me: () => req<Me>("GET", "/me"),
   login: (username: string, password: string) => req<{ ok: boolean }>("POST", "/auth/login", { username, password }),
   logout: () => req<{ ok: boolean }>("POST", "/auth/logout"),

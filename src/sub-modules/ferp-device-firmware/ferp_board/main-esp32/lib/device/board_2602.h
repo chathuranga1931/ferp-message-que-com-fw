@@ -2,6 +2,7 @@
 #define __BOARD_2602_H__
 
 // Board 2602 — ferp-com v3, ESP32 DisplayTap.  Included through board.h.
+// Shared / strapping pins and the per-build checklist: src/product/ferp-com-v3-main/BOARD_CHECKLIST.md
 
 #define BOARD_TYPE 2602
 
@@ -25,6 +26,9 @@
 #define IO0_DISTAP      GPIO_NUM_4
 #define ESP_LED1        GPIO_NUM_5
 #define ESP_LED2        IO0_DISTAP
+// The DT can be hardware-reset safely here: IO0_DISTAP is a main output kept high (LED2 is not
+// driven by the app), so a reset always boots the DT app, never its ROM download mode.
+#define BOARD_DT_RESET_SAFE 1
 // UART_NUM_2
 #define UART2_TX        GPIO_NUM_17
 #define UART2_RX        GPIO_NUM_16

@@ -163,3 +163,28 @@ export interface CompatRow { main: string; dt: string; boards: string; results: 
 export interface TestItem { name: string; result: TestResult; detail?: string }
 export interface TestRun { id: string; date: string; title: string; firmware: string; device?: string; items: TestItem[] }
 export interface ReleaseBook { pump_types: string[]; releases: FwRelease[]; compat: CompatRow[]; tests: TestRun[]; updated?: number; updated_by?: string }
+
+// ── Test runner (admin) ─────────────────────────────────────────────────────
+export interface BenchPumpType { code: string; type: number; name: string; price: number | null }
+export interface BenchPort { device: string; description: string }
+export interface BenchSpec {
+  device_id: string; device_ip: string; device_port: string; emulator_port: string;
+  main_fw_id: string; dt_fw_id: string; pump_types: string[]; sales: number; pump_s: number;
+  pumping_status: boolean; ota_test: boolean; ota_alt_fw_id: string; uart_health: boolean; preset: string;
+}
+export interface BenchPreset {
+  pump_types: string[]; sales: number; pump_s: number; pumping_status: boolean; ota_test: boolean;
+  uart_health: boolean; notes: string; saved?: number; saved_by?: string;
+}
+export type BenchResult = "running" | "pass" | "fail" | "skip";
+export interface BenchItem { id: string; name: string; result: BenchResult; detail: string; started: number; finished: number | null }
+export interface BenchBundle { id: string; name: string; version: string; filename: string }
+export interface BenchRun {
+  id: string; tag: string; state: "running" | "passed" | "failed" | "aborted" | "error"; user: string;
+  started: number; finished: number | null; device: { id: string; label: string; mac: string };
+  spec: BenchSpec; bundles: { main: BenchBundle | null; dt: BenchBundle | null; alt: BenchBundle | null };
+  versions: { main?: string; dt?: string; board?: string }; items: BenchItem[]; summary: string; preset: string;
+  items_total?: number;
+}
+export interface BenchMeta { pump_types: BenchPumpType[]; ports: BenchPort[]; current: BenchRun | null }
+export interface BenchLine { ts: number; src: string; text: string }

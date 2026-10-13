@@ -270,6 +270,7 @@ void ModuleFuel::on_msg_received(const hsys_msg_t &msg)
 
 void ModuleFuel::on_wake()
 {
+    _driver.watchdog();                 // DT capture stalled / wrong type -> re-apply + DT reset
     _nozzle_btn_evt_t btn_evt;
     while (hsys_queue_receive(&_btn_queue, &btn_evt, 0)) {
         if (btn_evt.nozzle_idx < FUEL_MAX_NOZZLES) {

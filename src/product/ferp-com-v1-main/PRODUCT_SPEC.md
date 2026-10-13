@@ -185,7 +185,7 @@ No runtime messages handled. Downstream modules wait for these one-shot notifica
 | `printer_url` | string | `"http://printer.local"` | Printer endpoint |
 | `p_cpy_cnt` | uint32 | `1` | Printer copy count |
 | `hb_interval` | uint32 | `60` | Cloud heartbeat interval (s) |
-| `mqtt_host` | string | `"broker.emqx.io"` | MQTT broker host |
+| `mqtt_host` | string | `"mqtt.ferp.healosys.com"` | MQTT broker host |
 | `mqtt_port` | uint32 | `1883` | MQTT broker port |
 | `mqtt_user` | string | `""` | MQTT username |
 | `mqtt_pass` | string | `""` | MQTT password |
@@ -698,7 +698,7 @@ sequenceDiagram
 {
   "ssid":          "MyNetwork",
   "password":      "password123",
-  "mqtt_host":     "broker.emqx.io",
+  "mqtt_host":     "mqtt.ferp.healosys.com",
   "mqtt_port":     1883,
   "mqtt_user":     "",
   "mqtt_pass":     "",

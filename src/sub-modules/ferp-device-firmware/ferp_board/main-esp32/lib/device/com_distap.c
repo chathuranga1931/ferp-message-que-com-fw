@@ -60,10 +60,12 @@ bool distap_send_cmd(data_packet_t *rx, data_packet_t *tx, uint32_t tout)
         /*timeout for the reply*/
         if (xTaskGetTickCount() - tick_pre > pdMS_TO_TICKS(tout))
         {
+            rx_packet = NULL;   // a late reply must not be written into the caller's (gone) stack buffer
             return false;
         }
         vTaskDelay(pdMS_TO_TICKS(10));
     }
+    rx_packet = NULL;           // later packets are not replies to this command
     return true;
 }
 

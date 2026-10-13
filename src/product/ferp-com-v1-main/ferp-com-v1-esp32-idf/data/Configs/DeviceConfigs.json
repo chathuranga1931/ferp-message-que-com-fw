@@ -10,7 +10,7 @@
   "p_cpy_cnt": 1,
   "hb_interval": 60,
   "hb_enabled": true,
-  "mqtt_host": "broker.emqx.io",
+  "mqtt_host": "mqtt.ferp.healosys.com",
   "mqtt_port": 1883,
   "mqtt_user": "",
   "mqtt_pass": "",

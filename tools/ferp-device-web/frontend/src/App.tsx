@@ -11,6 +11,7 @@ import Guide from "./pages/Guide";
 import History from "./pages/History";
 import Logs from "./pages/Logs";
 import Releases from "./pages/Releases";
+import Bench from "./pages/Bench";
 import Ota from "./pages/Ota";
 import Settings from "./pages/Settings";
 import Sheds from "./pages/Sheds";
@@ -23,7 +24,7 @@ import { API_VERSION } from "./version";
 
 type Page = "fleet" | "workspace" | "ota" | "logs" | "snapshots" | "history" | "sheds" | "cables"
   | "def-pumps" | "def-cables" | "users" | "guide-troubleshooting" | "guide-installation" | "guide-ota" | "guide-devices"
-  | "info-pumps" | "releases" | "settings";
+  | "info-pumps" | "releases" | "bench" | "settings";
 /** `need`: shown when the user has any of these permissions; "admin" = admins only; none = everyone */
 interface PageDef { id: Page; label: string; icon: string; need?: Permission[] | "admin" }
 const PAGES: PageDef[] = [
@@ -44,6 +45,7 @@ const PAGES: PageDef[] = [
   { id: "guide-devices", label: "Device types", icon: "▣" },
   { id: "info-pumps", label: "Pump types", icon: "ⓘ" },
   { id: "releases", label: "Releases", icon: "⬢" },
+  { id: "bench", label: "Test runner", icon: "▶", need: "admin" },
   { id: "settings", label: "Settings", icon: "⚙", need: ["settings"] },
 ];
 /** Sidebar: a group (title + pages) or a single page. */
@@ -57,6 +59,7 @@ const NAV: NavEntry[] = [
   { group: "Guides", icon: "?", pages: ["guide-troubleshooting", "guide-installation", "guide-ota", "guide-devices"] },
   { group: "Info", icon: "ⓘ", pages: ["info-pumps"] },
   { page: "releases" },
+  { page: "bench" },
   { page: "settings" },
 ];
 const LS_KEY = "ferp.selectedDevice";
@@ -213,6 +216,7 @@ export default function App() {
           {page === "settings" && <Settings catalog={catalog} onReloadCatalog={() => reloadCatalog(true)} />}
           {page === "users" && <Users />}
           {page === "releases" && <Releases />}
+          {page === "bench" && <Bench />}
         </div>
       </main>
       <ConsoleDock device={device} devices={devices} />

@@ -36,7 +36,10 @@
 
 // GPIO pin assignments (matches board_2602 aliases / pal_mac_gpio pin table)
 #define LED1_GPIO  5
-#define LED2_GPIO  4
+// GPIO4 (ESP_LED2) is also the DT's IO0 boot-strap pin (IO0_DISTAP).  Driving it low while the
+// DT is reset (comms auto-reset, firmware update) boots the DT into its ROM download mode, so
+// it sends nothing until the next reset.  LED2 is therefore not driven: board_init keeps it high.
+// #define LED2_GPIO  4
 
 #define NOZZLE1_GPIO 32   ///< GPIO_NUM_32, INPUT3 on board_2602
 #define NOZZLE2_GPIO 33   ///< GPIO_NUM_33, INPUT4 on board

@@ -169,7 +169,7 @@ void app_config_load_defaults(app_config_t *cfg)
     strncpy(cfg->ota_server_url, "http://144.24.156.245:8080", sizeof(cfg->ota_server_url) - 1);
     cfg->ota_check_interval_s = 30;
 
-    strncpy(cfg->mqtt_host, "broker.emqx.io", sizeof(cfg->mqtt_host) - 1);
+    strncpy(cfg->mqtt_host, "mqtt.ferp.healosys.com", sizeof(cfg->mqtt_host) - 1);
     cfg->mqtt_port = 1883;
 
     cfg->log_udp_enabled = true;

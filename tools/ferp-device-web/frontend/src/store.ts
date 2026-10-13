@@ -83,9 +83,20 @@ export function onLogData(followId: string, fn: LogListener): () => void {
   return () => { logListeners.delete(followId); };
 }
 
+/** Test runner events (bench.state / bench.log) go straight to the Test runner page. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type BenchListener = (ev: any) => void;
+const benchListeners = new Set<BenchListener>();
+export function onBench(fn: BenchListener): () => void {
+  benchListeners.add(fn);
+  return () => { benchListeners.delete(fn); };
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function handle(ev: any) {
   switch (ev.type) {
+    case "bench.state": case "bench.log":
+      benchListeners.forEach((fn) => fn(ev)); break;
     case "logs.data": case "logs.error": case "logs.tick": case "logs.switch":
       logListeners.get(ev.follow_id)?.(ev); break;
     case "hello": {

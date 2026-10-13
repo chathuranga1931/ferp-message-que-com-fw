@@ -13,6 +13,7 @@ from .ports import (AuthProvider, BlobStore, ConfigStore, DeviceRepository, Docu
 from .server_settings import REPO_RELEASES, ServerSettings
 from .services.assets import Assets
 from .services.audit import Audit
+from .services.bench import BenchRunner
 from .services.catalog import Catalog
 from .services.cloud_logs import CloudLogs
 from .services.console import Console
@@ -64,6 +65,8 @@ class Container:
         self.ota       = OtaManager(self.firmware, self.console, self.bus, cfg, self.audit)
         self.batch_ota = BatchOta(self.ota, self.firmware, self.console, self.bus, self.audit, ping=self._ping_device)
         self.logs      = CloudLogs(cfg, settings.data_dir, self.bus, self.console)
+        self.bench     = BenchRunner(self.hub, self.ops, self.ota, self.firmware, self.docs, self.blobs, self.bus,
+                                     cfg, self.audit)
         # every OTA result also goes into the device's history; earlier ones are copied from the audit log
         self.ota.on_result = self.assets.record_ota
         try:
@@ -99,6 +102,7 @@ class Container:
         return dirs or [REPO_RELEASES]
 
     def shutdown(self) -> None:
+        self.bench.cancel()
         self.ota.abort_all()
         self.hub.disconnect()
         self.fleet.close()

@@ -2,7 +2,7 @@
   "mqtt": {
     "brokers": [
       "localhost",
-      "broker.emqx.io"
+      "mqtt.ferp.healosys.com"
     ],
     "default_port": 1883,
     "cmd_topic_prefix":  "ferp/ferp-com",

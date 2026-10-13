@@ -92,6 +92,14 @@ int32_t hsys_config_convert_to_json(config_handle_t * config_hndl, char * json_b
             }
         }
 
+        // The document allocates from the heap. When an allocation fails ArduinoJson drops the
+        // values silently (the result can be "{}"); saving that would wipe the stored config.
+        if(root.overflowed()){
+            *json_length = 0;
+            ret = CONFIG_NO_MEMORY;
+            break;
+        }
+
         // LOG_MSG_DEBUG(std::string(__func__) + ":" + std::to_string(__LINE__));
         size_t len = serializeJson(root, json_buffer, buffer_size);
         *json_length = len;
@@ -132,7 +140,8 @@ int32_t hsys_config_load_from_json(config_handle_t * config_hndl, const char * j
         
         if(error) {
             LOG_MSG_ERROR(LOG_EN, "JSON deserialization failed: %s", error.c_str());
-            ret = ERROR_OK + 1;  // JSON parse error
+            // out of heap is not a bad file: the caller must not replace the file with defaults
+            ret = (error == DeserializationError::NoMemory) ? CONFIG_NO_MEMORY : ERROR_OK + 1;
             break;
         }
 

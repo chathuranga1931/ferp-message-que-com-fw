@@ -1904,7 +1904,7 @@ run.win.bat         # Windows
 **OTA update (MQTT transport):**
 ```bash
 python3 mqtt_ota.py \
-  --broker broker.emqx.io --port 1883 \
+  --broker mqtt.ferp.healosys.com --port 1883 \
   --dev-type ferp-com --group default \
   --device-id 00000000-0000-0000-0000-000000000000 \
   --target main --version 1.2.3 \

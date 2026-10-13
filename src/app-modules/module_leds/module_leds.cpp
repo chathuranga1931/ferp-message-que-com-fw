@@ -25,8 +25,13 @@ ModuleLeds *ModuleLeds::instance() { return &s_instance; }
 
 void ModuleLeds::_led1_on()  { pal_gpio_set_level(LED1_GPIO, PAL_GPIO_LEVEL_HIGH); }
 void ModuleLeds::_led1_off() { pal_gpio_set_level(LED1_GPIO, PAL_GPIO_LEVEL_LOW);  }
+#ifdef LED2_GPIO   // not defined when the pin is shared with something that must not toggle
 void ModuleLeds::_led2_on()  { pal_gpio_set_level(LED2_GPIO, PAL_GPIO_LEVEL_HIGH); }
 void ModuleLeds::_led2_off() { pal_gpio_set_level(LED2_GPIO, PAL_GPIO_LEVEL_LOW);  }
+#else
+void ModuleLeds::_led2_on()  {}
+void ModuleLeds::_led2_off() {}
+#endif
 
 // ── Lifecycle ─────────────────────────────────────────────────────────────────
 
@@ -35,10 +40,14 @@ void ModuleLeds::init()
     // Configure GPIO pins as outputs, initially low
     pal_gpio_config_t cfg = PAL_GPIO_CFG_OUTPUT();
     pal_gpio_config(LED1_GPIO, cfg);
+#ifdef LED2_GPIO
     pal_gpio_config(LED2_GPIO, cfg);
+#endif
 
     pal_gpio_set_level(LED1_GPIO, PAL_GPIO_LEVEL_LOW);
+#ifdef LED2_GPIO
     pal_gpio_set_level(LED2_GPIO, PAL_GPIO_LEVEL_LOW);
+#endif
 
     // Initialise hsys_led instances — each creates its own soft timer internally
     if (!hsys_led_init(&_led1, _led1_on, _led1_off)) {
@@ -79,5 +88,9 @@ void ModuleLeds::_start_blink()
     hsys_led_start(&_led1);
     hsys_led_start(&_led2);
 
+#ifdef LED2_GPIO
     LOG_MSG_INFO(LEDS_LOG_EN, "LED1 + LED2 blinking at 250 ms");
+#else
+    LOG_MSG_INFO(LEDS_LOG_EN, "LED1 blinking at 250 ms (LED2 not driven)");
+#endif
 }

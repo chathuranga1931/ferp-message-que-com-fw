@@ -249,7 +249,7 @@ static int decode_frame(const uint8_t *buf, display_data_t *dd)
 // Remote-visible diagnostics: this DT board is often unreachable directly
 // (no local console access), so failures are relayed to main-esp32 via
 // LOG_PRINT (TX_ID_LOG_PRINTS) in addition to the local ESP_LOG* output.
-static void log_hexdump_remote(const char *tag, const uint8_t *buf, size_t len)
+static void __attribute__((unused)) log_hexdump_remote(const char *tag, const uint8_t *buf, size_t len)
 {
     char line[3 * MIN_CAPTURE_BYTES + 1] = {0};
     size_t n = len < MIN_CAPTURE_BYTES ? len : MIN_CAPTURE_BYTES;
@@ -321,7 +321,11 @@ static void task_line_capture(void *arg)
             {
                 if (r == -1) { c->n_addr_fail++; ESP_LOGW(c->tag, "addr mismatch (misaligned capture)"); }
                 else         { c->n_digit_fail++; ESP_LOGW(c->tag, "digit decode error"); }
+                #ifdef LOG_OUT
+                // one line per undecodable frame (up to ~50/s): only in diagnostic builds, it
+                // floods the link to the main board and the main board's log otherwise
                 log_hexdump_remote(c->tag, c->recvbuf, got_bytes);
+                #endif
                 goto next;
             }
         }

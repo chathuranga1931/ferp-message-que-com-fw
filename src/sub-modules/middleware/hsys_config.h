@@ -22,6 +22,7 @@
 #define CONFIG_UNINTIALIZED	    (ERR_CONFIG_OFFSET + 0)
 #define CONFIG_NULL       	    (ERR_CONFIG_OFFSET + 1)
 #define CONFIG_BUFFER_TOO_SMALL  (ERR_CONFIG_OFFSET + 2)
+#define CONFIG_NO_MEMORY         (ERR_CONFIG_OFFSET + 3)   ///< JSON document could not allocate (heap) - result incomplete
 
 typedef struct{
 	uint16_t key;           ///< Unique 16-bit identifier for this config field (CFG_KEY_*)

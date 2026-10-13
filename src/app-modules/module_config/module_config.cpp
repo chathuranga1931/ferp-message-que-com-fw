@@ -170,7 +170,13 @@ void ModuleConfig::_load_and_save()
                     json_buf[bytes_read] = '\0';
                     LOG_MSG_INFO(MOD_CONFIG_LOG_EN, "read %zu bytes — parsing", bytes_read);
                     rc = hsys_config_load_from_json(&m_config_handle, json_buf, bytes_read);
-                    if (rc != CONFIG_SUCCESS) {
+                    if (rc == CONFIG_NO_MEMORY) {
+                        // Out of heap while parsing: the file is fine - keep it on flash and run on
+                        // defaults this time only.  Saving now would replace the real config.
+                        LOG_MSG_ERROR(MOD_CONFIG_LOG_EN,
+                                      "config parse out of memory - using defaults, file kept");
+                        break;
+                    } else if (rc != CONFIG_SUCCESS) {
                         LOG_MSG_WARNING(MOD_CONFIG_LOG_EN,
                                         "JSON parse failed (%ld) — keeping defaults", (long)rc);
                     } else {

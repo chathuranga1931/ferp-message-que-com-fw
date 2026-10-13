@@ -21,7 +21,7 @@ class MqttConfig(BaseModel):
     # uses another topic tree (e.g. the HSYS printers publish under ferp/ferp-printer/...)
     dev_types:    dict[str, str] = Field(default_factory=lambda: {"Printer": "ferp-printer"})
     auto_connect: bool = True          # connect at backend start-up
-    brokers:      list[str] = ["localhost", "broker.emqx.io"]  # presets for the host picker
+    brokers:      list[str] = ["localhost", "mqtt.ferp.healosys.com"]  # presets for the host picker
 
     def dev_type_for(self, device_type: str | None) -> str:
         """MQTT dev_type for a registry device type (case-insensitive; default dev_type)."""
@@ -55,8 +55,10 @@ DEFAULT_TYPE_TARGETS = {
 # matched against the bundle target ("esp07-*") or, with an "@", against "target@version"
 # ("esp32-main@3.1.*").  A board that is not listed accepts any bundle.
 DEFAULT_BOARD_TARGETS = {
-    "2308": ["esp32-main@3.1.*", "esp07-*", "printer-com-*"],   # printer-com also runs on the 2308 board
+    # first version number = firmware type (1 = v1, 2 = v2, 3 = v3); 3.1.* / 3.2.* = legacy v1 / v2 releases
+    "2308": ["esp32-main@1.*", "esp32-main@3.1.*", "esp07-*", "printer-com-*"],   # printer-com also runs on 2308
     "2404": ["esp32-main@2.*", "esp32-main@3.2.*", "esp07-*"],
+    "2407": ["esp32-main@2.*", "esp32-main@3.2.*", "esp07-*"],                    # same firmware as 2404
     "2602": ["esp32-main@3.0.*", "esp32-main@3.3.*", "esp32-dt-*"],
 }
 

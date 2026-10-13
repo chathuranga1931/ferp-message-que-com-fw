@@ -6,6 +6,7 @@
 #ifndef FERP_SIMULATOR
 #include "serial_flasher.h"
 #include "app_dt_image.h"   // APP_DT_FLASH_NVS_NS
+#include "board.h"          // gpio_set_reset_distap()
 #include "pal_nvs.h"
 #endif
 #include "pal_logger.h"
@@ -26,6 +27,19 @@
 FuelDispTapDriver::frame_cb_t     FuelDispTapDriver::_on_frame_cb  = nullptr;
 display_type_t FuelDispTapDriver::_active_type  = DIS_NONE;
 
+// Capture watchdog state - written by the DT receive task, read by watchdog() (fuel task).
+static volatile uint64_t s_wd_last_frame_ms  = 0;   // last frame of any type
+static volatile uint64_t s_wd_last_good_ms   = 0;   // last frame of the configured type
+static bool              s_wd_started        = false;
+static display_type_t    s_wd_type           = DIS_NONE;
+
+static void _note_frame(display_type_t type)
+{
+    const uint64_t now = pal_time_get_ms();
+    s_wd_last_frame_ms = now;
+    if (type == s_wd_type) s_wd_last_good_ms = now;
+}
+
 // ---------------------------------------------------------------------------
 // C-linkage event callbacks forwarded to the stored frame_cb_t
 // ---------------------------------------------------------------------------
@@ -35,6 +49,7 @@ void FuelDispTapDriver::_dis1_event(display_type_t type, uint8_t *data)
     const display_data_t *dis = (const display_data_t *)data;
     // MLOG("DIS1 event: type=%d, Vol=%.03f, Unit=%.02f, Tot=%.02f", 
     //     (int)type, dis->volume_l/1000.0, dis->unit_price/100.0, dis->total_price/100.0);
+    _note_frame(type);
     if (_on_frame_cb) _on_frame_cb(0, type, data);
 }
 
@@ -43,6 +58,7 @@ void FuelDispTapDriver::_dis2_event(display_type_t type, uint8_t *data)
     const display_data_t *dis = (const display_data_t *)data;
     // MLOG("DIS2 event: type=%d, Vol=%.03f, Unit=%.02f, Tot=%.02f",
     //     (int)type, dis->volume_l/1000.0, dis->unit_price/100.0, dis->total_price/100.0);
+    _note_frame(type);
     if (_on_frame_cb) _on_frame_cb(1, type, data);
 }
 
@@ -84,6 +100,38 @@ void FuelDispTapDriver::_dis2_l2_raw_event(const raw_capture_chunk_t *chunk)
 {
     _log_raw_chunk(1, 2, chunk);
 }
+
+#ifndef FERP_SIMULATOR
+// ---------------------------------------------------------------------------
+// Clean DT start.  The DT restarts itself in software whenever a setting changes (display type,
+// error mask); after such a restart several decoders capture nothing until a hardware reset
+// (DT 1.0.0.9: Censtar-7, C7CS, Hongyang, Wayne-6, Sanki, Wayne-2 seen), and a main reboot
+// does not reset the DT.  Whether a command made it restart cannot be told reliably (its reply
+// is lost in the restart, the version reply's type lags), so after sending all settings main
+// lets the DT finish saving and hardware-resets it once.  No setting is sent after the reset,
+// so the DT then runs from its saved settings with a cleanly started capture.
+// Only where the reset is safe (BOARD_DT_RESET_SAFE: the DT's IO0 strap is held high).
+// ---------------------------------------------------------------------------
+#ifdef BOARD_DT_RESET_SAFE
+static void _reset_dt_after_settings(void)
+{
+    char v[32] = {};
+    pal_time_delay_ms(1500);                            // a restarting DT goes quiet within this
+    bool up = false;
+    for (int i = 0; i < 10 && !up; i++) {               // save + restart done when it answers again
+        up = distap_get_fw_version(v) == ESP_OK;
+        if (!up) pal_time_delay_ms(1000);
+    }
+    gpio_set_reset_distap(true);
+    pal_time_delay_ms(50);
+    gpio_set_reset_distap(false);
+    pal_time_delay_ms(1000);                            // DT boot
+    const bool after = distap_get_fw_version(v) == ESP_OK;
+    MLOG("DT hardware-reset after its settings (%s before, %s after; type %d)",
+         up ? "answered" : "no answer", after ? "answers" : "no answer", distap_last_display_type());
+}
+#endif
+#endif  // FERP_SIMULATOR
 
 #ifndef FERP_SIMULATOR
 // ---------------------------------------------------------------------------
@@ -186,41 +234,11 @@ void FuelDispTapDriver::start(display_type_t display_type, frame_cb_t on_frame,
     }
 
     // ── Set display type ──────────────────────────────────────────────────────
-    const int dt_type_before = distap_last_display_type();
+    // A changed type is saved by the DT, which then restarts itself (see _reset_dt_after_settings).
     rc = distap_set_display_type(display_type);
-    if (rc != ESP_OK && dt_type_before == (int)display_type) {
+    if (rc != ESP_OK) {
         MLOGE("distap_set_display_type(%d) failed (%d)", (int)display_type, rc);
     }
-#ifndef FERP_SIMULATOR
-    if (dt_type_before != (int)display_type) {
-        // The DT applies a new type by saving it to its flash and restarting itself in software.
-        // 1) Wait until it reports the new type - never reset it while it may still be saving
-        //    (an interrupted save corrupts its settings file; the ESP8266 then reformats storage).
-        char v[32] = {};
-        bool applied = false;
-        // the ESP07 can need several seconds (save to flash, restart, mount its storage)
-        for (int i = 0; i < 12 && !applied; i++) {
-            pal_time_delay_ms(1000);
-            applied = distap_get_fw_version(v) == ESP_OK && distap_last_display_type() == (int)display_type;
-        }
-        if (!applied) {
-            MLOGE("display type %d: not applied by the DT (it reports %d) - not supported by this DT?",
-                  (int)display_type, distap_last_display_type());
-        } else {
-            // 2) Then a hardware reset: after the software restart the capture can stay broken until
-            //    the next hardware reset (seen: Wayne-6 on the ESP07 DT, Sanki on the ESP32 DT).
-            gpio_set_reset_distap(true);
-            pal_time_delay_ms(50);
-            gpio_set_reset_distap(false);
-            pal_time_delay_ms(800);                 // DT boot
-            if (distap_get_fw_version(v) == ESP_OK && distap_last_display_type() == (int)display_type) {
-                MLOG("display type %d -> %d: applied (DT hardware reset)", dt_type_before, (int)display_type);
-            } else {
-                MLOGE("display type %d: DT reports %d after the hardware reset", (int)display_type, distap_last_display_type());
-            }
-        }
-    }
-#endif
 
 #ifndef FERP_SIMULATOR
     _update_dt_firmware(rc_version == ESP_OK ? version : nullptr);
@@ -229,7 +247,13 @@ void FuelDispTapDriver::start(display_type_t display_type, frame_cb_t on_frame,
 #endif  // FERP_SIMULATOR
 
     char disptap_version[50] = {0};
-    distap_get_fw_version((char *)(disptap_version));
+    if (distap_get_fw_version((char *)(disptap_version)) != ESP_OK || disptap_version[0] == 0) {
+        // The DT can be restarting here (it restarts itself after a display-type change): keep the
+        // version read at the start instead of reporting an empty one (the cloud showed "ERROR").
+        if (rc_version == ESP_OK) {
+            strncpy(disptap_version, version, sizeof(disptap_version) - 1);
+        }
+    }
     MLOG("Distap version: %s", disptap_version);
     if (version_out && version_out_len > 0) {
         strncpy(version_out, disptap_version, version_out_len - 1);
@@ -253,11 +277,54 @@ void FuelDispTapDriver::start(display_type_t display_type, frame_cb_t on_frame,
         MLOGE("distap_set_err_mask failed (%d)", rc);
     }
 
+#if !defined(FERP_SIMULATOR) && defined(BOARD_DT_RESET_SAFE)
+    _reset_dt_after_settings();
+#endif
+
+    s_wd_type          = display_type;
+    s_wd_last_frame_ms = pal_time_get_ms();
+    s_wd_last_good_ms  = s_wd_last_frame_ms;
+    s_wd_started       = true;
     MLOG("started  display_type=%d", (int)display_type);
+}
+
+#define DT_WD_NO_FRAME_MS     30000     // no frame at all for this long
+#define DT_WD_WRONG_TYPE_MS   10000     // frames, but none of the configured type, for this long
+#define DT_WD_BACKOFF_MIN_MS  60000     // after acting: wait at least this long, doubling ...
+#define DT_WD_BACKOFF_MAX_MS  600000    // ... up to this (pump powered off: no frames at all)
+
+void FuelDispTapDriver::watchdog()
+{
+#if !defined(FERP_SIMULATOR) && defined(BOARD_DT_RESET_SAFE)
+    static uint64_t s_next_ok_ms = 0;
+    static uint32_t s_backoff_ms = DT_WD_BACKOFF_MIN_MS;
+    if (!s_wd_started || s_wd_type == DIS_NONE || is_raw_capture_type((uint8_t)s_wd_type)) return;   // no decoded frames expected
+    const uint64_t now = pal_time_get_ms();
+    if (now < s_next_ok_ms) return;
+
+    const uint64_t last_any  = s_wd_last_frame_ms;
+    const uint64_t last_good = s_wd_last_good_ms;
+    const bool silent     = now - last_any  > DT_WD_NO_FRAME_MS;
+    const bool wrong_type = !silent && now - last_good > DT_WD_WRONG_TYPE_MS;
+    if (!silent && !wrong_type) {
+        s_backoff_ms = DT_WD_BACKOFF_MIN_MS;            // healthy again
+        return;
+    }
+    MLOGE("DT watchdog: %s for %lu s - sending display type %d again and resetting the DT",
+          silent ? "no frames" : "frames of another display type",
+          (unsigned long)((now - (silent ? last_any : last_good)) / 1000), (int)_active_type);
+    distap_set_display_type(_active_type);
+    _reset_dt_after_settings();
+    s_wd_last_frame_ms = pal_time_get_ms();
+    s_wd_last_good_ms  = s_wd_last_frame_ms;
+    s_next_ok_ms = pal_time_get_ms() + s_backoff_ms;
+    s_backoff_ms = s_backoff_ms * 2 > DT_WD_BACKOFF_MAX_MS ? DT_WD_BACKOFF_MAX_MS : s_backoff_ms * 2;
+#endif
 }
 
 void FuelDispTapDriver::stop()
 {
+    s_wd_started = false;
     suspend_comms_distap();
     _on_frame_cb = nullptr;
     MLOG("stopped");
