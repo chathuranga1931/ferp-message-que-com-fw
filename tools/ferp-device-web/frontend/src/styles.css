@@ -641,3 +641,7 @@ td > .type-badge:first-child { margin-left: 0; }
 .shed-dev-head .small-label { margin-right: 4px; }
 .shed-dev-pick { flex-wrap: wrap; margin: 6px 0; }
 .shed-dev-pick select { min-width: 260px; max-width: 100%; }
+
+.bench-mismatch { max-width: none; }
+.bench-mm-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 4px 16px; margin: 6px 0; }
+.bench-mm-cols .check { white-space: normal; }

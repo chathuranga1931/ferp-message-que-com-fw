@@ -18,7 +18,7 @@ Actions:
   --release        Full release workflow (delegates to release.py).
                     Output defaults to releases/<product>-esp32/<version>/ —
                     pass --out <dir> to override. --product selects v3
-                    (default) or v2.
+                    (default), v2, v1, printer-com or printer-usb.
   --create-bundle  Create OTA bundle from existing build artifacts (delegates to release.py)
   --release-dt-esp32      Release the distap-esp32 (DT board) production firmware
                           (delegates to distap-esp32/build.py --release,
@@ -32,7 +32,7 @@ Actions:
                           separate ESP8266_RTOS_SDK toolchain — see that
                           board's build.sh for one-time setup.
 
-Typically called via build-v3.mac.sh / build-v2.mac.sh or build.win.bat which
+Typically called via build-v3.mac.sh / build-v2.mac.sh / build-v1.mac.sh or build.win.bat which
 supply the default --serial-port and --idf-path for each platform.
 """
 
@@ -49,12 +49,14 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 
 # ── Product selection ────────────────────────────────────────────────────────
 #   v3 : ferp-com-v3-main       (esp32<>esp32, HW 2602)
-#   v2 : ferp-com-v2-main       (esp32<>esp07, HW 2404)
+#   v2 : ferp-com-v2-main       (esp32<>esp07, HW 2404 / 2407)
+#   v1 : ferp-com-v1-main       (esp32<>esp07, HW 2308)
 #   printer-com : ferp-printer-com-v1  (ESP32, UART receipt printer)
 #   printer-usb : ferp-printer-usb-v1  (ESP32-S3, USB receipt printer)
 PRODUCTS = {
     "v3": "src/product/ferp-com-v3-main/ferp-com-v3-esp32-idf",
     "v2": "src/product/ferp-com-v2-main/ferp-com-v2-esp32-idf",
+    "v1": "src/product/ferp-com-v1-main/ferp-com-v1-esp32-idf",
     "printer-com": "src/product/ferp-printer-com-v1/ferp-printer-com-v1-esp32-idf",
     "printer-usb": "src/product/ferp-printer-usb-v1/ferp-printer-usb-v1-esp32s3-idf",
 }

@@ -171,10 +171,12 @@ export interface BenchSpec {
   device_id: string; device_ip: string; device_port: string; emulator_port: string;
   main_fw_id: string; dt_fw_id: string; pump_types: string[]; sales: number; pump_s: number;
   pumping_status: boolean; ota_test: boolean; ota_alt_fw_id: string; uart_health: boolean; preset: string;
+  mismatch_test: boolean; mismatch_device_types: string[]; mismatch_emu_types: string[]; mismatch_s: number;
 }
 export interface BenchPreset {
   pump_types: string[]; sales: number; pump_s: number; pumping_status: boolean; ota_test: boolean;
   uart_health: boolean; notes: string; saved?: number; saved_by?: string;
+  mismatch_test: boolean; mismatch_device_types: string[]; mismatch_emu_types: string[]; mismatch_s: number;
 }
 export type BenchResult = "running" | "pass" | "fail" | "skip";
 export interface BenchItem { id: string; name: string; result: BenchResult; detail: string; started: number; finished: number | null }

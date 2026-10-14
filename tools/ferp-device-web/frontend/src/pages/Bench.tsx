@@ -9,6 +9,7 @@ import { downloadText, fmtDateTime, useNow } from "../util";
 const EMPTY: BenchSpec = {
   device_id: "", device_ip: "", device_port: "", emulator_port: "", main_fw_id: "", dt_fw_id: "",
   pump_types: [], sales: 2, pump_s: 6, pumping_status: false, ota_test: false, ota_alt_fw_id: "", uart_health: true, preset: "",
+  mismatch_test: false, mismatch_device_types: [], mismatch_emu_types: [], mismatch_s: 20,
 };
 const MAX_LINES = 4000;
 const STATE_CLASS: Record<string, string> = { running: "warn", passed: "ok", failed: "err", aborted: "warn", error: "err" };
@@ -95,17 +96,25 @@ export default function Bench() {
   const running = run?.state === "running";
   const ports = meta?.ports ?? [];
 
+  const mismatchPairs = spec.mismatch_test
+    ? spec.mismatch_device_types.reduce((n, d) => n + spec.mismatch_emu_types.filter((e) => e !== d).length, 0) : 0;
+  // ~35 s per pair on top of the pumping time, ~2.5 min per device type switch (2 reboots + frames)
+  const mismatchMin = Math.round((mismatchPairs * (spec.mismatch_s + 35) + spec.mismatch_device_types.length * 150) / 60);
+  const toggleIn = (k: "mismatch_device_types" | "mismatch_emu_types", code: string) =>
+    set(k, spec[k].includes(code) ? spec[k].filter((c) => c !== code) : [...spec[k], code]);
+
   const problems = useMemo(() => {
     const p: string[] = [];
     if (!spec.device_id) p.push("select the device");
     if (!spec.device_port) p.push("set the device COM port");
     if (!spec.main_fw_id) p.push("select the main firmware");
-    if ((spec.pump_types.length || spec.pumping_status) && !spec.emulator_port) p.push("set the emulator COM port");
+    if ((spec.pump_types.length || spec.pumping_status || spec.mismatch_test) && !spec.emulator_port) p.push("set the emulator COM port");
+    if (spec.mismatch_test && mismatchPairs === 0) p.push("wrong-display test: tick a device type and another emulator type");
     if (spec.emulator_port && spec.emulator_port === spec.device_port) p.push("device and emulator need different COM ports");
     if (spec.ota_test && !spec.ota_alt_fw_id) p.push("select the second (odd/even) bundle for the OTA test");
     if (spec.ota_test && spec.ota_alt_fw_id === spec.main_fw_id) p.push("the OTA test needs a different bundle");
     return p;
-  }, [spec]);
+  }, [spec, mismatchPairs]);
 
   const act = async (fn: () => Promise<unknown>, ok?: string) => {
     setMsg(null);
@@ -124,15 +133,38 @@ export default function Bench() {
     set("preset", name);
     const p = presets[name];
     if (p) setSpec((s) => ({ ...s, preset: name, pump_types: p.pump_types, sales: p.sales, pump_s: p.pump_s,
-      pumping_status: p.pumping_status, ota_test: p.ota_test, uart_health: p.uart_health }));
+      pumping_status: p.pumping_status, ota_test: p.ota_test, uart_health: p.uart_health,
+      mismatch_test: !!p.mismatch_test, mismatch_device_types: p.mismatch_device_types ?? [],
+      mismatch_emu_types: p.mismatch_emu_types ?? [], mismatch_s: p.mismatch_s ?? 20 }));
   };
+  // the test checklist part of the form, as stored in a preset
+  const presetFromSpec = (notes = ""): BenchPreset => {
+    const { pump_types, sales, pump_s, pumping_status, ota_test, uart_health,
+      mismatch_test, mismatch_device_types, mismatch_emu_types, mismatch_s } = spec;
+    return { pump_types, sales, pump_s, pumping_status, ota_test, uart_health,
+      mismatch_test, mismatch_device_types, mismatch_emu_types, mismatch_s, notes };
+  };
+  const selected = spec.preset ? presets[spec.preset] : undefined;
+  const sameTests = (p: BenchPreset) => {
+    const c = presetFromSpec();
+    return p.sales === c.sales && p.pump_s === c.pump_s && p.pumping_status === c.pumping_status && p.ota_test === c.ota_test
+      && p.uart_health === c.uart_health && [...p.pump_types].sort().join() === [...c.pump_types].sort().join()
+      && !!p.mismatch_test === c.mismatch_test && (p.mismatch_s ?? 20) === c.mismatch_s
+      && [...(p.mismatch_device_types ?? [])].sort().join() === [...c.mismatch_device_types].sort().join()
+      && [...(p.mismatch_emu_types ?? [])].sort().join() === [...c.mismatch_emu_types].sort().join();
+  };
+  const presetChanged = !!selected && !sameTests(selected);
+  const nameTaken = !!presets[presetName.trim()];
+
   const savePreset = () => act(async () => {
     const name = presetName.trim();
-    const { pump_types, sales, pump_s, pumping_status, ota_test, uart_health } = spec;
-    setPresets(await api.saveBenchPreset(name, { pump_types, sales, pump_s, pumping_status, ota_test, uart_health, notes: "" }));
+    setPresets(await api.saveBenchPreset(name, presetFromSpec(presets[name]?.notes ?? "")));
     set("preset", name);
     setPresetName("");
-  }, `Preset "${presetName.trim()}" saved`);
+  }, `Preset "${presetName.trim()}" ${nameTaken ? "overwritten" : "saved"}`);
+  const updatePreset = () => act(async () => {
+    setPresets(await api.saveBenchPreset(spec.preset, presetFromSpec(selected?.notes ?? "")));
+  }, `Preset "${spec.preset}" updated`);
   const deletePreset = () => act(async () => {
     setPresets(await api.deleteBenchPreset(spec.preset));
     set("preset", "");
@@ -158,6 +190,11 @@ export default function Bench() {
                 <option value="">— preset —</option>
                 {Object.keys(presets).sort().map((n) => <option key={n} value={n}>{n}</option>)}
               </select>
+              {spec.preset && (
+                <button className={`btn small ${presetChanged ? "primary" : ""}`} onClick={updatePreset} disabled={running || !presetChanged}
+                        title={presetChanged ? `Save the current tests into "${spec.preset}"` : "The tests match this preset"}>
+                  Update{presetChanged ? " *" : ""}</button>
+              )}
               {spec.preset && <button className="btn small ghost" onClick={deletePreset} disabled={running}>Delete</button>}
             </div>
           </div>
@@ -235,12 +272,49 @@ export default function Bench() {
               </select>
             </label>
           )}
+          <label className="check"><input type="checkbox" disabled={running} checked={spec.mismatch_test}
+            onChange={(e) => set("mismatch_test", e.target.checked)} /> Wrong display: device keeps working when another display type is connected</label>
+          {spec.mismatch_test && (
+            <div className="bench-indent bench-mismatch">
+              <p className="muted small">For each device type, the device is set to it (verified on main and DT, up to 3 reboots);
+                then the emulator plays each other ticked type for {spec.mismatch_s} s while the device must answer MQTT
+                and must not flood its log, crash or reset.</p>
+              <div className="bench-mm-cols">
+                <div>
+                  <div className="small-label">Device display type</div>
+                  {(meta?.pump_types ?? []).map((p) => (
+                    <label key={p.code} className="check"><input type="checkbox" disabled={running}
+                      checked={spec.mismatch_device_types.includes(p.code)} onChange={() => toggleIn("mismatch_device_types", p.code)} />
+                      <b>{p.code}</b> <span className="muted">{p.name}</span></label>
+                  ))}
+                </div>
+                <div>
+                  <div className="small-label">Emulator plays</div>
+                  {(meta?.pump_types ?? []).map((p) => (
+                    <label key={p.code} className="check"><input type="checkbox" disabled={running}
+                      checked={spec.mismatch_emu_types.includes(p.code)} onChange={() => toggleIn("mismatch_emu_types", p.code)} />
+                      <b>{p.code}</b> <span className="muted">{p.name}</span></label>
+                  ))}
+                </div>
+              </div>
+              <div className="row small">
+                <button className="btn small ghost" disabled={running} onClick={() => setSpec((s) => ({ ...s,
+                  mismatch_emu_types: (meta?.pump_types ?? []).map((p) => p.code) }))}>All emulator types</button>
+                <label className="field inline">Data per pair (s)
+                  <input type="number" min={5} max={120} value={spec.mismatch_s} disabled={running}
+                         onChange={(e) => set("mismatch_s", Number(e.target.value))} /></label>
+                <span className="muted">{mismatchPairs} pair(s), about {mismatchMin} min</span>
+              </div>
+            </div>
+          )}
           <label className="check"><input type="checkbox" disabled={running} checked={spec.uart_health}
             onChange={(e) => set("uart_health", e.target.checked)} /> UART log health (no crash or unexpected reset)</label>
 
           <div className="row bench-actions">
             <input placeholder="Save tests as preset…" value={presetName} onChange={(e) => setPresetName(e.target.value)} />
-            <button className="btn small" disabled={!presetName.trim()} onClick={savePreset}>Save preset</button>
+            <button className="btn small" disabled={!presetName.trim()} onClick={savePreset}
+                    title={nameTaken ? `A preset "${presetName.trim()}" exists — its tests will be replaced` : "Save the tests as a new preset"}>
+              {nameTaken ? "Overwrite preset" : "Save preset"}</button>
             <span className="spacer" />
             {running
               ? <button className="btn danger" onClick={() => act(api.cancelBench, "Cancelling — the current step finishes first")}>Cancel run</button>

@@ -63,6 +63,8 @@ KEY_FW, KEY_HW, KEY_MAC, KEY_DT = 0xA004, 0xA005, 0xA003, 0xA006
 KEY_DISPLAY_TYPE, KEY_DT_LOG_RATE = 0x6001, 0x8004
 KEY_PUMP_STATUS_EN, KEY_PUMP_STATUS_INT = 0x4005, 0x4006
 BENCH_DT_LOG_RATE = 120          # frame log lines / min during a run: frames show the DT's running type
+MISMATCH_MAX_LINES_S = 30         # wrong-display test: average UART lines/s above this = log flood
+MISMATCH_MAX_PEAK_S = 80          # ... or this many lines in a single second
 
 _RE_FRAME = re.compile(r"\[[01]\]\s+(\d+)\s")       # display type per nozzle in a "Received frame:" line
 _RE_RESET = re.compile(r"rst:0x([0-9a-f]+) \(([A-Z_0-9]+)\)")
@@ -125,6 +127,10 @@ class SerialTap:
     def since(self, mark: int) -> list[str]:
         with self._lock:
             return [t for _, t in self.lines[mark:]]
+
+    def since_ts(self, mark: int) -> list[tuple[float, str]]:
+        with self._lock:
+            return list(self.lines[mark:])
 
     def close(self) -> None:
         self._stop = True
@@ -212,9 +218,13 @@ class BenchRunner:
                 raise ValueError("The OTA test needs the second (odd/even) main bundle")
             if alt and alt["id"] == main["id"]:
                 raise ValueError("The OTA test needs a different bundle than the main firmware")
-            bad = [c for c in spec.get("pump_types", []) if c not in _PT]
+            bad = [c for c in spec.get("pump_types", []) + spec.get("mismatch_device_types", [])
+                   + spec.get("mismatch_emu_types", []) if c not in _PT]
             if bad:
                 raise ValueError(f"Unknown pump type(s): {', '.join(bad)}")
+            if spec.get("mismatch_test") and not any(e != d for d in spec.get("mismatch_device_types", [])
+                                                      for e in spec.get("mismatch_emu_types", [])):
+                raise ValueError("Wrong-display test: tick at least one device type and one other emulator type")
             now = time.time()
             run_id = datetime.fromtimestamp(now).strftime("%Y%m%d-%H%M%S")
             self._run = {
@@ -301,7 +311,8 @@ class BenchRunner:
                       + (f", DT {dt['version']}" if dt else ", DT: keep"))
             self.uart = SerialTap(spec["device_port"], 115200, "uart", self._on_serial)
             self._say(f"Device UART: {spec['device_port']}")
-            if spec.get("pump_types") or spec.get("pumping_status"):
+            needs_emu = bool(spec.get("pump_types") or spec.get("pumping_status") or spec.get("mismatch_test"))
+            if needs_emu:
                 if not spec.get("emulator_port"):
                     raise Abort("Pump tests need the emulator COM port")
                 self.emu = SerialTap(spec["emulator_port"], 115200, "emu", self._on_serial)
@@ -315,7 +326,7 @@ class BenchRunner:
             self._run["tag"] = f"{self._run['id']}-{v.get('main', '?')}-{v.get('dt', '?')}"
             self._publish()
 
-            if spec.get("pump_types") or spec.get("pumping_status"):
+            if needs_emu:
                 restore[KEY_DT_LOG_RATE] = self._cfg_read(dev, KEY_DT_LOG_RATE)
                 self._ops.write_config(dev, KEY_DT_LOG_RATE, str(BENCH_DT_LOG_RATE), user="bench")
                 self._say(f"DT frame log rate set to {BENCH_DT_LOG_RATE}/min for the run "
@@ -324,6 +335,14 @@ class BenchRunner:
                 p = _PT[code]
                 self._step(f"pump:{code}", f"Pump type {code} — {p['name']} (type {p['type']})", False,
                            lambda p=p: self._pump_type(dev, p, int(spec.get("sales", 2)), float(spec.get("pump_s", 6))))
+            if spec.get("mismatch_test"):
+                secs = float(spec.get("mismatch_s", 20))
+                for dc in spec.get("mismatch_device_types", []):
+                    for ec in spec.get("mismatch_emu_types", []):
+                        if ec == dc:
+                            continue
+                        self._step(f"mismatch:{dc}:{ec}", f"Wrong display — device set to {dc}, emulator plays {ec}", False,
+                                   lambda d=_PT[dc], e=_PT[ec]: self._mismatch(dev, d, e, secs))
             if spec.get("pumping_status"):
                 restore[KEY_PUMP_STATUS_EN] = self._cfg_read(dev, KEY_PUMP_STATUS_EN)
                 restore[KEY_PUMP_STATUS_INT] = self._cfg_read(dev, KEY_PUMP_STATUS_INT)
@@ -461,10 +480,21 @@ class BenchRunner:
             self._ota_flash(dev, dt)                   # stored on the SD card, flashed by main at its next boot
             changed.append(f"DT {dtv} → {dt['version']}")
         if changed:
-            self._reboot(dev)
-            self._reboot(dev)
-            self._sleep(10)
-            fw, dtv = self._devinfo(dev, KEY_FW) or "", self._devinfo(dev, KEY_DT) or ""
+            # Main flashes a new DT image from its SD card at the next boot (the ESP32 DT download takes
+            # up to ~1.5 min): wait that long after each reboot. At least 2, at most 3 reboots.
+            dt_new = bool(dt) and any(c.startswith("DT") for c in changed)
+            wait_s = 90 if dt_new else 10
+            for n in range(1, 4):
+                self._reboot(dev)
+                self._say(f"Waiting {wait_s} s" + (" for main to download the DT image" if dt_new else "") + f" (reboot {n})")
+                self._sleep(wait_s)
+                fw, dtv = self._devinfo(dev, KEY_FW) or "", self._devinfo(dev, KEY_DT) or ""
+                done = fw == main["version"] and (not dt or dtv == dt["version"])
+                if n >= 2 and done:
+                    break
+                if not done:
+                    self._say(f"After reboot {n}: main {fw}, DT {dtv}", "warn")
+            changed.append(f"{n} reboots")
         self._run["versions"] = {"main": fw, "dt": dtv, "board": hw}
         self._publish()
         if fw != main["version"]:
@@ -473,21 +503,35 @@ class BenchRunner:
             raise _Fail(f"device runs DT {dtv}, expected {dt['version']}")
         return (f"board {hw}, main {fw}, DT {dtv}" + (f" (installed: {', '.join(changed)})" if changed else " (already installed)"))
 
-    def _pump_type(self, dev: Device, p: dict, sales: int, pump_s: float) -> str:
+    def _emu_mode(self, p: dict) -> None:
         self._emu(f"MODE {p['code']}", 3.5)
         if p["price"]:
             self._emu(f"PRICE {p['price']}")
-        notes = []
+
+    def _switch_type(self, dev: Device, p: dict) -> str:
+        """Set the device's display type to p and verify it on main and DT: with the emulator playing p,
+        frames of p's type must arrive. After a change: at least 2, at most 3 reboots."""
         cur = self._cfg_read(dev, KEY_DISPLAY_TYPE)
-        if str(cur) != str(p["type"]):
+        if str(cur) == str(p["type"]):
+            if self._wait_frames(p["type"], 30) is not None:
+                return f"type {p['type']} already set"
+            min_reboots = 1                            # set, but the DT does not run it: reboot until it does
+        else:
             self._ops.write_config(dev, KEY_DISPLAY_TYPE, str(p["type"]), user="bench")
             self._sleep(4)
+            min_reboots = 2                            # acceptance procedure: 2 reboots after a type switch
+        for n in range(1, 4):
             self._reboot(dev)
-            self._reboot(dev)                          # acceptance procedure: 2 reboots after a type switch
-            notes.append(f"type {cur} → {p['type']}, 2 reboots")
-        got = self._wait_frames(p["type"], 60)
-        if got is None:
-            raise _Fail(f"no display frames of type {p['type']} within 60 s" + (f" ({'; '.join(notes)})" if notes else ""))
+            if n < min_reboots:
+                continue
+            if self._wait_frames(p["type"], 60) is not None:
+                return f"type {cur} → {p['type']}, {n} reboot(s)"
+            self._say(f"No frames of type {p['type']} after reboot {n}", "warn")
+        raise _Fail(f"display type {p['type']} not running after 3 reboots (no frames of the type)")
+
+    def _pump_type(self, dev: Device, p: dict, sales: int, pump_s: float) -> str:
+        self._emu_mode(p)
+        notes = [self._switch_type(dev, p)]
         results = []
         for n in range(1, sales + 1):
             ok, detail = self._sale(p, pump_s)
@@ -498,6 +542,71 @@ class BenchRunner:
         if not all(results):
             raise _Fail("; ".join(notes))
         return "; ".join(notes)
+
+    def _mismatch(self, dev: Device, d: dict, e: dict, secs: float) -> str:
+        """Device set to display type d, the emulator plays another type e (a wrong display on the bus).
+        The device must keep answering MQTT, must not flood its log, crash or reset."""
+        cur = self._cfg_read(dev, KEY_DISPLAY_TYPE)
+        setup = ""
+        if str(cur) != str(d["type"]):
+            self._emu_mode(d)                          # verify the device type with its own display first
+            setup = self._switch_type(dev, d) + "; "
+        self._emu_mode(e)
+        m, t0 = self.uart.mark(), time.time()
+        lat: list[float] = []
+        misses = 0
+
+        def probe() -> None:
+            nonlocal misses
+            t = time.time()
+            if self._devinfo(dev, KEY_FW, tries=1, timeout=5) is None:
+                misses += 1
+            else:
+                lat.append(time.time() - t)
+
+        self._emu("NOZZLE 1", 2)
+        self._emu("PUMP 1", 0.5)
+        end = time.time() + secs
+        while time.time() < end:                       # requests while the wrong display sends data
+            probe()
+            self._sleep(max(0.0, min(3.0, end - time.time())))
+        self._emu("PUMP 0", 1)
+        self._emu("NOZZLE 0", 3)
+        for _ in range(3):                             # and after it stops
+            probe()
+            self._sleep(2)
+        self._emu("NOZZLE AUTO", 0.3)
+        self._emu("PUMP AUTO", 0.3)
+
+        lines = self.uart.since_ts(m)
+        dur = max(1.0, time.time() - t0)
+        per_s: dict[int, int] = {}
+        for ts, _ in lines:
+            per_s[int(ts)] = per_s.get(int(ts), 0) + 1
+        rate, peak = len(lines) / dur, max(per_s.values(), default=0)
+        texts = [t for _, t in lines]
+        crashes = [t for t in texts if any(c in t for c in _CRASH)]
+        resets = [x.group(2) for t in texts for x in [_RE_RESET.search(t)] if x]
+        wd = sum(1 for t in texts if "DT watchdog" in t)
+        sales = [dd for ts, msg, dd in self._events if msg == "MsgFuelPumped" and ts >= t0]
+
+        problems = []
+        n = misses + len(lat)
+        if misses:
+            problems.append(f"MQTT: {misses} of {n} requests unanswered")
+        if rate > MISMATCH_MAX_LINES_S or peak > MISMATCH_MAX_PEAK_S:
+            problems.append(f"log flood: {rate:.1f} lines/s average, {peak} in the busiest second")
+        if crashes:
+            problems.append(f"crash: {crashes[0][:120]}")
+        if resets:
+            problems.append(f"device reset during the test: {', '.join(resets)}")
+        info = (f"{setup}MQTT {len(lat)}/{n} answered (max {max(lat, default=0):.1f} s, "
+                f"avg {sum(lat) / max(1, len(lat)):.1f} s); log {len(lines)} lines in {dur:.0f} s "
+                f"({rate:.1f}/s, peak {peak}/s); DT watchdog {wd}×"
+                + (f"; NOTE {len(sales)} sale(s) reported from the wrong display" if sales else ""))
+        if problems:
+            raise _Fail("; ".join(problems) + f" — {info}")
+        return info
 
     def _pumping_status(self, dev: Device) -> str:
         cur = str(self._cfg_read(dev, KEY_DISPLAY_TYPE))

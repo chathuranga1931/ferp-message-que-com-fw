@@ -34,6 +34,10 @@ class BenchSpec(BaseModel):
     ota_test: bool = False
     ota_alt_fw_id: str = ""                               # the other (odd/even) main bundle
     uart_health: bool = True
+    mismatch_test: bool = False                           # wrong display on the bus: device type x emulator type
+    mismatch_device_types: list[str] = []                 # display types set on the device
+    mismatch_emu_types: list[str] = []                    # emulator types played (each != the device type)
+    mismatch_s: float = Field(20, ge=5, le=120)           # pumping data per pair
     preset: str = ""
 
 
@@ -44,6 +48,10 @@ class Preset(BaseModel):
     pumping_status: bool = False
     ota_test: bool = False
     uart_health: bool = True
+    mismatch_test: bool = False
+    mismatch_device_types: list[str] = []
+    mismatch_emu_types: list[str] = []
+    mismatch_s: float = Field(20, ge=5, le=120)
     notes: str = ""
 
 
@@ -82,7 +90,8 @@ def list_presets(c: Container = Depends(container)):
 def save_preset(name: str, body: Preset, c: Container = Depends(container), user: str = Depends(admin_user)):
     if not _PRESET_NAME.match(name):
         raise HTTPException(400, "Preset name: 1-60 letters, digits, space, . + - _")
-    bad = [p for p in body.pump_types if p not in {t["code"] for t in PUMP_TYPES}]
+    bad = [p for p in body.pump_types + body.mismatch_device_types + body.mismatch_emu_types
+           if p not in {t["code"] for t in PUMP_TYPES}]
     if bad:
         raise HTTPException(400, f"Unknown pump type(s): {', '.join(bad)}")
     doc = c.docs.get(META, "presets") or {"presets": {}}
