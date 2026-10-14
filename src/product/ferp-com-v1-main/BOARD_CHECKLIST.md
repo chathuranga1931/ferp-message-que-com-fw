@@ -38,7 +38,8 @@ No LEDs on this board.
   other output on GPIO4 here either.
 - **DT command replies:** the set-display / set-error-mask commands must wait > 1 s (re-sent
   every second); a 500 ms wait lost the setting when one packet was dropped.
-- **ESP07 DT 3.1.0.1 does not support** Censtar-7 CS, Wayne-6 and Longfeng (no decoder starts).
+- **The ESP07 DT does not support** Censtar-7 CS and Longfeng (no decoder starts). Wayne-6 was off in
+  3.1.0.1 / 20.1.0.1 and is supported again from the next ESP07 release.
 
 ## Per-build checklist
 
@@ -60,8 +61,8 @@ No LEDs on this board.
 
 **Pump types** (Mega emulator, acceptance test: switch type, 2 reboots, 2 sales on both nozzles,
 values equal to the emulator)
-- [ ] ESP07 DT supported types: CEN6, CEN7, HY8, SAN6, WAY2.
-- [ ] Unsupported types (C7CS, WAY6, LF8) are refused by the DT, not decoded wrongly.
+- [ ] ESP07 DT supported types: CEN6, CEN7, HY8, WAY6, SAN6 (no Wayne-2 decoder on the ESP07: type 8 is refused).
+- [ ] Unsupported types (C7CS, LF8, WAY2) are refused by the DT, not decoded wrongly.
 
 **Before release**
 - [ ] OTA from the previous release works; config survives the update.

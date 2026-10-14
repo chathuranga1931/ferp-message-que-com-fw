@@ -27,7 +27,10 @@ board (UART, esp-serial-flasher, image stored on the main's SD card).
   frames until the next reset. The main therefore does not reset the ESP07 after its settings and
   has no frame watchdog on 2308/2404 (only on 2602). Fix in hardware on the next revision
   (dedicated strap nets, or bus buffers disabled while in reset).
-- **Not supported by this DT:** Censtar-7 CS, Wayne-6, Longfeng — `display_supported()` refuses
+- **Wayne-6:** disabled in 3.1.0.1 / 20.1.0.1 (bench: volume/total 0 for ~1 min after boot with the
+  emulator), re-enabled 2026-10-15 because it works on site (as in 2.0.0.1). Check the first sale after a boot.
+- **Not supported by this DT:** Censtar-7 CS, Longfeng — `display_supported()` refuses; Wayne-2 has no
+  decoder (type 8 is beyond DIS_SIZE) —
   them and starts no decoder.
 - **Version string** must come from the app descriptor (`esp_ota_get_app_description()->version`);
   `CONFIG_APP_PROJECT_VER` differed from `-D PROJECT_VER` and made the main re-flash the DT at
@@ -40,6 +43,6 @@ board (UART, esp-serial-flasher, image stored on the main's SD card).
 - [ ] Version in `sdkconfig` and `sdkconfig.defaults` = the reported version.
 - [ ] No new use of GPIO 0, 2, 15 (they are display inputs and boot straps).
 - [ ] Flashed from the main (DT OTA → main reboot): `DT update: done, DT runs <version>`.
-- [ ] Supported types (CEN6, CEN7, HY8, SAN6, WAY2): after a type change + main reboot, frames
+- [ ] Supported types (CEN6, CEN7, HY8, WAY6, SAN6): after a type change + main reboot, frames
       carry the new type; unsupported types are refused.
 - [ ] Acceptance matrix on a v2 test device — see `src/product/ferp-com-v2-main/BOARD_CHECKLIST.md`.

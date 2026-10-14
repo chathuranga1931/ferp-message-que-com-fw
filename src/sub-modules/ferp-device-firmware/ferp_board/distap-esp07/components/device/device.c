@@ -496,8 +496,10 @@ esp_err_t device_init()
     case DIS_SANKI_6_DIGIT:
         ret = display_sanki_6_digit_init(&send_queue);
         break;
+    case DIS_WAYNE_6_DIGIT:      // re-enabled 2026-10-15: works on site with the ESP07 (as in DT 2.0.0.1)
+        ret = display_wayne_6_digit_init(&send_queue);
+        break;
     case DIS_CENSTAR_7_DIGIT_CS: // no decoder on the ESP07 (see display_supported)
-    case DIS_WAYNE_6_DIGIT:      // capture unreliable on the ESP07 (see display_supported)
     case DIS_LONGFENG_8_DIGIT:   // 2.7 MHz display clock: too fast for GPIO interrupts (needs the ESP32 DT)
     default:
         break;
@@ -509,13 +511,13 @@ esp_err_t device_init()
 /* Display types this DT can decode.  Others are refused (NACK) so the DT keeps its
  * current type instead of sending wrong values:
  *   DIS_CENSTAR_7_DIGIT_CS - no ESP07 decoder (only the ESP32 DT has one)
- *   DIS_WAYNE_6_DIGIT      - capture unreliable: volume/total read as 0 for about the first
- *                            minute after boot (12 bytes after RCLK lost); use the ESP32 DT
  *   DIS_LONGFENG_8_DIGIT   - 192 bits in ~80 us (2.7 MHz): an ESP8266 GPIO interrupt per
- *                            bit cannot keep up; the ESP32 DT reads it with the SPI slave */
+ *                            bit cannot keep up; the ESP32 DT reads it with the SPI slave
+ * Wayne-6 is supported (disabled in 3.1.0.1 / 20.1.0.1 after bench tests with the emulator showed
+ * volume/total as 0 for about the first minute after boot; re-enabled because it works on site). */
 bool display_supported(uint8_t display)
 {
-    return display != DIS_CENSTAR_7_DIGIT_CS && display != DIS_WAYNE_6_DIGIT && display != DIS_LONGFENG_8_DIGIT;
+    return display != DIS_CENSTAR_7_DIGIT_CS && display != DIS_LONGFENG_8_DIGIT;
 }
 
 void device_print_log(const char *str, size_t len)
